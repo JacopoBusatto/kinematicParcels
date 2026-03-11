@@ -1,0 +1,29 @@
+experiment:
+  name: NPstg_surface_test
+  output_dir: ./outputs
+
+fieldset:
+  file_pattern: ./fields/*.nc
+  variables:
+    U: ugos
+    V: vgos
+  dimensions:
+    lon: longitude
+    lat: latitude
+    time: time
+  mesh: spherical
+
+release:
+  region_label: NPstg
+  dlon: 5.0
+  dlat: 5.0
+  filter_domain: true
+
+simulation:
+  runtime_days: 10
+  dt_hours: 1
+  outputdt_hours: 24
+  particle_type: scipy
+
+output:
+  zarr_name: output_NPstg_surface.zarr

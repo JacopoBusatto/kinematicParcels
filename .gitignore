@@ -1,0 +1,44 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+
+# Environments
+.venv/
+venv/
+env/
+.parcels/
+conda-meta/
+
+# VS Code
+.vscode/
+
+# Jupyter
+.ipynb_checkpoints/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Outputs and data
+fields/*
+!fields/.gitkeep
+
+outputs/*
+!outputs/.gitkeep
+
+logs/*
+!logs/.gitkeep
+
+# Large scientific files
+*.nc
+*.zarr
+*.zip
+*.tar
+*.gz
+
+# Temporary plots
+*.png
+*.jpg
+*.jpeg
+*.pdf
