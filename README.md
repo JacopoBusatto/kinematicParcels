@@ -22,41 +22,24 @@ The Python runner then executes the simulation using those parameters.
 kinematicParcels/
 
 │
-
 ├── experiments/
-
 │   ├── run_parcels_experiment.py
-
 │   └── configs/
-
 │       ├── exp_NPstg_surface.yml
-
 │       └── exp_NPstg_multilevel.yml
-
 │
-
 ├── utilities/
-
 │   ├── geographicalRegions.py
-
 │   ├── init_checks.py
-
 │   └── init_depths.py
-
 │
-
 ├── fields/
-
 ├── outputs/
-
 ├── logs/
-
 │
-
 ├── environment.yml
-
 ├── .gitignore
-
+├── LICENSE.md
 └── README.md
 
 

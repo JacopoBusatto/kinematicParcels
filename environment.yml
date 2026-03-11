@@ -1,0 +1,14 @@
+name: parcels
+channels:
+  - conda-forge
+dependencies:
+  - python=3.11
+  - parcels
+  - numpy
+  - xarray
+  - netcdf4
+  - zarr
+  - pyyaml
+  - matplotlib
+  - cartopy
+  - pip
