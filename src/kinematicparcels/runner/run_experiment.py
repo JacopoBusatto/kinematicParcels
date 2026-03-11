@@ -1,11 +1,5 @@
 from __future__ import annotations
-import warnings
 
-warnings.filterwarnings(
-    "ignore",
-    category=UserWarning,
-    module=r"parcels\.particledata"
-)
 import argparse
 from datetime import timedelta
 from glob import glob
@@ -13,24 +7,37 @@ from pathlib import Path
 import warnings
 
 import yaml
-import numpy as np
+
+warnings.filterwarnings(
+    "ignore",
+    category=UserWarning,
+    module=r".*parcels\.particledata",
+)
+warnings.filterwarnings(
+    "ignore",
+    message=r".*where.*without 'out'.*",
+    category=UserWarning,
+)
 
 from parcels import FieldSet, ParticleSet, ScipyParticle, JITParticle, AdvectionRK4
 
-from utilities.geographicalRegions import get_region_by_label, make_regular_grid_in_region
-from utilities.init_checks import (
+from kinematicparcels.utilities.geographicalRegions import (
+    get_region_by_label,
+    make_regular_grid_in_region,
+)
+from kinematicparcels.utilities.init_checks import (
     summarize_initial_points,
     check_initial_points_in_domain,
     filter_inside_domain,
 )
-from utilities.init_depths import (
+from kinematicparcels.utilities.init_depths import (
     summarize_depth_axis,
     build_multilevel_release,
 )
 
 
 # -----------------------------------------------------------------------------
-# helpers
+# Helpers
 # -----------------------------------------------------------------------------
 def load_config(path: str | Path) -> dict:
     with open(path, "r", encoding="utf-8") as f:
@@ -43,7 +50,7 @@ def get_particle_class(name: str):
         return ScipyParticle
     if name == "jit":
         return JITParticle
-    raise ValueError(f"particle_type non supportato: {name}")
+    raise ValueError(f"Unsupported particle_type: {name}")
 
 
 def build_fieldset(cfg: dict) -> FieldSet:
@@ -51,15 +58,14 @@ def build_fieldset(cfg: dict) -> FieldSet:
 
     files = sorted(glob(fs_cfg["file_pattern"]))
     if len(files) == 0:
-        raise FileNotFoundError(f"Nessun file trovato con pattern: {fs_cfg['file_pattern']}")
+        raise FileNotFoundError(f"No files found with pattern: {fs_cfg['file_pattern']}")
 
-    print(f"Trovati {len(files)} file di input")
+    print(f"Found {len(files)} input files")
     for f in files[:3]:
         print(" ", f)
 
     variables = fs_cfg["variables"]
 
-    # mapping Parcels: per U e V separati
     filenames = {
         "U": files,
         "V": files,
@@ -149,7 +155,7 @@ def build_particleset(cfg: dict, fieldset: FieldSet, lons, lats, depths=None):
         kwargs["depth"] = depths
 
     pset = ParticleSet.from_list(**kwargs)
-    print(f"ParticleSet creato con {len(lons)} particelle")
+    print(f"ParticleSet created with {len(lons)} particles")
     return pset
 
 
@@ -175,22 +181,19 @@ def run_simulation(cfg: dict, pset: ParticleSet):
         output_file=output_file,
     )
 
-    print(f"Run completato: {zarr_path}")
+    print(f"Run completed: {zarr_path}")
 
 
-# -----------------------------------------------------------------------------
-# main
-# -----------------------------------------------------------------------------
 def main():
-    warnings.filterwarnings("ignore", message=".*where used without 'out'.*")
-
-    parser = argparse.ArgumentParser(description="Generic Parcels experiment runner from YAML config")
+    parser = argparse.ArgumentParser(
+        description="Generic Parcels experiment runner from YAML config"
+    )
     parser.add_argument("config", help="Path to YAML configuration file")
     args = parser.parse_args()
 
     cfg = load_config(args.config)
 
-    print(f"Esperimento: {cfg['experiment']['name']}")
+    print(f"Experiment: {cfg['experiment']['name']}")
 
     fieldset = build_fieldset(cfg)
     lons, lats, depths = build_release(cfg, fieldset)

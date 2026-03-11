@@ -1,0 +1,253 @@
+Metadata-Version: 2.4
+Name: kinematicparcels
+Version: 0.1.0
+Summary: Framework for YAML-driven OceanParcels Lagrangian experiments
+Author: Jacopo Busatto
+Requires-Python: >=3.10
+Description-Content-Type: text/markdown
+License-File: LICENSE.md
+Requires-Dist: parcels
+Requires-Dist: numpy
+Requires-Dist: xarray
+Requires-Dist: netcdf4
+Requires-Dist: zarr
+Requires-Dist: pyyaml
+Requires-Dist: matplotlib
+Requires-Dist: cartopy
+Requires-Dist: tqdm
+Dynamic: license-file
+
+# kinematicParcels
+
+Lightweight framework to run Lagrangian experiments using **OceanParcels** with YAML-driven configuration.
+
+The main idea of this project is to **separate simulation logic from experiment configuration**, allowing many different experiments to be run without creating multiple Python scripts.
+
+All experiment parameters are defined in a YAML file:
+- release region
+- initial grid
+- vertical levels
+- velocity fields
+- simulation duration
+- integration timestep
+- output timestep
+
+The Python runner then executes the simulation using those parameters.
+
+---
+
+# Project Structure
+
+kinematicParcels/
+
+│
+├── experiments/
+│   ├── run_parcels_experiment.py
+│   └── configs/
+│       ├── exp_NPstg_surface.yml
+│       └── exp_NPstg_multilevel.yml
+│
+├── utilities/
+│   ├── geographicalRegions.py
+│   ├── init_checks.py
+│   └── init_depths.py
+│
+├── fields/
+├── outputs/
+├── logs/
+│
+├── environment.yml
+├── .gitignore
+├── LICENSE.md
+└── README.md
+
+
+Explanation of the main folders:
+
+experiments/  
+Contains the generic runner and experiment configuration files.
+
+utilities/  
+Helper modules used by the runner:
+- region definitions
+- release grid generation
+- domain checks
+- vertical level handling
+
+fields/  
+Input velocity fields (NetCDF).  
+This folder is **not tracked in Git**.
+
+outputs/  
+Simulation outputs (Zarr datasets).  
+Also **not tracked in Git**.
+
+logs/  
+Optional logs for experiment runs.
+
+---
+
+# Installation
+
+Create a Conda environment using the provided file:
+
+conda env create -f environment.yml
+
+Activate it:
+
+conda activate parcels
+
+
+Alternatively install dependencies manually:
+
+conda install -c conda-forge parcels xarray netcdf4 zarr cartopy pyyaml
+
+---
+
+# Running an Experiment
+
+Experiments are defined through YAML configuration files.
+
+Example configuration:
+
+experiments/configs/exp_NPstg_surface.yml
+
+Run the experiment with:
+
+python -m experiments.run_parcels_experiment experiments/configs/exp_NPstg_surface.yml
+
+Typical output:
+
+Experiment: NPstg_surface_test  
+Found 31 input files  
+ParticleSet created with 192 particles  
+Run completed: outputs/output_NPstg_surface.zarr
+
+---
+
+# YAML Configuration
+
+Example configuration file:
+
+experiment:
+  name: NPstg_surface_test
+  output_dir: ./outputs
+
+fieldset:
+  file_pattern: ./fields/*.nc
+  variables:
+    U: ugos
+    V: vgos
+  dimensions:
+    lon: longitude
+    lat: latitude
+    time: time
+  mesh: spherical
+
+release:
+  region_label: NPstg
+  dlon: 5
+  dlat: 5
+  filter_domain: true
+
+simulation:
+  runtime_days: 10
+  dt_hours: 1
+  outputdt_hours: 24
+  particle_type: scipy
+
+output:
+  zarr_name: output_NPstg_surface.zarr
+
+---
+
+# Multi-Level Particle Release
+
+The framework supports releasing particles at multiple depths.
+
+Example configuration:
+
+depth:
+  enabled: true
+  values: [0, 50, 100]
+  mode: snap_to_field
+  request_convention: positive_down
+  snap_method: nearest
+  remove_duplicate_depths: true
+
+Available modes:
+
+as_requested  
+Uses the depths exactly as provided.
+
+snap_to_field  
+Adapts the release depths to the vertical levels of the velocity field.
+
+If multiple requested depths collapse onto the same model level, duplicates can be removed automatically.
+
+---
+
+# Utilities Included
+
+Region handling  
+utilities/geographicalRegions.py  
+Defines geographic regions and generates regular release grids.
+
+Initial condition checks  
+utilities/init_checks.py  
+Performs checks on the initial particle positions and removes points outside the velocity field domain.
+
+Vertical level handling  
+utilities/init_depths.py  
+Handles vertical coordinate conventions, snapping to field levels, and duplicate removal.
+
+---
+
+# Output
+
+Simulation results are written as **Zarr datasets**.
+
+Example output:
+
+outputs/output_experiment.zarr
+
+These can be loaded directly with xarray:
+
+import xarray as xr
+
+ds = xr.open_zarr("outputs/output_experiment.zarr")
+
+---
+
+# Project Goals
+
+The framework is designed to:
+
+- simplify Lagrangian experiment configuration
+- make experiments reproducible
+- reduce duplication of simulation scripts
+- provide modular utilities for particle initialization
+
+---
+
+# Possible Future Extensions
+
+- time-dependent particle releases
+- custom kernels
+- external release files (CSV or Parquet)
+- automatic trajectory plotting
+- logging system for experiments
+- HPC batch execution
+
+---
+
+# Author
+
+Jacopo Busatto  
+CNR ISMAR
+
+---
+
+# License
+
+MIT License

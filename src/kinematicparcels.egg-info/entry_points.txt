@@ -1,0 +1,2 @@
+[console_scripts]
+run-parcels-experiment = kinematicparcels.runner.run_experiment:main

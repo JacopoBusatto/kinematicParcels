@@ -1,19 +1,19 @@
 # kinematicParcels
 
-Lightweight framework to run Lagrangian experiments using **OceanParcels** with YAML-driven configuration.
+Lightweight framework to run **Lagrangian particle experiments with OceanParcels** using YAML-driven configuration files.
 
-The main idea of this project is to **separate simulation logic from experiment configuration**, allowing many different experiments to be run without creating multiple Python scripts.
+The goal of this project is to **separate experiment configuration from simulation logic**, allowing multiple experiments to be run without creating many different Python scripts.
 
-All experiment parameters are defined in a YAML file:
+All experiment parameters are defined in YAML files:
 - release region
-- initial grid
+- initial particle grid
 - vertical levels
 - velocity fields
 - simulation duration
 - integration timestep
 - output timestep
 
-The Python runner then executes the simulation using those parameters.
+The framework provides a **generic experiment runner** that reads the configuration file and executes the simulation.
 
 ---
 
@@ -21,56 +21,85 @@ The Python runner then executes the simulation using those parameters.
 
 kinematicParcels/
 
+├── src/
+
+│   └── kinematicparcels/
+
+│       ├── __init__.py
+
+│       ├── runner/
+
+│       │   └── run_experiment.py
+
+│       └── utilities/
+
+│           ├── geographicalRegions.py
+
+│           ├── init_checks.py
+
+│           └── init_depths.py
+
 │
+
 ├── experiments/
-│   ├── run_parcels_experiment.py
+
 │   └── configs/
+
 │       ├── exp_NPstg_surface.yml
+
 │       └── exp_NPstg_multilevel.yml
+
 │
-├── utilities/
-│   ├── geographicalRegions.py
-│   ├── init_checks.py
-│   └── init_depths.py
+
+├── fields/          (input velocity fields, not tracked)
+
+├── outputs/         (simulation outputs, not tracked)
+
+├── logs/            (optional run logs)
+
 │
-├── fields/
-├── outputs/
-├── logs/
-│
+
 ├── environment.yml
+
+├── pyproject.toml
+
 ├── .gitignore
-├── LICENSE.md
+
 └── README.md
 
 
-Explanation of the main folders:
+Explanation of the main directories:
 
-experiments/  
-Contains the generic runner and experiment configuration files.
+src/kinematicparcels  
+Contains the installable Python package.
 
-utilities/  
-Helper modules used by the runner:
-- region definitions
-- release grid generation
-- domain checks
-- vertical level handling
+runner  
+Contains the generic experiment runner.
 
-fields/  
-Input velocity fields (NetCDF).  
-This folder is **not tracked in Git**.
+utilities  
+Helper modules for particle initialization and domain checks.
 
-outputs/  
-Simulation outputs (Zarr datasets).  
-Also **not tracked in Git**.
+experiments/configs  
+YAML configuration files describing experiments.
 
-logs/  
-Optional logs for experiment runs.
+fields  
+Input velocity fields (NetCDF). Not versioned in Git.
+
+outputs  
+Simulation outputs (Zarr). Not versioned in Git.
 
 ---
 
 # Installation
 
-Create a Conda environment using the provided file:
+Clone the repository:
+
+git clone https://github.com/JacopoBusatto/kinematicParcels.git
+
+cd kinematicParcels
+
+
+Create the Conda environment:
 
 conda env create -f environment.yml
 
@@ -79,9 +108,11 @@ Activate it:
 conda activate parcels
 
 
-Alternatively install dependencies manually:
+Install the package in editable mode:
 
-conda install -c conda-forge parcels xarray netcdf4 zarr cartopy pyyaml
+pip install -e .
+
+This allows modifying the code without reinstalling the package.
 
 ---
 
@@ -93,11 +124,11 @@ Example configuration:
 
 experiments/configs/exp_NPstg_surface.yml
 
-Run the experiment with:
+Run the simulation with:
 
-python -m experiments.run_parcels_experiment experiments/configs/exp_NPstg_surface.yml
+run-parcels-experiment experiments/configs/exp_NPstg_surface.yml
 
-Typical output:
+Example output:
 
 Experiment: NPstg_surface_test  
 Found 31 input files  
@@ -106,9 +137,15 @@ Run completed: outputs/output_NPstg_surface.zarr
 
 ---
 
-# YAML Configuration
+# Alternative Execution Method
 
-Example configuration file:
+The experiment runner can also be executed as a Python module:
+
+python -m kinematicparcels.runner.run_experiment experiments/configs/exp_NPstg_surface.yml
+
+---
+
+# YAML Configuration Example
 
 experiment:
   name: NPstg_surface_test
@@ -144,7 +181,7 @@ output:
 
 # Multi-Level Particle Release
 
-The framework supports releasing particles at multiple depths.
+Particles can be released at multiple depths.
 
 Example configuration:
 
@@ -159,40 +196,37 @@ depth:
 Available modes:
 
 as_requested  
-Uses the depths exactly as provided.
+Uses the exact requested depths.
 
 snap_to_field  
-Adapts the release depths to the vertical levels of the velocity field.
+Adapts release depths to the vertical levels of the velocity field.
 
-If multiple requested depths collapse onto the same model level, duplicates can be removed automatically.
-
----
-
-# Utilities Included
-
-Region handling  
-utilities/geographicalRegions.py  
-Defines geographic regions and generates regular release grids.
-
-Initial condition checks  
-utilities/init_checks.py  
-Performs checks on the initial particle positions and removes points outside the velocity field domain.
-
-Vertical level handling  
-utilities/init_depths.py  
-Handles vertical coordinate conventions, snapping to field levels, and duplicate removal.
+If multiple requested depths collapse onto the same field level, duplicates can be automatically removed.
 
 ---
 
-# Output
+# Utilities
 
-Simulation results are written as **Zarr datasets**.
+geographicalRegions.py  
+Defines geographic regions and builds regular release grids.
 
-Example output:
+init_checks.py  
+Checks initial particle positions and removes points outside the velocity field domain.
+
+init_depths.py  
+Handles vertical coordinates, snapping to field levels, and duplicate removal.
+
+---
+
+# Output Format
+
+Simulation outputs are stored as **Zarr datasets**.
+
+Example:
 
 outputs/output_experiment.zarr
 
-These can be loaded directly with xarray:
+Load them with xarray:
 
 import xarray as xr
 
@@ -202,23 +236,24 @@ ds = xr.open_zarr("outputs/output_experiment.zarr")
 
 # Project Goals
 
-The framework is designed to:
+The framework aims to:
 
-- simplify Lagrangian experiment configuration
-- make experiments reproducible
-- reduce duplication of simulation scripts
+- simplify the configuration of Lagrangian experiments
+- improve reproducibility
+- avoid duplication of simulation scripts
 - provide modular utilities for particle initialization
 
 ---
 
-# Possible Future Extensions
+# Future Extensions
 
-- time-dependent particle releases
-- custom kernels
-- external release files (CSV or Parquet)
+Possible future developments:
+
+- time-dependent particle release
+- custom Parcels kernels
 - automatic trajectory plotting
-- logging system for experiments
-- HPC batch execution
+- integration with HPC batch systems
+- additional command-line tools
 
 ---
 

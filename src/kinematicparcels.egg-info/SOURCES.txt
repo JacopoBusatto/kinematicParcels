@@ -1,0 +1,16 @@
+LICENSE.md
+README.md
+pyproject.toml
+src/kinematicparcels/__init__.py
+src/kinematicparcels.egg-info/PKG-INFO
+src/kinematicparcels.egg-info/SOURCES.txt
+src/kinematicparcels.egg-info/dependency_links.txt
+src/kinematicparcels.egg-info/entry_points.txt
+src/kinematicparcels.egg-info/requires.txt
+src/kinematicparcels.egg-info/top_level.txt
+src/kinematicparcels/runner/__init__.py
+src/kinematicparcels/runner/run_experiment.py
+src/kinematicparcels/utilities/__init__.py
+src/kinematicparcels/utilities/geographicalRegions.py
+src/kinematicparcels/utilities/init_checks.py
+src/kinematicparcels/utilities/init_depths.py

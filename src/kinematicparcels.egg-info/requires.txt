@@ -1,0 +1,9 @@
+parcels
+numpy
+xarray
+netcdf4
+zarr
+pyyaml
+matplotlib
+cartopy
+tqdm

@@ -1,0 +1,31 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "kinematicparcels"
+version = "0.1.0"
+description = "Framework for YAML-driven OceanParcels Lagrangian experiments"
+authors = [
+    {name = "Jacopo Busatto"}
+]
+readme = "README.md"
+requires-python = ">=3.10"
+
+dependencies = [
+    "parcels",
+    "numpy",
+    "xarray",
+    "netcdf4",
+    "zarr",
+    "pyyaml",
+    "matplotlib",
+    "cartopy",
+    "tqdm"
+]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[project.scripts]
+run-parcels-experiment = "kinematicparcels.runner.run_experiment:main"
