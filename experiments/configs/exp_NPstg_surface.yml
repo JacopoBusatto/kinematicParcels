@@ -5,8 +5,8 @@ experiment:
 fieldset:
   file_pattern: ./fields/*.nc
   variables:
-    U: ugos
-    V: vgos
+    U: uo
+    V: vo
   dimensions:
     lon: longitude
     lat: latitude

@@ -6,275 +6,537 @@ Created on Fri Dec  6 13:27:19 2024
 """
 import pandas as pd
 import numpy  as np
+from .regions_definitions import REGIONS_DATA
+
+# -------------------------------------------------------------------------
+# Longitude utilities
+# -------------------------------------------------------------------------
+
+def lon_to_360(lon):
+    """
+    Convert longitude(s) to the [0, 360) convention.
+    Works with scalars or numpy arrays.
+    """
+    import numpy as np
+    return np.mod(lon, 360.0)
+
+
+def lon_to_180(lon):
+    """
+    Convert longitude(s) to the [-180, 180) convention.
+    Works with scalars or numpy arrays.
+    """
+    import numpy as np
+    return (np.mod(lon + 180.0, 360.0) - 180.0)
+
+
+def convert_lon(lon, from_mode="-180_180", to_mode="-180_180"):
+    """
+    Convert longitude(s) between coordinate conventions.
+
+    Parameters
+    ----------
+    lon : float or ndarray
+        Longitude(s) to convert.
+    from_mode : str
+        "-180_180" or "0_360"
+    to_mode : str
+        "-180_180" or "0_360"
+    """
+
+    if from_mode == to_mode:
+        return lon
+
+    if to_mode == "0_360":
+        return lon_to_360(lon)
+
+    if to_mode == "-180_180":
+        return lon_to_180(lon)
+
+    raise ValueError(f"Unsupported longitude mode: {to_mode}")
+
+
 
 class Region:
-    def __init__(self, name, label, numericLabel, bounds, priority=0):
+    def __init__(
+        self,
+        name,
+        label,
+        numericLabel,
+        bounds=None,
+        polygons=None,
+        priority=0,
+        lon_mode="-180_180",
+    ):
         """
         Inizializza una regione.
 
-        Args:
-            name (str): Nome completo della regione.
-            label (str): Etichetta della regione.
-            bounds (list[dict]): Lista di dizionari con i confini delle regioni (min e max di latitudine e longitudine).
-            priority (int): Priorità della regione, di default 0 (facoltativo).
+        Parameters
+        ----------
+        name : str
+            Complete name of the region.
+        label : str
+            Short label of the region.
+        numericLabel : int
+            Numeric label of the region.
+        bounds : list[dict] or None
+            Old rectangular definition: list of rectangles, each defined by a dictionary with keys 'lon_min', 'lon_max', 'lat_min', 'lat_max'.
+            For the sake of compatibility with old framework.
+        polygons : list[list[tuple[float, float]]] or None
+            New geometric definition: list of polygons.
+            Each polygon is a list of vertices (lon, lat).
+        priority : int, default 0
+            Region priority.
+        lon_mode : str, default "-180_180"
+            Longitude convention used in the polygons and bounds. Can be "-180_180" or "0_360".
         """
         self.name         = name
         self.label        = label
-        self.bounds       = bounds
+        self.bounds       = bounds if bounds is not None else []
+        self.polygons     = polygons if polygons is not None else []
         self.priority     = priority
         self.NumericLabel = numericLabel
+        self.lon_mode     = lon_mode
 
-    def contains(self, x, y):
+    # -------------------------------------------------------------------------
+    # Geometry helpers
+    # -------------------------------------------------------------------------
+    @staticmethod
+    def _point_on_segment(px, py, x1, y1, x2, y2, eps=1e-12):
         """
-        Verifica se il punto (x, y) è contenuto nella regione.
+        True se il punto P=(px,py) giace sul segmento [(x1,y1),(x2,y2)].
+        Utile per includere i bordi come interni.
+        """
+        cross = (px - x1) * (y2 - y1) - (py - y1) * (x2 - x1)
+        if abs(cross) > eps:
+            return False
 
-        Args:
-            x (float): Longitudine del punto.
-            y (float): Latitudine del punto.
+        return (
+            min(x1, x2) - eps <= px <= max(x1, x2) + eps
+            and min(y1, y2) - eps <= py <= max(y1, y2) + eps
+        )
+    
+    @classmethod
+    def _point_in_polygon(cls, x, y, polygon, include_boundary=True):
+        """
+        Test point-in-polygon con ray casting.
+        """
+        if polygon is None or len(polygon) < 3:
+            return False
 
-        Returns:
-            bool: True se il punto è all'interno della regione, False altrimenti.
+        if polygon[0] != polygon[-1]:
+            poly = list(polygon) + [polygon[0]]
+        else:
+            poly = polygon
+
+        inside = False
+
+        for i in range(len(poly) - 1):
+            x1, y1 = poly[i]
+            x2, y2 = poly[i + 1]
+
+            if include_boundary and cls._point_on_segment(x, y, x1, y1, x2, y2):
+                return True
+
+            intersects = (y1 > y) != (y2 > y)
+            if intersects:
+                x_intersect = x1 + (y - y1) * (x2 - x1) / ((y2 - y1) + 1e-300)
+                if x < x_intersect:
+                    inside = not inside
+
+        return inside
+
+    def _contains_in_bounds(self, x, y):
+        """
+        Compatibilità con la vecchia logica a rettangoli.
         """
         for i in range(len(self.bounds)):
-            # Estrai le liste di confini per questo rettangolo
             lon_min_list = self.bounds[i]["lon_min"]
             lon_max_list = self.bounds[i]["lon_max"]
             lat_min_list = self.bounds[i]["lat_min"]
             lat_max_list = self.bounds[i]["lat_max"]
 
-            # Itera su ciascun rettangolo definito dalle liste
-            for lon_min, lon_max, lat_min, lat_max in zip(lon_min_list, lon_max_list, lat_min_list, lat_max_list):
-                # Verifica se il punto è contenuto in questo rettangolo
+            for lon_min, lon_max, lat_min, lat_max in zip(
+                lon_min_list, lon_max_list, lat_min_list, lat_max_list
+            ):
                 if lon_min <= x <= lon_max and lat_min <= y <= lat_max:
                     return True
 
         return False
-    
+
+
+    def _contains_in_polygons(self, x, y):
+        """
+        True se il punto cade in almeno un poligono della regione.
+        """
+        for polygon in self.polygons:
+            if self._point_in_polygon(x, y, polygon, include_boundary=True):
+                return True
+        return False
+
+
+    def contains(self, x, y, input_lon_mode="-180_180"):
+        """
+        Verifica se il punto (x, y) è contenuto nella regione.
+
+        La longitudine in input viene convertita nel sistema nativo
+        della regione prima del test geometrico.
+
+        Parameters
+        ----------
+        x : float
+            Longitudine del punto.
+        y : float
+            Latitudine del punto.
+        input_lon_mode : str, default "-180_180"
+            Convenzione della longitudine in input:
+            "-180_180" oppure "0_360".
+
+        Returns
+        -------
+        bool
+        """
+        x_native = float(convert_lon(x, from_mode=input_lon_mode, to_mode=self.lon_mode))
+        y_native = float(y)
+
+        if self.polygons:
+            return self._contains_in_polygons(x_native, y_native)
+
+        return self._contains_in_bounds(x_native, y_native)
+
+    def get_bbox(self):
+        """
+        Calcola il bounding box della regione.
+
+        Supporta sia definizioni tramite bounds sia tramite polygons.
+
+        Returns
+        -------
+        lon_min, lon_max, lat_min, lat_max : float
+        """
+
+        lon_vals = []
+        lat_vals = []
+
+        # --- bounds ---
+        for bounds in self.bounds:
+            lon_vals.extend(bounds["lon_min"])
+            lon_vals.extend(bounds["lon_max"])
+            lat_vals.extend(bounds["lat_min"])
+            lat_vals.extend(bounds["lat_max"])
+
+        # --- polygons ---
+        for poly in self.polygons:
+            for lon, lat in poly:
+                lon_vals.append(lon)
+                lat_vals.append(lat)
+
+        if len(lon_vals) == 0:
+            raise ValueError(f"Region '{self.label}' has no geometry defined")
+
+        return (
+            float(np.min(lon_vals)),
+            float(np.max(lon_vals)),
+            float(np.min(lat_vals)),
+            float(np.max(lat_vals)),
+        )
+
     def __repr__(self):
-        # Ritorna una rappresentazione stringa utile dell'oggetto Region
-        return f"Region(name='{self.name}', label='{self.label}', priority={self.priority})"
+        return (
+            f"Region(name='{self.name}', label='{self.label}', "
+            f"priority={self.priority}, lon_mode='{self.lon_mode}')"
+        )
 
-ALL_REGIONS = [
-        Region("Adriatic Sea 1",                      "adr1",   7, [{"lon_min": [  12.00],                                                                            "lon_max": [  18.50],                                                                          "lat_min": [ 42.58],                                                                            "lat_max": [ 46.00]}],                                                                             priority=3),
-        Region("Adriatic Sea 2",                      "adr2",   8, [{"lon_min": [18, 16.3, 13],                                                                       "lon_max": [21.88, 18, 16.3],                                                                  "lat_min": [40.1, 40.51, 41.31],                                                                "lat_max": [42.58, 42.58, 42.58]}],                                                                priority=3),
-        Region("Adriatic Sea",                        "adr",    8, [{"lon_min": [12, 18, 16.3, 13],                                                                   "lon_max": [20, 21.88, 18, 16.3],                                                              "lat_min": [42.58, 40.1, 40.51, 41.31],                                                         "lat_max": [46, 42.58, 42.58, 42.58]}],                                                            priority=2),
-        Region("Aegean Sea 1",                        "aeg",    9, [{"lon_min": [  21.88, 27.78],                                                                     "lon_max": [  27.78, 30.15],                                                                   "lat_min": [ 35.3, 40.15],                                                                      "lat_max": [ 41.5, 41.15]}],                                                                       priority=3),
-        Region("Alboral Sea",                         "alb",    1, [{"lon_min": [-  6.00],                                                                            "lon_max": [-  1.00],                                                                          "lat_min": [ 34.00],                                                                            "lat_max": [ 39.00]}],                                                                             priority=3),
-        Region("Ionian Sea 1",                        "ion1",  10, [{"lon_min": [   9.20],                                                                            "lon_max": [  15.00],                                                                          "lat_min": [ 32.30],                                                                            "lat_max": [ 36.72]}],                                                                             priority=3),
-        Region("Ionian Sea 2",                        "ion2",  11, [{"lon_min": [  15.00],                                                                            "lon_max": [  21.88],                                                                          "lat_min": [ 30.00],                                                                            "lat_max": [ 36.72]}],                                                                             priority=3),
-        Region("Ionian Sea 3",                        "ion3",  12, [{"lon_min": [  15.00, 16.14, 16.3, 16.3],                                                         "lon_max": [  21.88, 21.88, 21.88, 18.4],                                                      "lat_min": [ 36.72, 38.1, 38.7, 40.1],                                                          "lat_max": [ 38.1, 38.7, 40.1, 40.51]}],                                                           priority=3),
-        Region("Sicily Channel",                      "sic",   17, [{"lon_min": [11.15, 11.43, 11.71, 11.99, 12.27, 12.55, 12.82, 13.1, 13.38, 13.66, 13.94, 14.22],  "lon_max": [11.43, 11.71, 11.99, 12.27, 12.55, 12.82, 13.1, 13.38, 13.66, 13.94, 14.22, 14.5], "lat_min": [36.69, 36.54, 36.38, 36.23, 36.07, 35.91, 35.9, 36.04, 36.19, 36.34, 36.5 , 36.65], "lat_max": [37.01, 37.16, 37.32, 37.47, 37.63, 37.79, 37.8 , 37.65, 37.48, 37.31, 37.14, 36.97]}], priority=4),
-        Region("Levantine Sea 1",                     "lev1",  13, [{"lon_min": [  21.88],                                                                            "lon_max": [  26.20],                                                                          "lat_min": [ 30.00],                                                                            "lat_max": [ 35.30]}],                                                                             priority=3),
-        Region("Levantine Sea 2",                     "lev2",  14, [{"lon_min": [  26.2, 27.78],                                                                      "lon_max": [  33, 33],                                                                         "lat_min": [ 33.5, 35.3],                                                                       "lat_max": [ 35.3, 38]}],                                                                          priority=3),
-        Region("Levantine Sea 3",                     "lev3",  15, [{"lon_min": [  26.20],                                                                            "lon_max": [  33.00],                                                                          "lat_min": [ 30.00],                                                                            "lat_max": [ 33.50]}],                                                                             priority=3),
-        Region("Levantine Sea 4",                     "lev4",  16, [{"lon_min": [  33.00],                                                                            "lon_max": [  37.00],                                                                          "lat_min": [ 31.00],                                                                            "lat_max": [ 38.00]}],                                                                             priority=3),
-        Region("Levantine Sea",                       "lev",   16, [{"lon_min": [  21.88, 27.78],                                                                     "lon_max": [ 37, 37],                                                                          "lat_min": [ 30, 35.3],                                                                         "lat_max": [ 35.3, 38]}],                                                                          priority=2),
-        Region("North West Mediterranean",            "nwm",    4, [{"lon_min": [-  1.00],                                                                            "lon_max": [   9.20],                                                                          "lat_min": [ 39.50],                                                                            "lat_max": [ 45.00]}],                                                                             priority=3),
-        Region("South West Mediterranean 1",          "swm1",   2, [{"lon_min": [-  1.00],                                                                            "lon_max": [   3.00],                                                                          "lat_min": [ 35.50],                                                                            "lat_max": [ 39.50]}],                                                                             priority=3),
-        Region("South West Mediterranean 2",          "swm2",   3, [{"lon_min": [   3.00],                                                                            "lon_max": [   9.20],                                                                          "lat_min": [ 35.50],                                                                            "lat_max": [ 39.50]}],                                                                             priority=3),
-        Region("Tyrrhenian Sea 1",                    "tyr1",   5, [{"lon_min": [9.2, 9.2],                                                                           "lon_max": [13, 10.4],                                                                         "lat_min": [41.31, 43.7],                                                                       "lat_max": [43.7, 44.4]}],                                                                         priority=3),
-        Region("Tyrrhenian Sea 2",                    "tyr2",   6, [{"lon_min": [9.2, 9.2, 9.2],                                                                      "lon_max": [15., 16.14, 16.3],                                                                 "lat_min": [ 36.72, 38.1, 38,7],                                                                "lat_max": [38.1, 38.7, 41.31]}],                                                                  priority=3),
-        Region("Mediterranean Sea",                   "med",    3, [{"lon_min": [-6, 27, 2],                                                                          "lon_max": [27, 39, 20],                                                                       "lat_min": [29, 29, 43],                                                                        "lat_max": [43, 41.1, 46]}],                                                                       priority=1),
-        # BLACK SEA
-        Region("Black Sea",                           "bs",    17, [{"lon_min": [  27.30],                                                                            "lon_max": [  42.50],                                                                          "lat_min": [ 41.10],                                                                            "lat_max": [ 47.50]}],                                                                             priority=1),
-        # ATLANTIC OCEAN
-        Region("Atlantic Ocean",                      "AO",     1, [{"lon_min": [-70, -70, -70, 8-9, -98, -90, -84, -78.3, -82.5],                                    "lon_max": [25, -6, 2, 25, -70, -70, -70, -75.5, -79.7],                                       "lat_min": [-80, 29, 43, 48.5, 18, 14, 9.5, 8.2, 8.8],                                          "lat_max": [29, 43, 48.5, 90, 48.5, 18, 14, 9.5, 9.5]}],                                           priority=1),
-        Region("North Atlantic sub-tropical gyre",    "NAstg",  2, [{"lon_min": [-70, -70, -70,      -98,         ],                                                  "lon_max": [25, -6, 2,     -70,         ],                                                     "lat_min": [ 20, 29, 43,       20,        ],                                                    "lat_max": [29, 43, 48.5,     48.5        ]}],                                                     priority=2),
-        Region("Equatorial Atlantic current system",  "AEcs",   3, [{"lon_min": [-70,                -98, -90, -84, -78.3, -82.5],                                    "lon_max": [25,            -70, -70, -70, -75.5, -79.7],                                       "lat_min": [-20,               18, 14, 9.5, 8.2, 8.8],                                          "lat_max": [20,                 20, 18, 14, 9.5, 9.5]}],                                           priority=2),
-        Region("Southern Atlantic sub-tropical gyre", "SAstg",  4, [{"lon_min": [-70.00],                                                                             "lon_max": [25.00],                                                                            "lat_min": [-47.00],                                                                            "lat_max": [-20.00]}],                                                                             priority=2),
-        Region("Amazon River basin",                  "ARb",    5, [{"lon_min": [-70.00],                                                                             "lon_max": [-40.00],                                                                           "lat_min": [- 1.00],                                                                            "lat_max": [ 20.00]}],                                                                             priority=3),
-        Region("Amazon River estuary",                "ARest",  5, [{"lon_min": [-50.00],                                                                             "lon_max": [-45.00],                                                                           "lat_min": [- 2.00],                                                                            "lat_max": [  6.00]}],                                                                             priority=3),
 
-        # NORDIC SEA
-        Region("Nordic Sea",                          "NS",     1, [{"lon_min": [-98, -180, 25, 134],                                                                 "lon_max": [25, -98, 134, 180],                                                                "lat_min": [48.5, 65.9, 55, 65.9],                                                              "lat_max": [90, 90, 90, 90]}],                                                                     priority=2),
-        # INDIAN OCEAN                
-        Region("Indian Ocean",                        "IO",     2, [{"lon_min": [25, 25, 25, 25, 25, 25],                                                             "lon_max": [147, 142, 103, 100.5, 99.8, 99],                                                   "lat_min": [-80, -20, - 3, 5.3, 6.8, 9.1],                                                      "lat_max": [-20, -3, 5.3, 6.8, 9.1, 30]}],                                                         priority=1),
-        Region("Southern Indian sub-tropical gyre",   "SIstg",  3, [{"lon_min": [25                    ],                                                             "lon_max": [147                           ],                                                   "lat_min": [-50                         ],                                                      "lat_max": [-20                       ]}],                                                         priority=2),
-        Region("Equatorial Indian current system",    "EIcs",   4, [{"lon_min": [    25, 25, 25, 25, 25],                                                             "lon_max": [     142, 103, 100.5, 99.8, 99],                                                   "lat_min": [     -20, - 3, 5.3, 6.8, 9.1],                                                      "lat_max": [     -3, 5.3, 6.8, 9.1, 30]}],                                                         priority=2),
-        # PACIFIC OCEAN
-        # Region("Pacific Ocean",                      "PO",      3, [{"lon_min": [147, 142, 103, 100.5, 99, -180], "lon_max": [180, 180, 180, 103, 100.5,-70], "lat_min": [-80, -20, -3, 5.3, 7.5, -80], "lat_max": [65.9, 65.9, 65.9, 15, 15, 8]}], priority=1),
-        Region("Pacific Ocean",                       "PO",     3, [{"lon_min": [147, 142, 103, 100.5, 99, -180, -180, -80, -180, -180, -180, -180],                  "lon_max": [180, 147, 142, 103, 100.5, -70, -77.5, -78, -83, -84, -90, -98],                   "lat_min": [-80, -20, -3, 5.3, 7.5, -80, 8, 8.7, 8.7, 10, 14, 18],                              "lat_max": [65.9, 65.9, 65.9, 15, 15,  8, 8.7, 9.2, 10, 14, 18, 65.9]}],                           priority=1),
-        Region("Southern Pacific sub-tropical gyre",  "SPstg",  4, [{"lon_min": [147,                      -180                                   ],                  "lon_max": [180,                       -70                                ],                   "lat_min": [-55,                    -55                         ],                              "lat_max": [ -20,                    -20                            ]}],                           priority=2),
-        Region("Equatorial Pacific current system",   "EPcs",   5, [{"lon_min": [147, 142, 103, 100.5, 99, -180, -180, -80, -180, -180, -180, -180],                  "lon_max": [180, 147, 142, 103, 100.5, -70, -77.5, -78, -83, -84, -90, -98],                   "lat_min": [-20, -20, -3, 5.3, 7.5, -20, 8, 8.7, 8.7, 10, 14, 18],                              "lat_max": [20  , 20  , 20  , 15, 15,  8, 8.7, 9.2, 10, 14, 18, 20  ]}],                           priority=2),
-        Region("North Pacific sub-tropical gyre",     "NPstg",  6, [{"lon_min": [147, 142, 103,                                               -180],                  "lon_max": [180, 147, 142,                                             -98],                   "lat_min": [ 20,  20, 20,                                     20],                              "lat_max": [45  , 45  , 45  ,                                   45  ]}],                           priority=2),
-        Region("North Pacific sub-polar gyre",        "NPspg",  7, [{"lon_min": [147, 142, 103,                                               -180],                  "lon_max": [180, 147, 142,                                             -98],                   "lat_min": [ 45,  45, 45,                                     45],                              "lat_max": [65.9, 65.9, 65.9,                                   65.9]}],                           priority=2),
-        # Region("Pacific Ocean 2",                    "PO2",     3, [{"lon_min": [-180, -180, -80, -180, -180, -180, -180], "lon_max": [-70, -77.5, -78, -83, -84, -90, -98], "lat_min": [-80, 8, 8.7, 8.7, 10, 14, 18], "lat_max": [8, 8.7, 9.2, 10, 14, 18, 65.9]}], priority=1),
-        # SOUTHERN OCEAN
-        Region("Southern Ocean",                      "SO",     5, [{"lon_min": [-180.00],                                                                            "lon_max": [180.00],                                                                           "lat_min": [-80.00],                                                                            "lat_max": [-47.00]}],                                                                             priority=2)
-]
+
+ALL_REGIONS = [Region(**cfg) for cfg in REGIONS_DATA]
+
+
 
 class RegionManager:
     def __init__(self, regions_list=None):
         """
         Inizializza un gestore delle regioni.
 
-        Args:
-            regions_list (list): Lista di regioni da includere. Se None, vengono caricate tutte le regioni da ALL_REGIONS.
+        Parameters
+        ----------
+        regions_list : None, list[str], or list[Region]
+            - None: usa ALL_REGIONS
+            - list[str]: interpreta gli elementi come nomi di regione
+            - list[Region]: usa direttamente gli oggetti Region passati
         """
-        self.regions = []  # Inizializza una lista vuota di regioni
-        # Se non viene passata una lista, usa la lista di tutte le regioni
+        self.regions = []
+
         if regions_list is None:
             regions_to_add = ALL_REGIONS
+
+        elif len(regions_list) == 0:
+            regions_to_add = []
+
+        elif all(isinstance(r, Region) for r in regions_list):
+            regions_to_add = regions_list
+
+        elif all(isinstance(r, str) for r in regions_list):
+            regions_to_add = [
+                region for region in ALL_REGIONS
+                if region.name in regions_list
+            ]
+
         else:
-            # Altrimenti, prendi solo le regioni i cui nomi sono nella lista
-            regions_to_add = [region for region in ALL_REGIONS if region.name in regions_list]
-        
-        # Aggiungi le regioni selezionate al gestore
+            raise TypeError(
+                "regions_list deve essere None, una lista di nomi (str), "
+                "oppure una lista di oggetti Region"
+            )
+
         self._add_regions(regions_to_add)
 
     def _add_regions(self, regions_to_add):
         """Aggiunge le regioni al gestore."""
         for region in regions_to_add:
-            self.add_region(region)  # Chiama il metodo add_region per aggiungere ogni regione
+            self.add_region(region)
 
     def add_region(self, region):
         """Aggiunge una regione al gestore."""
-        # Aggiungi la regione alla lista delle regioni
         self.regions.append(region)
-        
+
     def get_regions(self):
         """Restituisce la lista delle regioni nel gestore."""
         return self.regions
 
     def __repr__(self):
-        # Mostra i nomi delle regioni nel manager
         return f"RegionManager(regions={', '.join([region.name for region in self.regions])})"
-    
-    def find_regions(self, x, y, howMany="first", priority_level = None): # VA AGGIUNTO PRIORITY MAX O MIN forse con first e priority se la cavamo
+
+    def find_regions(
+        self,
+        x,
+        y,
+        howMany="first",
+        priority_level=None,
+        priority_mode="exact",
+        input_lon_mode="-180_180",
+    ):
         """
-        Trova le regioni che contengono il punto (x, y) con un'opzione di filtro per livello di priorità.
+        Trova le regioni che contengono il punto (x, y), con opzioni di filtro
+        per priorità.
 
-        Args:
-            x (float): Longitudine del punto.
-            y (float): Latitudine del punto.
-            howMany (str): Se "first", restituisce solo la prima regione trovata, 
-                        se "all", restituisce tutte le regioni trovate, 
-                        se "priority", restituisce la regione con la priorità più alta.
-            priority_level (int, opzionale): Se specificato, considera solo le regioni con questa priorità.
+        Parameters
+        ----------
+        x : float
+            Longitudine del punto.
+        y : float
+            Latitudine del punto.
+        howMany : str
+            "first", "all", oppure "priority".
+        priority_level : int, optional
+            Se specificato, filtra le regioni in base alla priorità.
+        priority_mode : str, default "exact"
+            Modalità di confronto della priorità:
+            - "exact"   -> priority == priority_level
+            - "atleast" -> priority >= priority_level
+            - "atmost"  -> priority <= priority_level
+        input_lon_mode : str, default "-180_180"
+            Convenzione della longitudine in input:
+            "-180_180" oppure "0_360".
 
-        Returns:
-            list[dict] o dict: Dizionario contenente `label` e `numericLabel` o lista di questi, a seconda del parametro `howMany`.
+        Returns
+        -------
+        dict or list[dict] or None
         """
         matching_regions = [
-            region for region in self.regions if region.contains(x, y)
+            region
+            for region in self.regions
+            if region.contains(x, y, input_lon_mode=input_lon_mode)
         ]
+
         if priority_level is not None:
-            matching_regions = [
-                region for region in matching_regions if region.priority == priority_level
-        ]
+            if priority_mode == "exact":
+                matching_regions = [
+                    region for region in matching_regions
+                    if region.priority == priority_level
+                ]
+            elif priority_mode == "atleast":
+                matching_regions = [
+                    region for region in matching_regions
+                    if region.priority >= priority_level
+                ]
+            elif priority_mode == "atmost":
+                matching_regions = [
+                    region for region in matching_regions
+                    if region.priority <= priority_level
+                ]
+            else:
+                raise ValueError(
+                    'Parametro "priority_mode" deve essere '
+                    '"exact", "atleast" o "atmost"'
+                )
 
         if howMany == "first":
             if matching_regions:
-                return {"label": matching_regions[0].label, "numericLabel": matching_regions[0].NumericLabel}
-            return None  # Se nessuna regione è trovata
-        
+                return {
+                    "label": matching_regions[0].label,
+                    "numericLabel": matching_regions[0].NumericLabel,
+                }
+            return None
+
         elif howMany == "all":
             return [
-                {"label": region.label, "numericLabel": region.NumericLabel} for region in matching_regions
+                {"label": region.label, "numericLabel": region.NumericLabel}
+                for region in matching_regions
             ]
-        
+
         elif howMany == "priority":
             if matching_regions:
-                # Restituisce la regione con la priorità più alta
                 highest_priority_region = max(matching_regions, key=lambda r: r.priority)
-                return {"label": highest_priority_region.label, "numericLabel": highest_priority_region.NumericLabel}
-            return None  # Se nessuna regione è trovata
-        
+                return {
+                    "label": highest_priority_region.label,
+                    "numericLabel": highest_priority_region.NumericLabel,
+                }
+            return None
+
         else:
             raise ValueError('Parametro "howMany" deve essere "first", "all" o "priority"')
 
-    
 
-def classify_trajectories(df, region_manager, id_col='id', x_col='X', y_col='Y', howMany="first", priority_level=None):
+
+
+
+
+# -------------------------------------------------------------------------
+# Functions to classify trajectories
+# -------------------------------------------------------------------------
+def classify_trajectories(
+    df,
+    region_manager,
+    id_col='id',
+    x_col='X',
+    y_col='Y',
+    howMany="first",
+    priority_level=None,
+    priority_mode="exact",
+    input_lon_mode="-180_180",
+):
     """
-    Classifica le regioni di partenza e arrivo per ogni traiettoria in un DataFrame,
-    con opzione di selezione per livello di priorità.
+    Classifica le regioni di partenza e arrivo per ogni traiettoria in un DataFrame.
 
-    Args:
-        df (pd.DataFrame): DataFrame con colonne per identificativo (id), longitudine (X) e latitudine (Y).
-        region_manager (RegionManager): Gestore delle regioni.
-        id_col (str): Nome della colonna degli identificativi delle traiettorie.
-        x_col (str): Nome della colonna delle longitudini.
-        y_col (str): Nome della colonna delle latitudini.
-        howMany (str): "first" per ottenere solo la prima regione, 
-                       "all" per ottenere tutte le regioni,
-                       "priority" per ottenere la regione con la priorità più alta.
-        priority_level (int, opzionale): Se specificato, considera solo le regioni con questa priorità.
+    Parameters
+    ----------
+    df : pd.DataFrame
+        DataFrame con colonne per identificativo, longitudine e latitudine.
+    region_manager : RegionManager
+        Gestore delle regioni.
+    id_col, x_col, y_col : str
+        Nomi delle colonne.
+    howMany : str
+        "first", "all", oppure "priority".
+    priority_level : int, optional
+        Se specificato, filtra per priorità.
+    priority_mode : str, default "exact"
+        "exact", "atleast", "atmost".
+    input_lon_mode : str, default "-180_180"
+        Convenzione della longitudine nei dati in input.
 
-    Returns:
-        pd.DataFrame: DataFrame con colonne `id`, `start_region`, `start_numericLabel`, `end_region`, `end_numericLabel`.
+    Returns
+    -------
+    pd.DataFrame
     """
     results = []
 
-    # Raggruppa per id
     grouped = df.groupby(id_col)
 
     for traj_id, group in grouped:
-        # Ordina per il percorso (opzionale, se i dati non sono già ordinati)
         group = group.sort_index()
 
-        # Estrai punti di partenza e arrivo (scalari)
         start_x, start_y = group.iloc[0][x_col], group.iloc[0][y_col]
         end_x, end_y = group.iloc[-1][x_col], group.iloc[-1][y_col]
 
-        # Classifica le regioni con il parametro `howMany`
-        start_region = region_manager.find_regions(float(start_x), float(start_y), howMany, priority_level)
-        end_region   = region_manager.find_regions(float(end_x),   float(end_y),   howMany, priority_level)
+        start_region = region_manager.find_regions(
+            float(start_x),
+            float(start_y),
+            howMany=howMany,
+            priority_level=priority_level,
+            priority_mode=priority_mode,
+            input_lon_mode=input_lon_mode,
+        )
 
-        # Se `start_region` o `end_region` sono None, gestiscilo correttamente
+        end_region = region_manager.find_regions(
+            float(end_x),
+            float(end_y),
+            howMany=howMany,
+            priority_level=priority_level,
+            priority_mode=priority_mode,
+            input_lon_mode=input_lon_mode,
+        )
+
         start_label   = start_region["label"]        if start_region else None
         start_numeric = start_region["numericLabel"] if start_region else None
         end_label     = end_region["label"]          if end_region   else None
         end_numeric   = end_region["numericLabel"]   if end_region   else None
 
-        # Aggiungi il risultato
         results.append({
             id_col: traj_id,
             'start_region': start_label,
             'start_numericLabel': start_numeric,
             'end_region': end_label,
-            'end_numericLabel': end_numeric
+            'end_numericLabel': end_numeric,
         })
 
     return pd.DataFrame(results)
 
 
-
-def classify_full_trajectory(df, region_manager, id_col='id', x_col='X', y_col='Y', howMany="first", priority_level=None):
+def classify_full_trajectory(
+    df,
+    region_manager,
+    id_col='id',
+    x_col='X',
+    y_col='Y',
+    howMany="first",
+    priority_level=None,
+    priority_mode="exact",
+    input_lon_mode="-180_180",
+):
     """
-    Classifica la regione di ciascun punto in una traiettoria, assegnando la regione corrispondente a ogni punto.
+    Classifica la regione di ciascun punto in una traiettoria.
 
-    Args:
-        df (pd.DataFrame): DataFrame con colonne per identificativo (id), longitudine (X) e latitudine (Y).
-        region_manager (RegionManager): Gestore delle regioni.
-        id_col (str): Nome della colonna degli identificativi delle traiettorie.
-        x_col (str): Nome della colonna delle longitudini.
-        y_col (str): Nome della colonna delle latitudini.
-        howMany (str): "first" per ottenere solo la prima regione, 
-                       "all" per ottenere tutte le regioni,
-                       "priority" per ottenere la regione con la priorità più alta.
-        priority_level (int, opzionale): Se specificato, considera solo le regioni con questa priorità.
+    Parameters
+    ----------
+    df : pd.DataFrame
+        DataFrame con colonne per identificativo, longitudine e latitudine.
+    region_manager : RegionManager
+        Gestore delle regioni.
+    id_col, x_col, y_col : str
+        Nomi delle colonne.
+    howMany : str
+        "first", "all", oppure "priority".
+    priority_level : int, optional
+        Se specificato, filtra per priorità.
+    priority_mode : str, default "exact"
+        "exact", "atleast", "atmost".
+    input_lon_mode : str, default "-180_180"
+        Convenzione della longitudine nei dati in input.
 
-    Returns:
-        pd.DataFrame: DataFrame con colonne `id`, `point_id`, `region_label`, `numericLabel`.
+    Returns
+    -------
+    pd.DataFrame
     """
     results = []
 
-    # Raggruppa per id
     grouped = df.groupby(id_col)
 
     for traj_id, group in grouped:
-        # Ordina per il percorso (opzionale, se i dati non sono già ordinati)
         group = group.sort_index()
 
-        # Aggiungi un punto alla volta
         for idx, row in group.iterrows():
             point_x, point_y = row[x_col], row[y_col]
 
-            # Classifica la regione con il parametro `howMany` e `priority_level`
-            region = region_manager.find_regions(float(point_x), float(point_y), howMany, priority_level)
+            region = region_manager.find_regions(
+                float(point_x),
+                float(point_y),
+                howMany=howMany,
+                priority_level=priority_level,
+                priority_mode=priority_mode,
+                input_lon_mode=input_lon_mode,
+            )
 
-            # Se la regione è trovata, estrai il label e numericLabel
             if region:
                 region_label  = region["label"]
                 numeric_label = region["numericLabel"]
@@ -282,46 +544,70 @@ def classify_full_trajectory(df, region_manager, id_col='id', x_col='X', y_col='
                 region_label  = None
                 numeric_label = None
 
-            # Aggiungi il risultato per ogni punto
-            results.append({
-                id_col        : traj_id,
-                'point_id'    : idx,  # Aggiunge l'indice del punto
+            item = {
+                id_col: traj_id,
+                'point_id': idx,
                 'region_label': region_label,
                 'numericLabel': numeric_label,
-                'age'         : row["age"]
-            })
+            }
+
+            if "age" in row.index:
+                item["age"] = row["age"]
+
+            results.append(item)
 
     return pd.DataFrame(results)
 
 
-def create_region_mask(ds, region_manager, lonName = "longitude", latName = "latitude"):
+# -------------------------------------------------------------------------
+# Functions to create maps
+# -------------------------------------------------------------------------
+def create_region_mask(
+    ds,
+    region_manager,
+    lonName="longitude",
+    latName="latitude",
+    input_lon_mode="-180_180",
+):
     """
     Crea una maschera booleana per selezionare i dati in base alle regioni desiderate.
-    
-    Args:
-        ds (xarray.Dataset): Il dataset contenente i dati.
-        region_manager (RegionManager): Gestore delle regioni che contiene solo le regioni desiderate.
-        
-    Returns:
-        numpy.ndarray: Maschera booleana che seleziona i dati nelle regioni specificate.
-    """
-    mask = np.zeros((len(ds[latName]), len(ds[lonName])), dtype=bool)
 
-    for region in region_manager.regions:
-        for bounds in region.bounds:
-            lon_min_list = bounds["lon_min"]
-            lon_max_list = bounds["lon_max"]
-            lat_min_list = bounds["lat_min"]
-            lat_max_list = bounds["lat_max"]
-            
-            for lon_min, lon_max, lat_min, lat_max in zip(lon_min_list, lon_max_list, lat_min_list, lat_max_list):
-                # Usa meshgrid per ottenere una griglia di latitudine e longitudine
-                lon_grid, lat_grid = np.meshgrid(ds[lonName], ds[latName])
-                
-                # Confronta le coordinate in base ai limiti di regione
-                mask |= (lon_grid >= lon_min) & (lon_grid <= lon_max) & (lat_grid >= lat_min) & (lat_grid <= lat_max)
-    
+    Parameters
+    ----------
+    ds : xarray.Dataset
+        Dataset contenente coordinate lon/lat.
+    region_manager : RegionManager
+        Gestore delle regioni.
+    lonName : str
+        Nome della coordinata longitudinale.
+    latName : str
+        Nome della coordinata latitudinale.
+    input_lon_mode : str, default "-180_180"
+        Convenzione della longitudine nel dataset.
+
+    Returns
+    -------
+    numpy.ndarray
+        Maschera booleana di shape (lat, lon).
+    """
+    lon_vals = np.asarray(ds[lonName].values, dtype=float)
+    lat_vals = np.asarray(ds[latName].values, dtype=float)
+
+    lon_grid, lat_grid = np.meshgrid(lon_vals, lat_vals)
+    mask = np.zeros(lon_grid.shape, dtype=bool)
+
+    for i in range(mask.shape[0]):
+        for j in range(mask.shape[1]):
+            x = float(lon_grid[i, j])
+            y = float(lat_grid[i, j])
+
+            for region in region_manager.regions:
+                if region.contains(x, y, input_lon_mode=input_lon_mode):
+                    mask[i, j] = True
+                    break
+
     return mask
+
 
 def get_region_by_label(label, regions=None):
     """
@@ -331,8 +617,9 @@ def get_region_by_label(label, regions=None):
     ----------
     label : str
         Etichetta regione, es. 'NPstg'.
-    regions : list[Region] or None
-        Lista di regioni da cercare. Se None, usa ALL_REGIONS.
+    regions : list[Region] | RegionManager | None
+        Lista di regioni o RegionManager.
+        Se None usa ALL_REGIONS.
 
     Returns
     -------
@@ -344,15 +631,23 @@ def get_region_by_label(label, regions=None):
     ValueError
         Se la label non viene trovata.
     """
+
     if regions is None:
         regions = ALL_REGIONS
+
+    # supporta anche RegionManager
+    if isinstance(regions, RegionManager):
+        regions = regions.regions
 
     for region in regions:
         if region.label == label:
             return region
 
     available = ", ".join(r.label for r in regions)
-    raise ValueError(f"Regione con label '{label}' non trovata. Label disponibili: {available}")
+    raise ValueError(
+        f"Regione con label '{label}' non trovata. "
+        f"Label disponibili: {available}"
+    )
 
 
 def make_regular_grid_in_region(
@@ -363,11 +658,14 @@ def make_regular_grid_in_region(
     include_edges=True,
     deduplicate=True,
     sort_points=True,
+    output_lon_mode=None,
 ):
     """
     Crea una griglia regolare di punti (lon, lat) dentro una regione.
 
-    La regione è definita come unione di uno o più rettangoli nei bounds.
+    La griglia viene costruita sul bounding box della regione e poi filtrata
+    usando region.contains(...), quindi funziona sia con regioni definite
+    tramite bounds sia con regioni definite tramite polygons.
 
     Parameters
     ----------
@@ -380,9 +678,12 @@ def make_regular_grid_in_region(
     include_edges : bool, default True
         Se True include anche i bordi estremi quando possibile.
     deduplicate : bool, default True
-        Se True rimuove eventuali duplicati dovuti a rettangoli sovrapposti.
+        Se True rimuove eventuali duplicati.
     sort_points : bool, default True
         Se True ordina i punti per latitudine e poi longitudine.
+    output_lon_mode : str or None, default None
+        Convenzione delle longitudini in output.
+        Se None, usa region.lon_mode.
 
     Returns
     -------
@@ -394,34 +695,29 @@ def make_regular_grid_in_region(
     if dlon <= 0 or dlat <= 0:
         raise ValueError("dlon e dlat devono essere positivi")
 
+    if output_lon_mode is None:
+        output_lon_mode = region.lon_mode
+
+    lon_min, lon_max, lat_min, lat_max = region.get_bbox()
+
+    if include_edges:
+        lon_vals = np.arange(lon_min, lon_max + 0.5 * dlon, dlon)
+        lat_vals = np.arange(lat_min, lat_max + 0.5 * dlat, dlat)
+    else:
+        lon_vals = np.arange(lon_min + dlon, lon_max, dlon)
+        lat_vals = np.arange(lat_min + dlat, lat_max, dlat)
+
     points = []
 
-    for bounds in region.bounds:
-        lon_min_list = bounds["lon_min"]
-        lon_max_list = bounds["lon_max"]
-        lat_min_list = bounds["lat_min"]
-        lat_max_list = bounds["lat_max"]
-
-        for lon_min, lon_max, lat_min, lat_max in zip(
-            lon_min_list, lon_max_list, lat_min_list, lat_max_list
-        ):
-            if include_edges:
-                lon_vals = np.arange(lon_min, lon_max + 0.5 * dlon, dlon)
-                lat_vals = np.arange(lat_min, lat_max + 0.5 * dlat, dlat)
-            else:
-                lon_vals = np.arange(lon_min + dlon, lon_max, dlon)
-                lat_vals = np.arange(lat_min + dlat, lat_max, dlat)
-
-            for lat in lat_vals:
-                for lon in lon_vals:
-                    if lon_min <= lon <= lon_max and lat_min <= lat <= lat_max:
-                        points.append((float(lon), float(lat)))
+    for lat in lat_vals:
+        for lon in lon_vals:
+            if region.contains(float(lon), float(lat), input_lon_mode=region.lon_mode):
+                points.append((float(lon), float(lat)))
 
     if len(points) == 0:
         return np.array([]), np.array([])
 
     if deduplicate:
-        # arrotondamento per evitare duplicati numerici dovuti a floating point
         points = list({(round(lon, 10), round(lat, 10)) for lon, lat in points})
 
     if sort_points:
@@ -430,7 +726,11 @@ def make_regular_grid_in_region(
     lons = np.array([p[0] for p in points], dtype=float)
     lats = np.array([p[1] for p in points], dtype=float)
 
+    if output_lon_mode != region.lon_mode:
+        lons = convert_lon(lons, from_mode=region.lon_mode, to_mode=output_lon_mode)
+
     return lons, lats
+
 
 
 def make_regular_grid_from_label(label, dlon, dlat, **kwargs):
@@ -439,3 +739,250 @@ def make_regular_grid_from_label(label, dlon, dlat, **kwargs):
     """
     region = get_region_by_label(label)
     return make_regular_grid_in_region(region, dlon, dlat, **kwargs)
+
+
+def plot_regions(
+    region_manager,
+    *,
+    labels=True,
+    show_bounds=True,
+    show_polygons=True,
+    show_bbox=False,
+    ax=None,
+    figsize=(12, 8),
+    title="Regions",
+    linewidth=1.5,
+    bounds_linestyle="--",
+    polygon_linestyle="-",
+    alpha_bounds=0.7,
+    alpha_polygons=0.9,
+    label_fontsize=9,
+    pad_fraction=0.03,
+    show_points=False,
+    point_dlon=None,
+    point_dlat=None,
+    point_size=5,
+    point_color="red",
+    use_cartopy=True,
+    add_coastlines=True,
+    coastline_resolution="110m",
+    add_land=False,
+):
+    """
+    Plot delle regioni contenute in un RegionManager.
+
+    Parameters
+    ----------
+    region_manager : RegionManager
+        Gestore delle regioni da plottare.
+    labels : bool
+        Se True mostra le label.
+    show_bounds : bool
+        Se True mostra i rettangoli dei bounds.
+    show_polygons : bool
+        Se True mostra i poligoni.
+    show_bbox : bool
+        Se True mostra il bounding box complessivo della regione.
+    ax : matplotlib Axes or cartopy GeoAxes or None
+        Asse su cui disegnare. Se None, ne crea uno nuovo.
+    figsize : tuple
+        Dimensione figura.
+    use_cartopy : bool, default True
+        Se True usa Cartopy e un GeoAxes PlateCarree.
+    add_coastlines : bool, default True
+        Se True aggiunge le coastlines.
+    coastline_resolution : str, default "110m"
+        Risoluzione coastlines Cartopy ("110m", "50m", "10m").
+    add_land : bool, default False
+        Se True aggiunge anche il layer land di Cartopy.
+
+    Returns
+    -------
+    fig, ax
+    """
+    import matplotlib.pyplot as plt
+    from matplotlib.patches import Rectangle, Polygon as MplPolygon
+
+    if use_cartopy:
+        import cartopy.crs as ccrs
+        import cartopy.feature as cfeature
+        data_crs = ccrs.PlateCarree()
+    else:
+        data_crs = None
+
+    created_fig = False
+    if ax is None:
+        if use_cartopy:
+            fig, ax = plt.subplots(
+                figsize=figsize,
+                subplot_kw={"projection": data_crs},
+            )
+        else:
+            fig, ax = plt.subplots(figsize=figsize)
+        created_fig = True
+    else:
+        fig = ax.figure
+
+    global_lon_min = []
+    global_lon_max = []
+    global_lat_min = []
+    global_lat_max = []
+
+    # -------------------------------------------------
+    # Optional cartopy background
+    # -------------------------------------------------
+    if use_cartopy:
+        if add_land:
+            ax.add_feature(cfeature.LAND, zorder=0)
+            ax.add_feature(cfeature.OCEAN, zorder=0)
+        if add_coastlines:
+            ax.coastlines(resolution=coastline_resolution, linewidth=0.8)
+
+    for region in region_manager.get_regions():
+        lon_min, lon_max, lat_min, lat_max = region.get_bbox()
+        global_lon_min.append(lon_min)
+        global_lon_max.append(lon_max)
+        global_lat_min.append(lat_min)
+        global_lat_max.append(lat_max)
+
+        # -----------------------------
+        # Draw rectangular bounds
+        # -----------------------------
+        if show_bounds:
+            for bounds in region.bounds:
+                lon_min_list = bounds["lon_min"]
+                lon_max_list = bounds["lon_max"]
+                lat_min_list = bounds["lat_min"]
+                lat_max_list = bounds["lat_max"]
+
+                for b_lon_min, b_lon_max, b_lat_min, b_lat_max in zip(
+                    lon_min_list, lon_max_list, lat_min_list, lat_max_list
+                ):
+                    rect = Rectangle(
+                        (b_lon_min, b_lat_min),
+                        b_lon_max - b_lon_min,
+                        b_lat_max - b_lat_min,
+                        fill=False,
+                        linestyle=bounds_linestyle,
+                        linewidth=linewidth,
+                        alpha=alpha_bounds,
+                        transform=data_crs if use_cartopy else None,
+                    )
+                    ax.add_patch(rect)
+
+        # -----------------------------
+        # Draw polygons
+        # -----------------------------
+        if show_polygons:
+            for poly in region.polygons:
+                if len(poly) < 3:
+                    continue
+
+                poly_xy = poly if poly[0] == poly[-1] else list(poly) + [poly[0]]
+
+                patch = MplPolygon(
+                    poly_xy,
+                    closed=True,
+                    fill=False,
+                    linestyle=polygon_linestyle,
+                    linewidth=linewidth,
+                    alpha=alpha_polygons,
+                    transform=data_crs if use_cartopy else None,
+                )
+                ax.add_patch(patch)
+
+        # -----------------------------
+        # Draw bbox
+        # -----------------------------
+        if show_bbox:
+            rect = Rectangle(
+                (lon_min, lat_min),
+                lon_max - lon_min,
+                lat_max - lat_min,
+                fill=False,
+                linestyle=":",
+                linewidth=max(1.0, linewidth - 0.3),
+                alpha=0.8,
+                transform=data_crs if use_cartopy else None,
+            )
+            ax.add_patch(rect)
+
+        # -----------------------------
+        # Draw grid points
+        # -----------------------------
+        if show_points:
+            if point_dlon is None or point_dlat is None:
+                raise ValueError("Per show_points devi specificare point_dlon e point_dlat")
+
+            lons, lats = make_regular_grid_in_region(
+                region,
+                point_dlon,
+                point_dlat,
+                output_lon_mode=region.lon_mode,
+            )
+
+            ax.scatter(
+                lons,
+                lats,
+                s=point_size,
+                c=point_color,
+                alpha=0.7,
+                zorder=3,
+                transform=data_crs if use_cartopy else None,
+            )
+
+        # -----------------------------
+        # Labels
+        # -----------------------------
+        if labels:
+            x_text = 0.5 * (lon_min + lon_max)
+            y_text = 0.5 * (lat_min + lat_max)
+
+            ax.text(
+                x_text,
+                y_text,
+                region.label,
+                ha="center",
+                va="center",
+                fontsize=label_fontsize,
+                bbox=dict(boxstyle="round,pad=0.2", alpha=0.6),
+                transform=data_crs if use_cartopy else None,
+            )
+
+    # -----------------------------
+    # Set axis limits explicitly
+    # -----------------------------
+    if global_lon_min:
+        xmin = min(global_lon_min)
+        xmax = max(global_lon_max)
+        ymin = min(global_lat_min)
+        ymax = max(global_lat_max)
+
+        dx = xmax - xmin
+        dy = ymax - ymin
+
+        xpad = pad_fraction * dx if dx > 0 else 1.0
+        ypad = pad_fraction * dy if dy > 0 else 1.0
+
+        if use_cartopy:
+            ax.set_extent([xmin - xpad, xmax + xpad, ymin - ypad, ymax + ypad], crs=data_crs)
+        else:
+            ax.set_xlim(xmin - xpad, xmax + xpad)
+            ax.set_ylim(ymin - ypad, ymax + ypad)
+
+    ax.set_title(title)
+
+    if not use_cartopy:
+        ax.set_xlabel("Longitude")
+        ax.set_ylabel("Latitude")
+        ax.set_aspect("equal", adjustable="box")
+        ax.grid(True, alpha=0.3)
+    else:
+        gl = ax.gridlines(draw_labels=True, linewidth=0.4, alpha=0.4)
+        gl.top_labels = False
+        gl.right_labels = False
+
+    if created_fig:
+        plt.tight_layout()
+
+    return fig, ax
