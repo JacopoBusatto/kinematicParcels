@@ -667,6 +667,7 @@ REGIONS_DATA = [
             ]
         ],
         priority=2,
+        lon_mode="0_360",
     ),
 
     dict(
