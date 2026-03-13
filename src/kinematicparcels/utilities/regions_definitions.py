@@ -14,7 +14,7 @@ dict(
         ],
         [
             (12, 42),
-            (12, 43).
+            (12, 43),
             (11, 41)
         ]
     ],
@@ -702,6 +702,7 @@ REGIONS_DATA = [
             ]
         ],
         priority=2,
+        lon_mode="0_360",
     ),
 
     ## SOUTHER OCEAN
