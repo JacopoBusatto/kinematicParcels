@@ -4,7 +4,12 @@ from kinematicparcels.postprocessing.analyses import compute_time_density
 
 path = r"C:\Users\Jacopo\Documents\GitHub\kinematicParcels\outputs\output_PNnf_surface.zarr"
 
-df = load_trajectory_table(path)
+df = load_trajectory_table(
+    path,
+    truncate_stagnant=True,
+    stagnant_tol=1.0e-6,
+    stagnant_min_consecutive=2,
+)
 t0 = df["time"].min()
 df0 = df.loc[df["time"] == t0].copy()
 
@@ -37,7 +42,7 @@ print(density_table.head())
 print(density_ds)
 print(density_ds["particle_count"])
 import matplotlib.pyplot as plt
-density_ds["particle_count"].isel(time=-1).plot()
+density_ds["particle_count"].isel(time=0).plot()
 plt.show()
 
 

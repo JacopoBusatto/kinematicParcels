@@ -21,7 +21,12 @@ class DatasetConfig:
 
 @dataclass(frozen=True)
 class AnalysisConfig:
-    type: str = "trajectories"
+    """
+    Defines which analyses should be executed.
+
+    The analyses are executed in the order specified.
+    """
+    types: tuple[str, ...] = ("trajectories",)
 
 
 @dataclass(frozen=True)
@@ -38,12 +43,33 @@ class ExportsConfig:
 
 @dataclass(frozen=True)
 class GridConfig:
-    lon_min: float
-    lon_max: float
-    lat_min: float
-    lat_max: float
-    dlon: float
-    dlat: float
+    mode: str = "from_initial_centers"
+    lon_min: float | None = None
+    lon_max: float | None = None
+    lat_min: float | None = None
+    lat_max: float | None = None
+    dlon: float = 0.025
+    dlat: float = 0.025
+
+    def __post_init__(self) -> None:
+        if self.mode not in {"explicit_edges", "from_initial_centers"}:
+            raise ValueError(
+                "grid.mode must be one of: 'explicit_edges', 'from_initial_centers'"
+            )
+
+        if self.dlon <= 0 or self.dlat <= 0:
+            raise ValueError("grid.dlon and grid.dlat must be positive.")
+
+        if None in (self.lon_min, self.lon_max, self.lat_min, self.lat_max):
+            raise ValueError(
+                "grid.lon_min, grid.lon_max, grid.lat_min, grid.lat_max must be provided."
+            )
+
+        if self.lon_max <= self.lon_min:
+            raise ValueError("grid.lon_max must be greater than grid.lon_min.")
+
+        if self.lat_max <= self.lat_min:
+            raise ValueError("grid.lat_max must be greater than grid.lat_min.")
 
 
 @dataclass(frozen=True)

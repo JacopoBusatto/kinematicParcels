@@ -114,19 +114,32 @@ def _parse_dataset(section: dict[str, Any] | None) -> DatasetConfig:
 
 def _parse_analysis(section: dict[str, Any] | None) -> AnalysisConfig:
     """
-    Parse the optional analysis section.
+    Parse analysis configuration.
     """
     if section is None:
         return AnalysisConfig()
 
     section = _require_dict(section, "analysis")
 
-    analysis_type = _require_nonempty_string(
-        section.get("type", "trajectories"),
-        "analysis.type",
-    )
+    raw_types = section.get("types")
 
-    return AnalysisConfig(type=analysis_type)
+    if raw_types is None:
+        raise ValueError("analysis.types must be provided.")
+
+    if not isinstance(raw_types, list):
+        raise ValueError("analysis.types must be a list.")
+
+    types: list[str] = []
+
+    for i, item in enumerate(raw_types):
+        if not isinstance(item, str) or not item.strip():
+            raise ValueError(f"analysis.types[{i}] must be a non-empty string.")
+        types.append(item.strip())
+
+    if len(types) == 0:
+        raise ValueError("analysis.types cannot be empty.")
+
+    return AnalysisConfig(types=tuple(types))
 
 
 def _parse_output(section: dict[str, Any] | None) -> OutputConfig:
@@ -203,6 +216,11 @@ def _parse_grid(section: dict[str, Any] | None) -> GridConfig | None:
 
     section = _require_dict(section, "grid")
 
+    mode = _require_nonempty_string(
+        section.get("mode", "from_initial_centers"),
+        "grid.mode",
+    )
+
     lon_min = _require_number(section.get("lon_min"), "grid.lon_min")
     lon_max = _require_number(section.get("lon_max"), "grid.lon_max")
     lat_min = _require_number(section.get("lat_min"), "grid.lat_min")
@@ -211,6 +229,7 @@ def _parse_grid(section: dict[str, Any] | None) -> GridConfig | None:
     dlat = _require_number(section.get("dlat"), "grid.dlat")
 
     return GridConfig(
+        mode=mode,
         lon_min=lon_min,
         lon_max=lon_max,
         lat_min=lat_min,

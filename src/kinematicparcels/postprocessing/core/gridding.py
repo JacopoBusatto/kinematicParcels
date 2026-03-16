@@ -44,6 +44,107 @@ class RegularGrid:
         if self.lat_max <= self.lat_min:
             raise ValueError("lat_max must be greater than lat_min.")
 
+    @classmethod
+    def from_point_centers(
+        cls,
+        lon: np.ndarray | pd.Series,
+        lat: np.ndarray | pd.Series,
+        *,
+        dlon: float,
+        dlat: float,
+        eps: float = 1.0e-12,
+    ) -> "RegularGrid":
+        """
+        Build a RegularGrid assuming the provided lon/lat values are
+        pixel centers, not edges.
+
+        Parameters
+        ----------
+        lon, lat
+            Arrays of point coordinates interpreted as grid-cell centers.
+        dlon, dlat
+            Grid spacing.
+        eps
+            Small positive margin added to the upper edge to avoid losing
+            the last cell because of floating point issues.
+        """
+        lon = np.asarray(lon)
+        lat = np.asarray(lat)
+
+        if lon.size == 0 or lat.size == 0:
+            raise ValueError("Cannot build grid from empty lon/lat arrays.")
+
+        lon_min = float(np.nanmin(lon)) - 0.5 * dlon
+        lon_max = float(np.nanmax(lon)) + 0.5 * dlon + eps
+        lat_min = float(np.nanmin(lat)) - 0.5 * dlat
+        lat_max = float(np.nanmax(lat)) + 0.5 * dlat + eps
+
+        return cls(
+            lon_min=lon_min,
+            lon_max=lon_max,
+            lat_min=lat_min,
+            lat_max=lat_max,
+            dlon=dlon,
+            dlat=dlat,
+        )
+
+
+    @classmethod
+    def from_aligned_initial_centers(
+        cls,
+        lon: np.ndarray | pd.Series,
+        lat: np.ndarray | pd.Series,
+        *,
+        lon_min: float,
+        lon_max: float,
+        lat_min: float,
+        lat_max: float,
+        dlon: float,
+        dlat: float,
+        eps: float = 1.0e-12,
+    ) -> "RegularGrid":
+        """
+        Build a grid aligned to the phase of the provided initial particle centers,
+        but extended to the requested analysis bounds.
+
+        Parameters
+        ----------
+        lon, lat
+            Initial particle positions interpreted as grid-cell centers.
+        lon_min, lon_max, lat_min, lat_max
+            Desired analysis-domain bounds.
+        dlon, dlat
+            Grid spacing.
+        eps
+            Small positive margin added to upper bounds.
+        """
+        lon = np.asarray(lon)
+        lat = np.asarray(lat)
+
+        if lon.size == 0 or lat.size == 0:
+            raise ValueError("Cannot build grid from empty lon/lat arrays.")
+
+        # Base edge implied by the initial centers
+        base_lon_edge = float(np.nanmin(lon)) - 0.5 * dlon
+        base_lat_edge = float(np.nanmin(lat)) - 0.5 * dlat
+
+        # Snap requested bounds outward to the aligned grid
+        aligned_lon_min = base_lon_edge + np.floor((lon_min - base_lon_edge) / dlon) * dlon
+        aligned_lon_max = base_lon_edge + np.ceil((lon_max - base_lon_edge) / dlon) * dlon + eps
+
+        aligned_lat_min = base_lat_edge + np.floor((lat_min - base_lat_edge) / dlat) * dlat
+        aligned_lat_max = base_lat_edge + np.ceil((lat_max - base_lat_edge) / dlat) * dlat + eps
+
+        return cls(
+            lon_min=float(aligned_lon_min),
+            lon_max=float(aligned_lon_max),
+            lat_min=float(aligned_lat_min),
+            lat_max=float(aligned_lat_max),
+            dlon=dlon,
+            dlat=dlat,
+        )
+
+
     @property
     def nlon(self) -> int:
         return int(np.ceil((self.lon_max - self.lon_min) / self.dlon))
@@ -67,6 +168,24 @@ class RegularGrid:
     @property
     def lat_centers(self) -> np.ndarray:
         return self.lat_min + (np.arange(self.nlat) + 0.5) * self.dlat
+
+    def contains_points(
+        self,
+        lon: np.ndarray | pd.Series,
+        lat: np.ndarray | pd.Series,
+    ) -> np.ndarray:
+        """
+        Return a boolean mask indicating whether points fall inside the grid.
+        """
+        lon = np.asarray(lon)
+        lat = np.asarray(lat)
+
+        return (
+            (lon >= self.lon_min)
+            & (lon < self.lon_max)
+            & (lat >= self.lat_min)
+            & (lat < self.lat_max)
+        )
 
     def assign_bins(
         self,
@@ -98,12 +217,7 @@ class RegularGrid:
         lon_bin = np.floor((lon - self.lon_min) / self.dlon).astype(float)
         lat_bin = np.floor((lat - self.lat_min) / self.dlat).astype(float)
 
-        valid = (
-            (lon >= self.lon_min)
-            & (lon < self.lon_max)
-            & (lat >= self.lat_min)
-            & (lat < self.lat_max)
-        )
+        valid = self.contains_points(lon, lat)
 
         out["lon_bin"] = lon_bin
         out["lat_bin"] = lat_bin

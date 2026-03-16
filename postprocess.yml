@@ -2,7 +2,8 @@ dataset:
   input_path: C:/Users/Jacopo/Documents/GitHub/kinematicParcels/outputs/output_PNnf_surface.zarr
 
 analysis:
-  type: density
+  types:
+    - density
 
 output:
   output_dir: C:/Users/Jacopo/Documents/GitHub/kinematicParcels/outputs/postprocessing/PNnf_surface
@@ -17,7 +18,8 @@ cleaning:
   stagnant_tol: 1.0e-6
   stagnant_min_consecutive: 2
 
-grid:
+grid: # explicit_edges | from_initial_centers
+  mode: from_initial_centers 
   lon_min: -73.65
   lon_max: -72.50
   lat_min: -52.45
