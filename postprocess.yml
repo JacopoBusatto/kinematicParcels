@@ -3,8 +3,8 @@ dataset:
 
 analysis:
   types:
-    - trajectories
-    - density
+    # - trajectories
+    # - density
     - beaching_times
     - start_end_regions
 
@@ -56,7 +56,7 @@ plotting:
 start_end_regions:
   region_labels: null
   how_many: priority_max
-  priority_level: 4
+  priority_level: 6
   priority_mode: atleast
   input_lon_mode: "-180_180"
   plot: true

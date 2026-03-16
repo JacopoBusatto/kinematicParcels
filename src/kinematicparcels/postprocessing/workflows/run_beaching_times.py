@@ -81,9 +81,10 @@ def run_beaching_times(cfg: PostprocessConfig, context: dict) -> None:
     if cfg.beaching_times.plot:
         plot_path = outdir / "beaching_times.png"
         print("Saving beaching times plot:", plot_path)
+        ds["beaching_time_days"] = ds["beaching_time_seconds"] / 86400.
         plot_grid_map(
             ds,
-            var_name="beaching_time_seconds",
+            var_name="beaching_time_days",
             outpath=plot_path,
             title="Beaching time",
             projection=cfg.plotting.projection,

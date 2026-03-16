@@ -16,7 +16,7 @@ fieldset:
     depth: depth
   mesh: spherical
 
-release:
+release: #release one trajectory in (x,y) -> ()
   region_label: PNnf
   dlon: 0.025
   dlat: 0.025
@@ -32,9 +32,9 @@ release:
     remove_duplicate_depths: true
 
 simulation:
-  runtime_days: 2.8
-  dt_hours: .2
-  outputdt_hours: 2
+  runtime_days: 1
+  dt_hours: .1
+  outputdt_hours: 1
   particle_type: scipy
 
 output:
