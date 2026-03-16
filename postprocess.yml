@@ -1,0 +1,33 @@
+dataset:
+  input_path: C:/Users/Jacopo/Documents/GitHub/kinematicParcels/outputs/output_PNnf_surface.zarr
+
+analysis:
+  type: density
+
+output:
+  output_dir: C:/Users/Jacopo/Documents/GitHub/kinematicParcels/outputs/postprocessing/PNnf_surface
+
+exports:
+  save_trajectory_table: false
+  save_particle_summary: false
+  table_format: parquet
+
+cleaning:
+  truncate_stagnant: true
+  stagnant_tol: 1.0e-6
+  stagnant_min_consecutive: 2
+
+grid:
+  lon_min: -73.65
+  lon_max: -72.50
+  lat_min: -52.45
+  lat_max: -51.45
+  dlon: 0.025
+  dlat: 0.025
+
+density:
+  lon_col: lon
+  lat_col: lat
+  time_col: time
+  normalize_active: true
+  normalize_total: true

@@ -706,6 +706,30 @@ REGIONS_DATA = [
         lon_mode="0_360",
     ),
 
+    ### Patagonian Fjords
+    dict(
+        name="Puerto Natales North Fjord",
+        label="PNnf",
+        numericLabel=1,
+        polygons=[
+            [
+                (-73.45,-51.60),
+                (-73.30,-51.45),
+                (-73.00,-51.42),
+                (-72.35,-51.70),
+                (-72.40,-52.50),
+                (-73.10,-52.45),
+                (-73.50,-52.30),
+                (-73.65,-52.05),
+                (-73.65,-52.05),
+                (-73.60,-51.85),
+                (-73.50,-52.00),
+                (-73.35,-52.10),
+
+            ]
+        ],
+    ),
+
     ## SOUTHER OCEAN
     dict(
         name="Southern Ocean",
@@ -722,6 +746,25 @@ REGIONS_DATA = [
         priority=2,
     ),
 ]
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -1292,5 +1335,4 @@ REGIONS_DATA_RECTANGLES = [
         ],
         priority=2,
     ),
-
 ]

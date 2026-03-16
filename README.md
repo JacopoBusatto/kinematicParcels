@@ -179,6 +179,180 @@ output:
 
 ---
 
+---
+
+# Supported Velocity Field Grids
+
+The framework supports both **regular lat/lon grids** and **curvilinear grids**.
+Velocity files can be provided as a single NetCDF file or as a time series
+using wildcards:
+
+file_pattern: ./fields/*.nc
+
+### Regular Grid Example
+
+Typical global reanalysis products:
+
+```yaml
+dimensions:
+  lon: longitude
+  lat: latitude
+  time: time
+```
+
+Velocity variables must have dimensions:
+
+```
+(time, lat, lon)
+```
+
+---
+
+### Curvilinear Grid Example
+
+Regional ocean models (e.g. **ROMS**, **OpenDrift-ready fields**) often use
+curvilinear grids where longitude and latitude are **2-D coordinates**.
+
+Example dataset structure:
+
+```
+Dimensions:
+(time, depth, xi_rho, eta_rho)
+
+Coordinates:
+lon_rho(xi_rho, eta_rho)
+lat_rho(xi_rho, eta_rho)
+```
+
+Configuration example:
+
+```yaml
+fieldset:
+  file_pattern: ./fields/patagonia.nc
+
+  variables:
+    U: x_sea_water_velocity
+    V: y_sea_water_velocity
+
+  dimensions:
+    lon: lon_rho
+    lat: lat_rho
+    time: time
+    depth: depth
+
+  mesh: spherical
+```
+
+The runner automatically builds a **CurvilinearZGrid** in Parcels.
+
+---
+
+# Longitude Convention Handling
+
+Velocity fields may use different longitude conventions:
+
+```
+[-180 , 180]
+or
+[0 , 360]
+```
+
+The framework **automatically detects the longitude convention of the fieldset**
+and converts release grids accordingly.
+
+Example log:
+
+```
+[fieldset] detected longitude mode: -180_180
+[release] fieldset longitude mode detected: -180_180
+```
+
+This avoids mismatches when running experiments across the dateline.
+
+No configuration parameter is required.
+
+---
+
+# Periodic Halo
+
+For global simulations where particles may cross the dateline, the fieldset can
+be extended with a periodic halo.
+
+Example configuration:
+
+```yaml
+fieldset:
+  periodic_halo: true
+  periodic_halo_size: 5
+```
+
+When enabled the runner executes:
+
+```
+fieldset.add_periodic_halo(zonal=True, halosize=5)
+```
+
+This is recommended for global ocean fields.
+
+---
+
+# Domain Filtering
+
+Initial particle positions are automatically checked against the velocity field
+domain.
+
+Example log:
+
+```
+[domain check]
+fieldset lon = [-73.659, -72.453], lat = [-52.503, -51.414]
+points total = 25
+points inside = 25
+points outside = 0
+```
+
+If `filter_domain: true`, points outside the field domain are removed before the
+ParticleSet is created.
+
+---
+
+# Output Logs
+
+During execution the runner prints diagnostic information such as:
+
+- detected longitude convention
+- number of particles released
+- domain filtering statistics
+- simulation progress
+
+Example:
+
+```
+ParticleSet created with 25 particles
+INFO: Output files are stored in outputs/output_PNnf_surface.zarr.
+```
+
+---
+
+# Time Domain Limitation
+
+The simulation runtime must be compatible with the temporal extent of the
+velocity fields.
+
+If the runtime exceeds the available data, Parcels raises:
+
+```
+TimeExtrapolationError
+```
+
+Solutions:
+
+- reduce `runtime_days`
+- provide more velocity files
+- enable time extrapolation (not recommended for physical simulations)
+
+---
+
 # Multi-Level Particle Release
 
 Particles can be released at multiple depths.
