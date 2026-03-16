@@ -17,11 +17,11 @@ fieldset:
   mesh: spherical
 
 release:
+  mode: region_grid
   region_label: PNnf
   dlon: 0.025
   dlat: 0.025
   filter_domain: true # evita rilasciare particelle in punti dove non c'è campo (es. fuori dominio o in terra)
-  filter_land: false   # evita rilasciare particelle in terra
 
   depth:
     enabled: false

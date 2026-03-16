@@ -8,37 +8,18 @@ from ..analyses import (
     compute_start_end_region_maps,
 )
 from ..config.models import PostprocessConfig
-from ..core import build_particle_summary, build_release_grid_from_summary
-from ..io import (
-    load_trajectory_table,
-    save_dataset_netcdf,
-    save_grid_table,
-    save_particle_summary,
-)
+from ..core import build_release_grid_from_summary
+from ..io import save_dataset_netcdf, save_grid_table
 from ..plotting import plot_discrete_grid_map
+from .base_products import get_particle_summary
 
 
 def run_start_end_regions(cfg: PostprocessConfig, context: dict) -> None:
     """
     Start/end region workflow.
     """
-    if "trajectory_table" not in context:
-        print("Loading trajectory table")
-
-        df = load_trajectory_table(
-            cfg.dataset.input_path,
-            truncate_stagnant=cfg.cleaning.truncate_stagnant,
-            stagnant_tol=cfg.cleaning.stagnant_tol,
-            stagnant_min_consecutive=cfg.cleaning.stagnant_min_consecutive,
-        )
-        context["trajectory_table"] = df
-
-    if "particle_summary" not in context:
-        print("Building particle summary")
-        summary = build_particle_summary(context["trajectory_table"])
-        context["particle_summary"] = summary
-    else:
-        summary = context["particle_summary"]
+    print("Getting particle summary")
+    summary = get_particle_summary(cfg, context)
 
     print("Building region manager")
     region_manager = build_region_manager(
@@ -73,14 +54,13 @@ def run_start_end_regions(cfg: PostprocessConfig, context: dict) -> None:
     outdir = Path(cfg.output.output_dir)
     outdir.mkdir(parents=True, exist_ok=True)
 
-    if cfg.exports.save_particle_summary:
-        summary_path = outdir / f"particle_summary_with_regions.{cfg.exports.table_format}"
-        print("Saving classified particle summary:", summary_path)
-        save_particle_summary(
-            classified_summary,
-            summary_path,
-            format=cfg.exports.table_format,
-        )
+    classified_path = outdir / f"particle_summary_with_regions.{cfg.exports.table_format}"
+    print("Saving classified particle summary:", classified_path)
+    save_grid_table(
+        classified_summary,
+        classified_path,
+        format=cfg.exports.table_format,
+    )
 
     start_table_path = outdir / f"start_regions_table.{cfg.exports.table_format}"
     end_table_path = outdir / f"end_regions_table.{cfg.exports.table_format}"

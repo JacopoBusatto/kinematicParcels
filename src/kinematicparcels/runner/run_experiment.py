@@ -6,6 +6,7 @@ from glob import glob
 from pathlib import Path
 import warnings
 
+import numpy as np
 import yaml
 
 warnings.filterwarnings(
@@ -101,22 +102,63 @@ def build_fieldset(cfg: dict) -> FieldSet:
     return fieldset
 
 
-def build_release(cfg: dict, fieldset: FieldSet):
-    rel_cfg = cfg["release"]
-
+def _build_release_points_from_region(rel_cfg: dict):
     region = get_region_by_label(rel_cfg["region_label"])
     lons2d, lats2d = make_regular_grid_in_region(
         region,
         dlon=rel_cfg["dlon"],
         dlat=rel_cfg["dlat"],
     )
+    return lons2d, lats2d
 
-    summarize_initial_points(lons2d, lats2d, name="raw release grid")
+
+def _build_release_points_from_list(rel_cfg: dict):
+    points = rel_cfg.get("points", [])
+    if len(points) == 0:
+        raise ValueError("release.points is empty")
+
+    lons = []
+    lats = []
+
+    for i, p in enumerate(points):
+        if isinstance(p, dict):
+            if "lon" not in p or "lat" not in p:
+                raise ValueError(f"Point #{i} must contain 'lon' and 'lat'")
+            lons.append(float(p["lon"]))
+            lats.append(float(p["lat"]))
+        elif isinstance(p, (list, tuple)) and len(p) == 2:
+            lons.append(float(p[0]))
+            lats.append(float(p[1]))
+        else:
+            raise ValueError(
+                f"Point #{i} must be either {{lon: ..., lat: ...}} or [lon, lat]"
+            )
+
+    return np.asarray(lons), np.asarray(lats)
+
+
+def build_release(cfg: dict, fieldset: FieldSet):
+    rel_cfg = cfg["release"]
+    release_mode = rel_cfg.get("mode", "region_grid")
+
+    if release_mode == "region_grid":
+        lons_raw, lats_raw = _build_release_points_from_region(rel_cfg)
+
+    elif release_mode == "point_list":
+        lons_raw, lats_raw = _build_release_points_from_list(rel_cfg)
+
+    else:
+        raise ValueError(
+            f"Unsupported release.mode: {release_mode}. "
+            "Use 'region_grid' or 'point_list'."
+        )
+
+    summarize_initial_points(lons_raw, lats_raw, name="raw release points")
 
     if rel_cfg.get("filter_domain", True):
-        check_initial_points_in_domain(lons2d, lats2d, fieldset, verbose=True)
-        lons2d, lats2d = filter_inside_domain(lons2d, lats2d, fieldset)
-        summarize_initial_points(lons2d, lats2d, name="filtered release grid")
+        check_initial_points_in_domain(lons_raw, lats_raw, fieldset, verbose=True)
+        lons_raw, lats_raw = filter_inside_domain(lons_raw, lats_raw, fieldset)
+        summarize_initial_points(lons_raw, lats_raw, name="filtered release points")
 
     depth_cfg = rel_cfg.get("depth", {})
     use_depth = depth_cfg.get("enabled", False)
@@ -125,8 +167,8 @@ def build_release(cfg: dict, fieldset: FieldSet):
         summarize_depth_axis(fieldset)
 
         lons, lats, depths = build_multilevel_release(
-            lons2d=lons2d,
-            lats2d=lats2d,
+            lons2d=lons_raw,
+            lats2d=lats_raw,
             requested_depths=depth_cfg["values"],
             fieldset=fieldset,
             depth_mode=depth_cfg.get("mode", "as_requested"),
@@ -137,7 +179,7 @@ def build_release(cfg: dict, fieldset: FieldSet):
         )
         return lons, lats, depths
 
-    return lons2d, lats2d, None
+    return lons_raw, lats_raw, None
 
 
 def build_particleset(cfg: dict, fieldset: FieldSet, lons, lats, depths=None):

@@ -2,38 +2,20 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from ..config.models import PostprocessConfig
-from ..core import build_particle_summary, build_release_grid_from_summary
-from ..io import (
-    load_trajectory_table,
-    save_dataset_netcdf,
-    save_grid_table,
-    save_particle_summary,
-)
 from ..analyses import compute_beaching_times
+from ..config.models import PostprocessConfig
+from ..core import build_release_grid_from_summary
+from ..io import save_dataset_netcdf, save_grid_table
 from ..plotting import plot_grid_map
+from .base_products import get_particle_summary
+
 
 def run_beaching_times(cfg: PostprocessConfig, context: dict) -> None:
     """
     Beaching-times workflow.
     """
-    if "trajectory_table" not in context:
-        print("Loading trajectory table")
-
-        df = load_trajectory_table(
-            cfg.dataset.input_path,
-            truncate_stagnant=cfg.cleaning.truncate_stagnant,
-            stagnant_tol=cfg.cleaning.stagnant_tol,
-            stagnant_min_consecutive=cfg.cleaning.stagnant_min_consecutive,
-        )
-        context["trajectory_table"] = df
-
-    if "particle_summary" not in context:
-        print("Building particle summary")
-        summary = build_particle_summary(context["trajectory_table"])
-        context["particle_summary"] = summary
-    else:
-        summary = context["particle_summary"]
+    print("Getting particle summary")
+    summary = get_particle_summary(cfg, context)
 
     print("Building release grid from particle summary")
     grid = build_release_grid_from_summary(
@@ -55,15 +37,6 @@ def run_beaching_times(cfg: PostprocessConfig, context: dict) -> None:
 
     outdir = Path(cfg.output.output_dir)
     outdir.mkdir(parents=True, exist_ok=True)
-
-    if cfg.exports.save_particle_summary:
-        summary_path = outdir / f"particle_summary.{cfg.exports.table_format}"
-        print("Saving particle summary:", summary_path)
-        save_particle_summary(
-            summary,
-            summary_path,
-            format=cfg.exports.table_format,
-        )
 
     table_path = outdir / f"beaching_times_table.{cfg.exports.table_format}"
     nc_path = outdir / "beaching_times.nc"

@@ -1,16 +1,16 @@
 dataset:
-  input_path: C:/Users/Jacopo/Documents/GitHub/kinematicParcels/outputs/output_PNnf_surface.zarr
+  input_path: C:/Users/Jacopo/Documents/GitHub/kinematicParcels/outputs/one_trajectory_test.zarr
 
 analysis:
   types:
     - summary
     - trajectories
-    - density
-    - beaching_times
-    - start_end_regions
+    # - density
+    # - beaching_times
+    # - start_end_regions
 
 output:
-  output_dir: C:/Users/Jacopo/Documents/GitHub/kinematicParcels/outputs/postprocessing/PNnf_surface
+  output_dir: C:/Users/Jacopo/Documents/GitHub/kinematicParcels/outputs/postprocessing/one_trajectory_test
 
 exports:
   save_trajectory_table: true

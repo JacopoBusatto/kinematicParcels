@@ -2,29 +2,19 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from ..config.models import PostprocessConfig
-from ..io import load_trajectory_table, save_dataset_netcdf, save_grid_table
-from ..core import RegularGrid
 from ..analyses import compute_time_density
+from ..config.models import PostprocessConfig
+from ..core import RegularGrid
+from ..io import save_dataset_netcdf, save_grid_table
+from .base_products import get_trajectory_table
 
 
 def run_density(cfg: PostprocessConfig, context: dict) -> None:
     """
     Density workflow.
     """
-    if "trajectory_table" not in context:
-        print("Loading trajectory table")
-
-        df = load_trajectory_table(
-            cfg.dataset.input_path,
-            truncate_stagnant=cfg.cleaning.truncate_stagnant,
-            stagnant_tol=cfg.cleaning.stagnant_tol,
-            stagnant_min_consecutive=cfg.cleaning.stagnant_min_consecutive,
-        )
-
-        context["trajectory_table"] = df
-
-    df = context["trajectory_table"]
+    print("Getting trajectory table")
+    df = get_trajectory_table(cfg, context)
 
     if "grid" not in context:
         print("Building grid")
@@ -71,6 +61,8 @@ def run_density(cfg: PostprocessConfig, context: dict) -> None:
             raise ValueError(f"Unsupported grid mode: {g.mode}")
 
         context["grid"] = grid
+
+    grid = context["grid"]
 
     print("Computing density")
 

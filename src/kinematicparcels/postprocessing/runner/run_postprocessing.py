@@ -44,6 +44,10 @@ def _run_single_analysis(
         from ..workflows.run_start_end_regions import run_start_end_regions
         run_start_end_regions(cfg, context)
 
+    elif analysis_name == "summary":
+        from ..workflows.run_summary import run_summary
+        run_summary(cfg, context)
+
     else:
         raise ValueError(f"Unknown analysis type: {analysis_name}")
 
