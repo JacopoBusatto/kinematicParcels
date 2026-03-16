@@ -23,8 +23,6 @@ release:
 
   points:
     - {lon: -72.80, lat: -51.90}
-    - {lon: -72.75, lat: -51.85}
-    - {lon: -72.70, lat: -51.80}
 
   depth:
     enabled: false

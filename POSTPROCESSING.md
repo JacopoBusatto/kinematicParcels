@@ -243,6 +243,55 @@ The grid limits are explicitly defined in the configuration file.
 
 grid.mode: explicit_edges
 
+------------------------------------------------------------
+BASE PRODUCTS AND PERSISTENCE POLICY
+------------------------------------------------------------
+
+The framework distinguishes between:
+
+- base products
+- analysis products
+
+BASE PRODUCTS
+
+The base products are:
+
+- trajectory_table
+- particle_summary
+
+These datasets are considered the common input for several analyses.
+
+PERSISTENCE RULE
+
+Only the `summary` workflow is allowed to write the base products to disk.
+
+This means:
+
+- `summary` may build and save:
+  - trajectory_table
+  - particle_summary
+- all other workflows may:
+  - reuse them from shared context
+  - read them from disk if already exported
+  - recompute them in memory if missing
+- but all other workflows must NOT save them
+
+This rule avoids repeated overwriting of the same parquet/csv files
+and keeps responsibilities clearly separated.
+
+Typical use:
+
+analysis:
+  types:
+    - summary
+
+or:
+
+analysis:
+  types:
+    - summary
+    - density
+    - beaching_times
 
 ------------------------------------------------------------
 IMPLEMENTED ANALYSES
@@ -254,6 +303,7 @@ Example:
 
 analysis:
   types:
+    - summary
     - density
     - beaching_times
     - start_end_regions
@@ -261,79 +311,251 @@ analysis:
 
 
 ------------------------------------------------------------
-PARTICLE DENSITY
+SUMMARY WORKFLOW
 ------------------------------------------------------------
 
-Particle density is computed on the grid at each timestep.
+The `summary` workflow is the base workflow of the post-processing system.
 
-Output dataset structure:
+It performs:
 
-density(time, lat, lon)
+1) build trajectory_table
+2) build particle_summary
+3) save them to disk if requested
 
-Variables:
+This workflow is the only one that persists the base datasets.
 
-particle_count
-density_active
-density_total
+If the YAML contains:
 
-Meaning:
+analysis:
+  types:
+    - summary
 
-particle_count   → number of particles in the grid cell
-density_active   → normalized by active particles
-density_total    → normalized by total released particles
+and:
 
-Configuration example:
+exports:
+  save_trajectory_table: true
+  save_particle_summary: true
+  table_format: parquet
 
-density:
-  normalize_active: true
-  normalize_total: true
+then the workflow writes:
+
+- trajectory_table.parquet
+- particle_summary.parquet
+
+inside the configured output directory.
+
+
+------------------------------------------------------------
+UPDATED PACKAGE ARCHITECTURE
+------------------------------------------------------------
+
+postprocessing/
+
+config/
+    YAML configuration system
+
+io/
+    Readers and export utilities
+
+core/
+    Particle statistics and grid helpers
+
+analyses/
+    Scientific diagnostics
+    - density
+    - beaching_times
+    - start_end_regions
+
+plotting/
+    Map and trajectory plotting utilities
+
+runner/
+    CLI and dispatcher
+
+workflows/
+    High-level workflows
+    - run_summary
+    - run_density
+    - run_beaching_times
+    - run_start_end_regions
+    - run_trajectories
+    - base_products
+
+
+------------------------------------------------------------
+IMPLEMENTED ANALYSES (UPDATED)
+------------------------------------------------------------
+
+The currently supported analysis types are:
+
+- summary
+- density
+- beaching_times
+- start_end_regions
+- trajectories
+
+These are selected in the YAML configuration:
+
+analysis:
+  types:
+    - summary
+    - density
+    - beaching_times
+    - start_end_regions
+    - trajectories
+
+
+------------------------------------------------------------
+SUMMARY
+------------------------------------------------------------
+
+Builds the two base products:
+
+- trajectory_table
+- particle_summary
+
+This is the only workflow allowed to persist these datasets.
+
+Use this analysis when you want to:
+
+- inspect the cleaned trajectory table
+- inspect the particle summary
+- export the base datasets for reuse in later runs
+
+
+------------------------------------------------------------
+DENSITY
+------------------------------------------------------------
+
+Computes time-dependent particle density on a regular grid.
+
+Input:
+- trajectory_table
+
+Output:
+- density table
+- density NetCDF
+
+Variables include:
+
+- particle_count
+- particle_fraction_active
+- particle_fraction_total
 
 
 ------------------------------------------------------------
 BEACHING TIMES
 ------------------------------------------------------------
 
-Beaching time represents the lifetime of particles at their release location.
+Computes the beaching time on the native release grid.
 
-For each release pixel:
+Input:
+- particle_summary
 
-beaching_time = minimum particle lifetime reaching that pixel
+Grid:
+- reconstructed from initial release positions
 
-Output dataset:
+Mapped variable:
+- lifetime_seconds
 
-beaching_time(lat, lon)
+Default aggregation:
+- min
 
-Interpretation:
-
-small values  → particles exit quickly
-large values  → particles remain longer
-
-This diagnostic helps identify:
-
-- retention zones
-- fast escape pathways
+This gives a conservative estimate of the earliest beaching/exit time
+associated with each release pixel.
 
 
 ------------------------------------------------------------
 START / END REGIONS
 ------------------------------------------------------------
 
-Particles can be classified into geographical regions.
+Classifies each particle according to the region of:
 
-Region definitions come from:
+- initial position
+- final position
+
+Input:
+- particle_summary
+
+Region definitions are loaded from:
 
 kinematicparcels.utilities.geographicalRegions
 
-For each particle we compute:
+The analysis supports:
 
-start_region
-end_region
-start_numericLabel
-end_numericLabel
+- how_many
+- priority_level
+- priority_mode
+- input_lon_mode
 
-Maps are produced on the release grid.
+Outputs include:
 
-Configuration example:
+- classified particle summary
+- start region map
+- end region map
+- optional plots
+
+
+------------------------------------------------------------
+TRAJECTORIES
+------------------------------------------------------------
+
+Plots the cleaned trajectory set on a Cartopy map.
+
+Input:
+- trajectory_table
+
+The analysis uses the stagnation-cleaned trajectories and is intended
+as a diagnostic visualisation of the simulated particle paths.
+
+
+------------------------------------------------------------
+YAML EXAMPLE (UPDATED)
+------------------------------------------------------------
+
+dataset:
+  input_path: outputs/simulation.zarr
+
+analysis:
+  types:
+    - summary
+    - density
+    - beaching_times
+    - start_end_regions
+    - trajectories
+
+exports:
+  save_trajectory_table: true
+  save_particle_summary: true
+  table_format: parquet
+
+cleaning:
+  truncate_stagnant: true
+  stagnant_tol: 1e-6
+  stagnant_min_consecutive: 2
+
+grid:
+  mode: from_initial_centers
+  lon_min: -74.0
+  lon_max: -72.0
+  lat_min: -53.0
+  lat_max: -51.0
+  dlon: 0.025
+  dlat: 0.025
+
+density:
+  lon_col: lon
+  lat_col: lat
+  time_col: time
+  normalize_active: true
+  normalize_total: true
+
+beaching_times:
+  lon_col: lon0
+  lat_col: lat0
+  value_col: lifetime_seconds
+  statistic: min
+  plot: true
 
 start_end_regions:
   region_labels: null
@@ -343,55 +565,30 @@ start_end_regions:
   input_lon_mode: "-180_180"
   plot: true
 
-Priority rules resolve overlapping regions.
-
-
-------------------------------------------------------------
-TRAJECTORY MAPS
-------------------------------------------------------------
-
-Trajectory maps visualise particle tracks on geographic maps.
-
-Features include:
-
-- coastlines
-- projection selection
-- stagnation filtering
-
-Configuration example:
-
 trajectories:
   plot: true
-
-Projection selection:
+  title: "Trajectories"
+  show_start: true
+  show_end: true
 
 plotting:
   projection: PlateCarree
 
-Other useful projections include:
-
-SouthPolarStereo
-NorthPolarStereo
-
 
 ------------------------------------------------------------
-PLOTTING SYSTEM
+CLI USAGE
 ------------------------------------------------------------
 
-The plotting module provides two types of maps.
+The post-processing pipeline is launched from the command line using:
 
-Continuous maps:
+run-parcels-postprocessing postprocess.yml
 
-Used for:
-- density
-- beaching times
+Alternative Python module execution:
 
-Discrete maps:
+python -m kinematicparcels.postprocessing.runner.run_postprocessing postprocess.yml
 
-Used for:
-- region classification
-
-Cartopy is used for geospatial rendering.
+This command reads the YAML configuration, builds the required context,
+and executes the requested analyses in sequence.
 
 
 ------------------------------------------------------------
@@ -420,42 +617,6 @@ particle_summary
 grid
 
 are reused between analyses.
-
-
-------------------------------------------------------------
-EXAMPLE CONFIGURATION FILE
-------------------------------------------------------------
-
-Example postprocess.yml:
-
-dataset:
-  input_path: outputs/simulation.zarr
-
-analysis:
-  types:
-    - density
-    - beaching_times
-    - start_end_regions
-
-cleaning:
-  truncate_stagnant: true
-  stagnant_tol: 1e-6
-  stagnant_min_consecutive: 2
-
-grid:
-  mode: from_initial_centers
-  dlon: 0.025
-  dlat: 0.025
-
-density:
-  normalize_active: true
-  normalize_total: true
-
-start_end_regions:
-  plot: true
-
-plotting:
-  projection: PlateCarree
 
 
 ------------------------------------------------------------
