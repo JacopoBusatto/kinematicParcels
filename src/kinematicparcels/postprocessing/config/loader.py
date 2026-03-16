@@ -15,6 +15,10 @@ from .models import (
     GridConfig,
     OutputConfig,
     PostprocessConfig,
+    BeachingTimesConfig,
+    TrajectoriesConfig,
+    PlottingConfig,
+    StartEndRegionsConfig,
 )
 
 
@@ -273,6 +277,138 @@ def _parse_density(section: dict[str, Any] | None) -> DensityConfig:
     )
 
 
+def _parse_beaching_times(section: dict[str, Any] | None) -> BeachingTimesConfig:
+    """
+    Parse the optional beaching_times section.
+    """
+    if section is None:
+        return BeachingTimesConfig()
+
+    section = _require_dict(section, "beaching_times")
+
+    lon_col = _require_nonempty_string(
+        section.get("lon_col", "lon0"),
+        "beaching_times.lon_col",
+    )
+    lat_col = _require_nonempty_string(
+        section.get("lat_col", "lat0"),
+        "beaching_times.lat_col",
+    )
+    value_col = _require_nonempty_string(
+        section.get("value_col", "lifetime_seconds"),
+        "beaching_times.value_col",
+    )
+    statistic = _require_nonempty_string(
+        section.get("statistic", "min"),
+        "beaching_times.statistic",
+    )
+    plot = bool(section.get("plot", False))
+    return BeachingTimesConfig(
+        lon_col=lon_col,
+        lat_col=lat_col,
+        value_col=value_col,
+        statistic=statistic,
+        plot=plot,
+    )
+
+
+def _parse_trajectories(section: dict[str, Any] | None) -> TrajectoriesConfig:
+    """
+    Parse the optional trajectories section.
+    """
+    if section is None:
+        return TrajectoriesConfig()
+
+    section = _require_dict(section, "trajectories")
+
+    plot = bool(section.get("plot", True))
+    title = _require_nonempty_string(
+        section.get("title", "Trajectories"),
+        "trajectories.title",
+    )
+    show_start = bool(section.get("show_start", True))
+    show_end = bool(section.get("show_end", True))
+
+    return TrajectoriesConfig(
+        plot=plot,
+        title=title,
+        show_start=show_start,
+        show_end=show_end,
+    )
+
+
+def _parse_plotting(section: dict[str, Any] | None) -> PlottingConfig:
+    if section is None:
+        return PlottingConfig()
+
+    section = _require_dict(section, "plotting")
+
+    projection = _require_nonempty_string(
+        section.get("projection", "PlateCarree"),
+        "plotting.projection",
+    )
+
+    return PlottingConfig(projection=projection)
+
+
+def _parse_start_end_regions(section: dict[str, Any] | None) -> StartEndRegionsConfig:
+    """
+    Parse the optional start_end_regions section.
+    """
+    if section is None:
+        return StartEndRegionsConfig()
+
+    section = _require_dict(section, "start_end_regions")
+
+    region_labels_raw = section.get("region_labels", None)
+    region_labels: tuple[str, ...] | None
+
+    if region_labels_raw is None:
+        region_labels = None
+    else:
+        if not isinstance(region_labels_raw, list):
+            raise ValueError("'start_end_regions.region_labels' must be a list or null.")
+        parsed_labels: list[str] = []
+        for i, item in enumerate(region_labels_raw):
+            if not isinstance(item, str) or not item.strip():
+                raise ValueError(
+                    f"start_end_regions.region_labels[{i}] must be a non-empty string."
+                )
+            parsed_labels.append(item.strip())
+        region_labels = tuple(parsed_labels)
+
+    how_many = _require_nonempty_string(
+        section.get("how_many", "priority_max"),
+        "start_end_regions.how_many",
+    )
+    priority_mode = _require_nonempty_string(
+        section.get("priority_mode", "exact"),
+        "start_end_regions.priority_mode",
+    )
+    input_lon_mode = _require_nonempty_string(
+        section.get("input_lon_mode", "-180_180"),
+        "start_end_regions.input_lon_mode",
+    )
+    plot = bool(section.get("plot", False))
+
+    priority_level_raw = section.get("priority_level", None)
+    if priority_level_raw is None:
+        priority_level = None
+    else:
+        if not isinstance(priority_level_raw, int):
+            raise ValueError("'start_end_regions.priority_level' must be an integer or null.")
+        priority_level = priority_level_raw
+
+    return StartEndRegionsConfig(
+        region_labels=region_labels,
+        how_many=how_many,
+        priority_level=priority_level,
+        priority_mode=priority_mode,
+        input_lon_mode=input_lon_mode,
+        plot=plot,
+    )
+
+
 def load_postprocess_config(path: str | Path) -> PostprocessConfig:
     """
     Load the post-processing YAML config.
@@ -297,6 +433,10 @@ def load_postprocess_config(path: str | Path) -> PostprocessConfig:
     grid = _parse_grid(raw.get("grid"))
     density = _parse_density(raw.get("density"))
     cleaning = _parse_cleaning(raw.get("cleaning"))
+    beaching_times = _parse_beaching_times(raw.get("beaching_times"))
+    trajectories = _parse_trajectories(raw.get("trajectories"))
+    plotting = _parse_plotting(raw.get("plotting"))
+    start_end_regions = _parse_start_end_regions(raw.get("start_end_regions"))
 
     return PostprocessConfig(
         dataset=dataset,
@@ -306,4 +446,8 @@ def load_postprocess_config(path: str | Path) -> PostprocessConfig:
         grid=grid,
         density=density,
         cleaning=cleaning,
+        beaching_times=beaching_times,
+        trajectories=trajectories,
+        plotting=plotting,
+        start_end_regions=start_end_regions
     )

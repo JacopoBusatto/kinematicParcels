@@ -6,6 +6,8 @@ import matplotlib.pyplot as plt
 import pandas as pd
 import cartopy.crs as ccrs
 import cartopy.feature as cfeature
+from .projections import get_projection
+
 
 
 def plot_trajectories_map(
@@ -21,6 +23,7 @@ def plot_trajectories_map(
     add_land: bool = True,
     add_coastlines: bool = True,
     add_gridlines: bool = True,
+    projection: str = "PlateCarree",
 ) -> None:
     """
     Plot trajectories on a simple geographic map.
@@ -67,7 +70,10 @@ def plot_trajectories_map(
     df = df.sort_values(["trajectory", "obs"]).reset_index(drop=True)
 
     fig = plt.figure(figsize=figsize)
-    ax = plt.axes(projection=ccrs.PlateCarree())
+    proj = get_projection(projection)
+
+    fig = plt.figure(figsize=figsize)
+    ax = plt.axes(projection=proj)
 
     if add_land:
         # ax.add_feature(cfeature.LAND, zorder=0)
@@ -124,8 +130,8 @@ def plot_trajectories_map(
     lat_min = df["lat"].min()
     lat_max = df["lat"].max()
 
-    lon_pad = max(0.5, 0.05 * (lon_max - lon_min if lon_max > lon_min else 1.0))
-    lat_pad = max(0.5, 0.05 * (lat_max - lat_min if lat_max > lat_min else 1.0))
+    lon_pad = min(0.5, 0.05 * (lon_max - lon_min if lon_max > lon_min else 1.0))
+    lat_pad = min(0.5, 0.05 * (lat_max - lat_min if lat_max > lat_min else 1.0))
 
     ax.set_extent(
         [lon_min - lon_pad, lon_max + lon_pad, lat_min - lat_pad, lat_max + lat_pad],

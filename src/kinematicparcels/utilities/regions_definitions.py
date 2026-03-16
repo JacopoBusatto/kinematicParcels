@@ -728,6 +728,7 @@ REGIONS_DATA = [
 
             ]
         ],
+        priority=4,
     ),
 
     ## SOUTHER OCEAN

@@ -326,7 +326,7 @@ class RegionManager:
         y : float
             Latitudine del punto.
         howMany : str
-            "first", "all", oppure "priority".
+            "first", "all", oppure "priority_max" o "priority_min".
         priority_level : int, optional
             Se specificato, filtra le regioni in base alla priorità.
         priority_mode : str, default "exact"
@@ -384,12 +384,21 @@ class RegionManager:
                 for region in matching_regions
             ]
 
-        elif howMany == "priority":
+        elif howMany == "priority_max":
             if matching_regions:
                 highest_priority_region = max(matching_regions, key=lambda r: r.priority)
                 return {
                     "label": highest_priority_region.label,
                     "numericLabel": highest_priority_region.NumericLabel,
+                }
+            return None
+        
+        elif howMany == "priority_min":
+            if matching_regions:
+                lowest_priority_region = min(matching_regions, key=lambda r: r.priority)
+                return {
+                    "label": lowest_priority_region.label,
+                    "numericLabel": lowest_priority_region.NumericLabel,
                 }
             return None
 

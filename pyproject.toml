@@ -27,5 +27,7 @@ dependencies = [
 [tool.setuptools.packages.find]
 where = ["src"]
 
+
 [project.scripts]
 run-parcels-experiment = "kinematicparcels.runner.run_experiment:main"
+run-parcels-postprocessing = "kinematicparcels.postprocessing.runner.cli:main"

@@ -446,3 +446,87 @@ def aggregate_on_regular_grid(
         drop_outside=drop_outside,
         output_col=output_col,
     )
+
+
+def infer_regular_spacing_from_centers(
+    values: np.ndarray | pd.Series,
+    *,
+    round_decimals: int = 6,
+) -> float:
+    """
+    Infer the regular spacing of a 1D grid from center coordinates.
+
+    Parameters
+    ----------
+    values
+        1D array of center coordinates.
+    round_decimals
+        Number of decimals used to collapse small floating-point differences.
+
+    Returns
+    -------
+    float
+        Inferred grid spacing.
+
+    Raises
+    ------
+    ValueError
+        If spacing cannot be inferred.
+    """
+    values = np.asarray(values, dtype=float)
+
+    if values.size == 0:
+        raise ValueError("Cannot infer spacing from an empty array.")
+
+    unique_vals = np.unique(values[~np.isnan(values)])
+    if unique_vals.size < 2:
+        raise ValueError("Need at least two unique points to infer spacing.")
+
+    diffs = np.diff(np.sort(unique_vals))
+    diffs = diffs[diffs > 0]
+
+    if diffs.size == 0:
+        raise ValueError("Could not infer spacing from repeated coordinates only.")
+
+    diffs_rounded = np.round(diffs, round_decimals)
+    positive = diffs_rounded[diffs_rounded > 0]
+
+    if positive.size == 0:
+        raise ValueError("Could not infer positive spacing after rounding.")
+
+    spacing = float(np.min(positive))
+    return spacing
+
+
+def build_release_grid_from_summary(
+    summary_df: pd.DataFrame,
+    *,
+    lon_col: str = "lon0",
+    lat_col: str = "lat0",
+    round_decimals: int = 6,
+) -> RegularGrid:
+    """
+    Build the release grid from particle summary initial positions.
+
+    The initial positions are interpreted as grid-cell centers.
+    """
+    required = [lon_col, lat_col]
+    missing = [c for c in required if c not in summary_df.columns]
+    if missing:
+        raise KeyError(f"Input dataframe missing required columns: {missing}")
+
+    dlon = infer_regular_spacing_from_centers(
+        summary_df[lon_col].to_numpy(),
+        round_decimals=round_decimals,
+    )
+    dlat = infer_regular_spacing_from_centers(
+        summary_df[lat_col].to_numpy(),
+        round_decimals=round_decimals,
+    )
+
+    return RegularGrid.from_point_centers(
+        summary_df[lon_col].to_numpy(),
+        summary_df[lat_col].to_numpy(),
+        dlon=dlon,
+        dlat=dlat,
+    )

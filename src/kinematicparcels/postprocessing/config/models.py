@@ -82,6 +82,38 @@ class DensityConfig:
 
 
 @dataclass(frozen=True)
+class BeachingTimesConfig:
+    lon_col: str = "lon0"
+    lat_col: str = "lat0"
+    value_col: str = "lifetime_seconds"
+    statistic: str = "min"
+    plot: bool = False
+
+
+@dataclass(frozen=True)
+class TrajectoriesConfig:
+    plot: bool = True
+    title: str = "Trajectories"
+    show_start: bool = True
+    show_end: bool = True
+
+
+@dataclass(frozen=True)
+class StartEndRegionsConfig:
+    region_labels: tuple[str, ...] | None = None
+    how_many: str = "priority_max"
+    priority_level: int | None = None
+    priority_mode: str = "exact"
+    input_lon_mode: str = "-180_180"
+    plot: bool = False
+
+
+@dataclass(frozen=True)
+class PlottingConfig:
+    projection: str = "PlateCarree"
+
+
+@dataclass(frozen=True)
 class CleaningConfig:
     truncate_stagnant: bool = False
     stagnant_tol: float = 1.0e-6
@@ -97,6 +129,10 @@ class PostprocessConfig:
     grid: GridConfig | None = None
     density: DensityConfig = field(default_factory=DensityConfig)
     cleaning: CleaningConfig = field(default_factory=CleaningConfig)
+    beaching_times: BeachingTimesConfig = field(default_factory=BeachingTimesConfig)
+    trajectories: TrajectoriesConfig = field(default_factory=TrajectoriesConfig)
+    plotting: PlottingConfig = field(default_factory=PlottingConfig)
+    start_end_regions: StartEndRegionsConfig = field(default_factory=StartEndRegionsConfig)
 
 
 @dataclass(frozen=True)

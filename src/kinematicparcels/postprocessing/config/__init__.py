@@ -1,6 +1,7 @@
 from .loader import load_postprocess_config
 from .models import (
     AnalysisConfig,
+    BeachingTimesConfig,
     CleaningConfig,
     DatasetConfig,
     DatasetCoordinatesConfig,
@@ -9,7 +10,10 @@ from .models import (
     GridConfig,
     OutputConfig,
     ParcelsSchema,
+    PlottingConfig,
     PostprocessConfig,
+    StartEndRegionsConfig,
+    TrajectoriesConfig,
 )
 
 __all__ = [
@@ -23,5 +27,9 @@ __all__ = [
     "CleaningConfig",
     "ParcelsSchema",
     "PostprocessConfig",
+    "BeachingTimesConfig",
     "load_postprocess_config",
+    "TrajectoriesConfig",
+    "StartEndRegionsConfig",
+    "PlottingConfig",
 ]

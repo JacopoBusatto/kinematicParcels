@@ -8,6 +8,8 @@ from .gridding import (
     RegularGrid,
     aggregate_on_regular_grid,
     assign_regular_grid_bins,
+    build_release_grid_from_summary,
+    infer_regular_spacing_from_centers,
 )
 from .summaries import build_particle_summary
 
@@ -20,4 +22,6 @@ __all__ = [
     "RegularGrid",
     "assign_regular_grid_bins",
     "aggregate_on_regular_grid",
+    "build_release_grid_from_summary",
+    "infer_regular_spacing_from_centers",
 ]
