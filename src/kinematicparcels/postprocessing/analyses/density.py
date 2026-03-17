@@ -174,5 +174,9 @@ def compute_time_density(
             "dlat": grid.dlat,
         },
     )
+    ds["particle_fraction_total"] .attrs["units"] = "%"
+    ds["particle_fraction_active"].attrs["units"] = "%"
+    ds["particle_fraction_total"]  = ds["particle_fraction_total"] * 100
+    ds["particle_fraction_active"] = ds["particle_fraction_active"] * 100
 
     return grouped, ds

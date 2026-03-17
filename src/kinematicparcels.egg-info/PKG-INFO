@@ -15,6 +15,7 @@ Requires-Dist: pyyaml
 Requires-Dist: matplotlib
 Requires-Dist: cartopy
 Requires-Dist: tqdm
+Requires-Dist: imageio>=2.34
 Dynamic: license-file
 
 # kinematicParcels

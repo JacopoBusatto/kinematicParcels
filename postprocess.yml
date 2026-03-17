@@ -3,11 +3,11 @@ dataset:
 
 analysis:
   types:
-    - summary
+    # - summary
     - trajectories
     - density
-    - beaching_times
-    - start_end_regions
+    # - beaching_times
+    # - start_end_regions
 
 output:
   output_dir: C:/Users/Jacopo/Documents/GitHub/kinematicParcels/outputs/postprocessing/PNnf_surface
@@ -38,6 +38,14 @@ density:
   normalize_active: true
   normalize_total: true
 
+  animate: true
+  animation_var: particle_fraction_total
+  animation_label: "density [%]"
+  animation_fps: 6
+  animation_vmin: 0
+  animation_vmax: 0.5
+  show_time_bar: true
+
 beaching_times:
   lon_col: lon0
   lat_col: lat0
@@ -47,9 +55,19 @@ beaching_times:
 
 trajectories:
   plot: true
-  title: "Live trajectories"
+  animate: true
+  title: "Trajectories"
   show_start: true
-  show_end: true
+  show_end: false
+
+  animation_fps: 6
+  animation_color_by: lat0
+  animation_vmin: -53
+  animation_vmax: -51
+  animation_label: "initial latitude"
+  show_time_bar: true
+  trail: true
+  trail_steps: 20
 
 plotting:
   projection: PlateCarree

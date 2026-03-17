@@ -13,6 +13,9 @@ src/kinematicparcels/postprocessing/analyses/__init__.py
 src/kinematicparcels/postprocessing/analyses/beaching_times.py
 src/kinematicparcels/postprocessing/analyses/density.py
 src/kinematicparcels/postprocessing/analyses/start_end_regions.py
+src/kinematicparcels/postprocessing/animations/__init__.py
+src/kinematicparcels/postprocessing/animations/density.py
+src/kinematicparcels/postprocessing/animations/utils.py
 src/kinematicparcels/postprocessing/config/__init__.py
 src/kinematicparcels/postprocessing/config/loader.py
 src/kinematicparcels/postprocessing/config/models.py
@@ -31,10 +34,12 @@ src/kinematicparcels/postprocessing/runner/__init__.py
 src/kinematicparcels/postprocessing/runner/cli.py
 src/kinematicparcels/postprocessing/runner/run_postprocessing.py
 src/kinematicparcels/postprocessing/workflows/__init.__.py
+src/kinematicparcels/postprocessing/workflows/base_products.py
 src/kinematicparcels/postprocessing/workflows/quicklook.py
 src/kinematicparcels/postprocessing/workflows/run_beaching_times.py
 src/kinematicparcels/postprocessing/workflows/run_density.py
 src/kinematicparcels/postprocessing/workflows/run_start_end_regions.py
+src/kinematicparcels/postprocessing/workflows/run_summary.py
 src/kinematicparcels/postprocessing/workflows/run_trajectories.py
 src/kinematicparcels/runner/__init__.py
 src/kinematicparcels/runner/run_experiment.py

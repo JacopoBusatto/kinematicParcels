@@ -326,7 +326,7 @@ class RegionManager:
         y : float
             Latitudine del punto.
         howMany : str
-            "first", "all", oppure "priority_max" o "priority_min".
+            "first", "last", "all", "priority_max", "priority_min".
         priority_level : int, optional
             Se specificato, filtra le regioni in base alla priorità.
         priority_mode : str, default "exact"
@@ -370,41 +370,52 @@ class RegionManager:
                     '"exact", "atleast" o "atmost"'
                 )
 
+        # ordinamento deterministico:
+        # prima per priorità crescente, poi numericLabel, poi label
+        matching_regions = sorted(
+            matching_regions,
+            key=lambda r: (r.priority, r.NumericLabel, r.label)
+        )
+
+        def as_dict(region):
+            return {
+                "label": region.label,
+                "numericLabel": region.NumericLabel,
+            }
+
+        if not matching_regions:
+            return None if howMany != "all" else []
+
         if howMany == "first":
-            if matching_regions:
-                return {
-                    "label": matching_regions[0].label,
-                    "numericLabel": matching_regions[0].NumericLabel,
-                }
-            return None
+            return as_dict(matching_regions[0])
+
+        elif howMany == "last":
+            return as_dict(matching_regions[-1])
 
         elif howMany == "all":
-            return [
-                {"label": region.label, "numericLabel": region.NumericLabel}
-                for region in matching_regions
+            return [as_dict(region) for region in matching_regions]
+
+        elif howMany == "priority_min":
+            min_priority = matching_regions[0].priority
+            selected = [
+                region for region in matching_regions
+                if region.priority == min_priority
             ]
+            return [as_dict(region) for region in selected]
 
         elif howMany == "priority_max":
-            if matching_regions:
-                highest_priority_region = max(matching_regions, key=lambda r: r.priority)
-                return {
-                    "label": highest_priority_region.label,
-                    "numericLabel": highest_priority_region.NumericLabel,
-                }
-            return None
-        
-        elif howMany == "priority_min":
-            if matching_regions:
-                lowest_priority_region = min(matching_regions, key=lambda r: r.priority)
-                return {
-                    "label": lowest_priority_region.label,
-                    "numericLabel": lowest_priority_region.NumericLabel,
-                }
-            return None
+            max_priority = matching_regions[-1].priority
+            selected = [
+                region for region in matching_regions
+                if region.priority == max_priority
+            ]
+            return [as_dict(region) for region in selected]
 
         else:
-            raise ValueError('Parametro "howMany" deve essere "first", "all" o "priority"')
-
+            raise ValueError(
+                'Parametro "howMany" deve essere '
+                '"first", "last", "all", "priority_min" o "priority_max"'
+            )
 
 
 

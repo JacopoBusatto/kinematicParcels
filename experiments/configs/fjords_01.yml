@@ -1,6 +1,6 @@
 experiment:
   name: PNnf_surface_test
-  output_dir: ./outputs
+  output_dir: C:/Users/Jacopo/Documents/DATI/PATAGONIA/simulation
 
 fieldset:
   file_pattern: C:/Users/Jacopo/Documents/DATI/PATAGONIA/ocean_uv_opendrift_final_V2.nc
@@ -19,8 +19,8 @@ fieldset:
 release:
   mode: region_grid
   region_label: PNnf
-  dlon: 0.025
-  dlat: 0.025
+  dlon: 0.001
+  dlat: 0.001
   filter_domain: true # evita rilasciare particelle in punti dove non c'è campo (es. fuori dominio o in terra)
 
   depth:
@@ -33,10 +33,10 @@ release:
 
 simulation:
   runtime_days: 2.8
-  dt_hours: .2
-  outputdt_hours: 2
+  dt_hours: .1
+  outputdt_hours: 1
   particle_type: scipy
 
 output:
-  zarr_name: output_PNnf_surface.zarr
+  zarr_name: output_PFall.zarr
 

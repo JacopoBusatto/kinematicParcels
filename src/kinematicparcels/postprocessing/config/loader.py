@@ -268,12 +268,48 @@ def _parse_density(section: dict[str, Any] | None) -> DensityConfig:
     normalize_active = bool(section.get("normalize_active", True))
     normalize_total = bool(section.get("normalize_total", True))
 
+    animate = bool(section.get("animate", False))
+    animation_var = _require_nonempty_string(
+        section.get("animation_var", "particle_count"),
+        "density.animation_var",
+    )
+    animation_label = _require_nonempty_string(
+        section.get("animation_label", "particle_count"),
+        "density.animation_label",
+    )
+
+    animation_fps_raw = section.get("animation_fps", 8)
+    if not isinstance(animation_fps_raw, int) or animation_fps_raw <= 0:
+        raise ValueError("'density.animation_fps' must be an integer > 0.")
+    animation_fps = animation_fps_raw
+
+    animation_vmin_raw = section.get("animation_vmin", None)
+    if animation_vmin_raw is None:
+        animation_vmin = None
+    else:
+        animation_vmin = _require_number(animation_vmin_raw, "density.animation_vmin")
+
+    animation_vmax_raw = section.get("animation_vmax", None)
+    if animation_vmax_raw is None:
+        animation_vmax = None
+    else:
+        animation_vmax = _require_number(animation_vmax_raw, "density.animation_vmax")
+
+    show_time_bar = bool(section.get("show_time_bar", True))
+
     return DensityConfig(
         lon_col=lon_col,
         lat_col=lat_col,
         time_col=time_col,
         normalize_active=normalize_active,
         normalize_total=normalize_total,
+        animate=animate,
+        animation_var=animation_var,
+        animation_label=animation_label,
+        animation_fps=animation_fps,
+        animation_vmin=animation_vmin,
+        animation_vmax=animation_vmax,
+        show_time_bar=show_time_bar,
     )
 
 
@@ -329,11 +365,66 @@ def _parse_trajectories(section: dict[str, Any] | None) -> TrajectoriesConfig:
     show_start = bool(section.get("show_start", True))
     show_end = bool(section.get("show_end", True))
 
+    animate = bool(section.get("animate", False))
+
+    animation_fps_raw = section.get("animation_fps", 8)
+    if not isinstance(animation_fps_raw, int) or animation_fps_raw <= 0:
+        raise ValueError("'trajectories.animation_fps' must be an integer > 0.")
+    animation_fps = animation_fps_raw
+
+    animation_color_by = _require_nonempty_string(
+        section.get("animation_color_by", "lat0"),
+        "trajectories.animation_color_by",
+    )
+
+    animation_vmin_raw = section.get("animation_vmin", None)
+    if animation_vmin_raw is None:
+        animation_vmin = None
+    else:
+        animation_vmin = _require_number(
+            animation_vmin_raw,
+            "trajectories.animation_vmin",
+        )
+
+    animation_vmax_raw = section.get("animation_vmax", None)
+    if animation_vmax_raw is None:
+        animation_vmax = None
+    else:
+        animation_vmax = _require_number(
+            animation_vmax_raw,
+            "trajectories.animation_vmax",
+        )
+
+    animation_label = _require_nonempty_string(
+        section.get("animation_label", "value"),
+        "trajectories.animation_label",
+    )
+
+    show_time_bar = bool(section.get("show_time_bar", True))
+    trail = bool(section.get("trail", True))
+
+    trail_steps_raw = section.get("trail_steps", None)
+    if trail_steps_raw is None:
+        trail_steps = None
+    else:
+        if not isinstance(trail_steps_raw, int) or trail_steps_raw <= 0:
+            raise ValueError("'trajectories.trail_steps' must be an integer > 0 or null.")
+        trail_steps = trail_steps_raw
+
     return TrajectoriesConfig(
         plot=plot,
         title=title,
         show_start=show_start,
         show_end=show_end,
+        animate=animate,
+        animation_fps=animation_fps,
+        animation_color_by=animation_color_by,
+        animation_vmin=animation_vmin,
+        animation_vmax=animation_vmax,
+        animation_label=animation_label,
+        show_time_bar=show_time_bar,
+        trail=trail,
+        trail_steps=trail_steps,
     )
 
 

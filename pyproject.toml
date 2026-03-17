@@ -21,7 +21,8 @@ dependencies = [
     "pyyaml",
     "matplotlib",
     "cartopy",
-    "tqdm"
+    "tqdm",
+    "imageio>=2.34"
 ]
 
 [tool.setuptools.packages.find]

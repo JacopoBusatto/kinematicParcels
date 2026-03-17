@@ -80,6 +80,14 @@ class DensityConfig:
     normalize_active: bool = True
     normalize_total: bool = True
 
+    animate: bool = False
+    animation_var: str = "particle_count"
+    animation_label: str = "particle_count"
+    animation_fps: int = 8
+    animation_vmin: float | None = None
+    animation_vmax: float | None = None
+    show_time_bar: bool = True
+
 
 @dataclass(frozen=True)
 class BeachingTimesConfig:
@@ -96,6 +104,16 @@ class TrajectoriesConfig:
     title: str = "Trajectories"
     show_start: bool = True
     show_end: bool = True
+
+    animate: bool = False
+    animation_fps: int = 8
+    animation_color_by: str = "lat0"
+    animation_vmin: float | None = None
+    animation_vmax: float | None = None
+    animation_label: str = "value"
+    show_time_bar: bool = True
+    trail: bool = True
+    trail_steps: int | None = None
 
 
 @dataclass(frozen=True)

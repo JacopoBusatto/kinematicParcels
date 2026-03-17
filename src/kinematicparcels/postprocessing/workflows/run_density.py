@@ -3,6 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from ..analyses import compute_time_density
+from ..animations import animate_density
 from ..config.models import PostprocessConfig
 from ..core import RegularGrid
 from ..io import save_dataset_netcdf, save_grid_table
@@ -91,3 +92,20 @@ def run_density(cfg: PostprocessConfig, context: dict) -> None:
 
     print("Saving density dataset:", density_nc_path)
     save_dataset_netcdf(density_ds, density_nc_path)
+
+    if cfg.density.animate:
+        gif_path = outdir / "density.gif"
+        print("Saving density animation:", gif_path)
+
+        animate_density(
+            density_ds,
+            var_name=cfg.density.animation_var,
+            outpath=gif_path,
+            projection=cfg.plotting.projection,
+            fps=cfg.density.animation_fps,
+            title=cfg.density.animation_var,
+            colorbar_label=cfg.density.animation_label,
+            vmin=cfg.density.animation_vmin,
+            vmax=cfg.density.animation_vmax,
+            show_time_bar=cfg.density.show_time_bar,
+        )

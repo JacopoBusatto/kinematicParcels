@@ -7,3 +7,4 @@ pyyaml
 matplotlib
 cartopy
 tqdm
+imageio>=2.34
