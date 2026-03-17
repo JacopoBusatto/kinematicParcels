@@ -29,15 +29,115 @@ kinematicParcels/
 
 │       ├── runner/
 
-│       │   └── run_experiment.py
+│       │   ├── __init__.py
+
+│       │   ├── run_experiment.py
+
+│       │   └── run_experiment_series.py
+
+│       ├── postprocessing/
+
+│       │   ├── __init__.py
+
+│       │   ├── analyses/
+
+│       │   │   ├── __init__.py
+
+│       │   │   ├── beaching_times.py
+
+│       │   │   ├── density.py
+
+│       │   │   └── start_end_regions.py
+
+│       │   ├── animations/
+
+│       │   │   ├── __init__.py
+
+│       │   │   ├── density.py
+
+│       │   │   ├── trajectories.py
+
+│       │   │   └── utils.py
+
+│       │   ├── config/
+
+│       │   │   ├── __init__.py
+
+│       │   │   ├── loader.py
+
+│       │   │   └── models.py
+
+│       │   ├── core/
+
+│       │   │   ├── __init__.py
+
+│       │   │   ├── filters.py
+
+│       │   │   ├── gridding.py
+
+│       │   │   └── summaries.py
+
+│       │   ├── io/
+
+│       │   │   ├── __init__.py
+
+│       │   │   ├── exports.py
+
+│       │   │   └── parcels.py
+
+│       │   ├── plotting/
+
+│       │   │   ├── __init__.py
+
+│       │   │   ├── maps.py
+
+│       │   │   ├── projections.py
+
+│       │   │   └── trajectories.py
+
+│       │   ├── runner/
+
+│       │   │   ├── __init__.py
+
+│       │   │   ├── cli.py
+
+│       │   │   ├── run_postprocessing.py
+
+│       │   │   └── run_postprocessing_series.py
+
+│       │   └── workflows/
+
+│       │       ├── __init.__.py
+
+│       │       ├── base_products.py
+
+│       │       ├── quicklook.py
+
+│       │       ├── run_beaching_times.py
+
+│       │       ├── run_density.py
+
+│       │       ├── run_start_end_regions.py
+
+│       │       ├── run_summary.py
+
+│       │       └── run_trajectories.py
 
 │       └── utilities/
 
+│           ├── __init__.py
+
+│           ├── compare_region_shape.py
+
 │           ├── geographicalRegions.py
+
+│           ├── geographicalRegions_rectangles.py
 
 │           ├── init_checks.py
 
-│           └── init_depths.py
+│           ├── init_depths.py
+
+│           └── regions_definitions.py
 
 │
 
@@ -47,7 +147,19 @@ kinematicParcels/
 
 │       ├── exp_NPstg_surface.yml
 
-│       └── exp_NPstg_multilevel.yml
+│       ├── exp_NPstg_multilevel.yml
+
+│       ├── fjords_template_PFunion.yml
+
+│       ├── fjords_template_postprocessing.yml
+
+│       ├── fjords_test_1p.yml
+
+│       ├── fjords_test_PFunion.yml
+
+│       ├── multiple_simulation_postprocessing.yml
+
+│       └── multiple_simulation_run.yml
 
 │
 
@@ -57,27 +169,25 @@ kinematicParcels/
 
 ├── logs/            (optional run logs)
 
-│
+├── testing_utils/
+
+│   ├── interpolate_field_over_trajectory.py
+
+│   ├── test.py
+
+│   └── test_shapes.py
 
 ├── environment.yml
 
 ├── pyproject.toml
 
+├── LICENSE.md
+
+├── POSTPROCESSING.md
+
 ├── .gitignore
 
 └── README.md
-
-
-Explanation of the main directories:
-
-src/kinematicparcels  
-Contains the installable Python package.
-
-runner  
-Contains the generic experiment runner.
-
-utilities  
-Helper modules for particle initialization and domain checks.
 
 experiments/configs  
 YAML configuration files describing experiments.
