@@ -572,10 +572,9 @@ The system automatically:
 
 ## Master Configuration Example
 
-```
+```yaml
 template_config: .\experiments\configs\fjords_01.yml
 
-```yaml
 series:
   output_root: C:/Users/Jacopo/Documents/DATI/PATAGONIA/simulation_series
 
