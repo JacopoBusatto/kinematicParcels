@@ -408,6 +408,115 @@ ds = xr.open_zarr("outputs/output_experiment.zarr")
 
 ---
 
+# Running Multiple Simulations (Series Mode)
+
+In addition to single experiments, the framework supports launching **multiple simulations in sequence** using a master configuration file.
+
+This is useful when running:
+
+* multiple start dates
+* sensitivity experiments
+* batch simulations for statistics
+
+---
+
+## Concept
+
+The workflow is based on two layers:
+
+1. A **template YAML** (single experiment)
+2. A **master YAML** defining the time schedule
+
+The system automatically:
+
+* generates one YAML per simulation
+* creates a dedicated output folder for each run
+* launches simulations sequentially
+
+---
+
+## Master Configuration Example
+
+```
+template_config: .\experiments\configs\fjords_01.yml
+
+series:
+  output_root: C:/Users/Jacopo/Documents/DATI/PATAGONIA/simulation_series
+
+  start_time: "2026-01-01 00:00"
+  frequency: "1D"
+  duration: "10D"
+
+  output_subdir_format: "%Y%m%d-%H%M"
+  config_filename: "experiment.yml"
+  runner_exe: "run-parcels-experiment.exe"
+```
+
+---
+
+## Generated Structure
+
+```
+simulation_series/
+  20260101-0000/
+    experiment.yml
+    output.zarr
+  20260102-0000/
+    experiment.yml
+    output.zarr
+  ...
+```
+
+Each run is:
+
+* isolated
+* reproducible
+* fully defined by its local YAML file
+
+---
+
+## Running the Series
+
+Generate configurations only:
+
+```
+python run_experiment_series.py master_series.yml --generate-only
+```
+
+Generate and execute:
+
+```
+python run_experiment_series.py master_series.yml
+```
+
+---
+
+## Start Time Handling
+
+The single experiment YAML supports:
+
+```
+simulation:
+  start_time: "2026-01-01 00:00"
+```
+
+This defines the release time of all particles.
+
+If not provided, the simulation behaves as before.
+
+---
+
+## Design Philosophy
+
+This approach ensures:
+
+* full reproducibility (each run has its own YAML)
+* easy debugging (runs are independent)
+* compatibility with HPC workflows
+* clean separation between orchestration and simulation logic
+
+---
+
 # Project Goals
 
 The framework aims to:
@@ -433,8 +542,9 @@ Possible future developments:
 
 # Author
 
-Jacopo Busatto  
-CNR ISMAR
+Jacopo Busatto, PhD
+CNR ISMAR, Rome, Italy
+jacopobusatto@cnr.it
 
 ---
 

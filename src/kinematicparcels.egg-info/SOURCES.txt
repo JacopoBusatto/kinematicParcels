@@ -15,6 +15,7 @@ src/kinematicparcels/postprocessing/analyses/density.py
 src/kinematicparcels/postprocessing/analyses/start_end_regions.py
 src/kinematicparcels/postprocessing/animations/__init__.py
 src/kinematicparcels/postprocessing/animations/density.py
+src/kinematicparcels/postprocessing/animations/trajectories.py
 src/kinematicparcels/postprocessing/animations/utils.py
 src/kinematicparcels/postprocessing/config/__init__.py
 src/kinematicparcels/postprocessing/config/loader.py
@@ -43,6 +44,7 @@ src/kinematicparcels/postprocessing/workflows/run_summary.py
 src/kinematicparcels/postprocessing/workflows/run_trajectories.py
 src/kinematicparcels/runner/__init__.py
 src/kinematicparcels/runner/run_experiment.py
+src/kinematicparcels/runner/run_experiment_series.py
 src/kinematicparcels/utilities/__init__.py
 src/kinematicparcels/utilities/compare_region_shape.py
 src/kinematicparcels/utilities/geographicalRegions.py

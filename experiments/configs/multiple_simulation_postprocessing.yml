@@ -1,0 +1,19 @@
+template_config: fjords_template_postprocessing.yml
+
+series:
+  simulation_output_root: C:/Users/Jacopo/Documents/DATI/PATAGONIA/simulation_series
+  postprocess_output_root: C:/Users/Jacopo/Documents/DATI/PATAGONIA/postprocessing_series
+
+  # run_dirs:
+  #   - "20260101-0000"
+  #   - "20260102-0000"
+  #   - "20260103-0000"
+  schedule:
+    start_time: "2026-01-01 00:00"
+    frequency: "3H"
+    duration: "23H"
+    input_subdir_format: "%Y%m%d-%H%M"
+
+  dataset_filename: "output_PFall.zarr"
+  config_filename: "postprocess.yml"
+  runner_exe: "run-parcels-postprocess.exe"

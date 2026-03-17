@@ -3,11 +3,11 @@ dataset:
 
 analysis:
   types:
-    # - summary
+    - summary
     - trajectories
     - density
-    # - beaching_times
-    # - start_end_regions
+    - beaching_times
+    - start_end_regions
 
 output:
   output_dir: C:/Users/Jacopo/Documents/GitHub/kinematicParcels/outputs/postprocessing/PNnf_surface
@@ -62,8 +62,8 @@ trajectories:
 
   animation_fps: 6
   animation_color_by: lat0
-  animation_vmin: -53
-  animation_vmax: -51
+  animation_vmin: -52.5
+  animation_vmax: -51.3
   animation_label: "initial latitude"
   show_time_bar: true
   trail: true
@@ -74,7 +74,7 @@ plotting:
 
 start_end_regions:
   region_labels: null
-  how_many: priority_max
+  how_many: last
   priority_level: 6
   priority_mode: atleast
   input_lon_mode: "-180_180"

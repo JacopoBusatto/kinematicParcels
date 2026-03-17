@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import argparse
-from datetime import timedelta
+from datetime import timedelta, datetime
 from glob import glob
 from pathlib import Path
 import warnings
@@ -137,6 +137,25 @@ def _build_release_points_from_list(rel_cfg: dict):
     return np.asarray(lons), np.asarray(lats)
 
 
+def parse_datetime_like(value: str) -> datetime:
+    value = str(value).strip()
+    for fmt in (
+        "%Y%m%d-%H:%M",
+        "%Y-%m-%d %H:%M",
+        "%Y-%m-%dT%H:%M",
+        "%Y%m%d",
+    ):
+        try:
+            return datetime.strptime(value, fmt)
+        except ValueError:
+            pass
+
+    raise ValueError(
+        f"Unsupported date format: {value}. "
+        "Use one of: YYYYMMDD-HH:MM, YYYY-MM-DD HH:MM, YYYY-MM-DDTHH:MM, YYYYMMDD"
+    )
+
+
 def build_release(cfg: dict, fieldset: FieldSet):
     rel_cfg = cfg["release"]
     release_mode = rel_cfg.get("mode", "region_grid")
@@ -196,10 +215,18 @@ def build_particleset(cfg: dict, fieldset: FieldSet, lons, lats, depths=None):
     if depths is not None:
         kwargs["depth"] = depths
 
+    start_time = sim_cfg.get("start_time", None)
+    if start_time is not None:
+        dt0 = parse_datetime_like(start_time)
+        kwargs["time"] = np.full(len(lons), np.datetime64(dt0))
+
     pset = ParticleSet.from_list(**kwargs)
     print(f"ParticleSet created with {len(lons)} particles")
-    return pset
 
+    if start_time is not None:
+        print(f"Particle release start_time = {start_time}")
+
+    return pset
 
 def run_simulation(cfg: dict, pset: ParticleSet):
     sim_cfg = cfg["simulation"]

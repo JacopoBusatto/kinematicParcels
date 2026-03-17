@@ -1,0 +1,477 @@
+import numpy as np
+import pandas as pd
+import xarray as xr
+import matplotlib.pyplot as plt
+
+from scipy.interpolate import LinearNDInterpolator, NearestNDInterpolator
+
+
+# ============================================================
+# 1. Interpolazione del campo di velocità sulla traiettoria
+# ============================================================
+def interpolate_velocity_on_trajectory(
+    traj: pd.DataFrame,
+    field: xr.Dataset,
+    *,
+    time_col: str = "time",
+    lon_col: str = "lon",
+    lat_col: str = "lat",
+    u_name: str = "x_sea_water_velocity",
+    v_name: str = "y_sea_water_velocity",
+    depth_index: int = 0,
+) -> pd.DataFrame:
+    """
+    Interpola il campo di velocità curvilineo (u,v) sui punti della traiettoria.
+
+    Parametri
+    ---------
+    traj : pd.DataFrame
+        DataFrame con almeno colonne time, lon, lat.
+    field : xr.Dataset
+        Dataset con:
+          - time
+          - lon_rho(xi_rho, eta_rho)
+          - lat_rho(xi_rho, eta_rho)
+          - u(time, depth, xi_rho, eta_rho)
+          - v(time, depth, xi_rho, eta_rho)
+
+    Restituisce
+    -----------
+    traj_out : pd.DataFrame
+        Copia di traj con colonne aggiunte:
+          - u_interp
+          - v_interp
+          - speed_interp
+    """
+    traj_out = traj.copy()
+    traj_out[time_col] = pd.to_datetime(traj_out[time_col])
+
+    # Coordinate statiche della griglia
+    lon2d = field["lon_rho"].values
+    lat2d = field["lat_rho"].values
+
+    # Tempi disponibili nel campo
+    field_times = pd.to_datetime(field["time"].values)
+
+    u_list = []
+    v_list = []
+
+    for _, row in traj_out.iterrows():
+        t = pd.to_datetime(row[time_col])
+        x = float(row[lon_col])
+        y = float(row[lat_col])
+
+        # indice tempo più vicino
+        it = np.argmin(np.abs(field_times - t))
+
+        # selezione del campo all'istante it
+        u2d = field[u_name].isel(time=it, depth=depth_index).values
+        v2d = field[v_name].isel(time=it, depth=depth_index).values
+
+        # maschera dei punti validi
+        valid = (
+            np.isfinite(lon2d)
+            & np.isfinite(lat2d)
+            & np.isfinite(u2d)
+            & np.isfinite(v2d)
+        )
+
+        pts = np.column_stack((lon2d[valid], lat2d[valid]))
+
+        # Interpolazione lineare
+        u_lin = LinearNDInterpolator(pts, u2d[valid], fill_value=np.nan)
+        v_lin = LinearNDInterpolator(pts, v2d[valid], fill_value=np.nan)
+
+        u_val = float(u_lin(x, y))
+        v_val = float(v_lin(x, y))
+
+        # Fallback a nearest se il punto finisce fuori dal triangolo convesso
+        if np.isnan(u_val) or np.isnan(v_val):
+            u_near = NearestNDInterpolator(pts, u2d[valid])
+            v_near = NearestNDInterpolator(pts, v2d[valid])
+            u_val = float(u_near(x, y))
+            v_val = float(v_near(x, y))
+
+        u_list.append(u_val)
+        v_list.append(v_val)
+
+    traj_out["u_interp"] = u_list
+    traj_out["v_interp"] = v_list
+    traj_out["speed_interp"] = np.hypot(traj_out["u_interp"], traj_out["v_interp"])
+
+    return traj_out
+
+
+# ============================================================
+# 2. Plot mappa traiettoria + vettori velocità interpolati
+# ============================================================
+def plot_trajectory_with_velocity_vectors(
+    traj_interp: pd.DataFrame,
+    field: xr.Dataset | None = None,
+    *,
+    lon_col: str = "lon",
+    lat_col: str = "lat",
+    u_col: str = "u_interp",
+    v_col: str = "v_interp",
+    time_col: str = "time",
+    title: str = "Trajectory with interpolated velocity vectors",
+    stride: int = 1,
+    scale: float | None = None,
+    figsize: tuple = (10, 10),
+    show_background_speed: bool = False,
+    bg_time_index: int = 0,
+):
+    """
+    Plotta la traiettoria e i vettori velocità interpolati lungo la traiettoria.
+
+    Parametri
+    ---------
+    traj_interp : pd.DataFrame
+        DataFrame con lon, lat, u_interp, v_interp.
+    field : xr.Dataset | None
+        Se fornito, può plottare anche uno sfondo della speed del campo.
+    show_background_speed : bool
+        Se True e field non è None, mostra la speed del campo a bg_time_index.
+    stride : int
+        Disegna un vettore ogni `stride` punti.
+    scale : float | None
+        Parametro matplotlib quiver scale. Se None, lascia automatico.
+    """
+    fig, ax = plt.subplots(figsize=figsize)
+
+    # Eventuale sfondo con speed del campo
+    if show_background_speed and field is not None:
+        lon2d = field["lon_rho"].values
+        lat2d = field["lat_rho"].values
+        u2d = field["x_sea_water_velocity"].isel(time=bg_time_index, depth=0).values
+        v2d = field["y_sea_water_velocity"].isel(time=bg_time_index, depth=0).values
+        spd2d = np.hypot(u2d, v2d)
+
+        pcm = ax.pcolormesh(
+            lon2d,
+            lat2d,
+            spd2d,
+            shading="auto",
+            alpha=0.6,
+        )
+        cbar = plt.colorbar(pcm, ax=ax, pad=0.02)
+        cbar.set_label("Speed [m/s]")
+
+    # traiettoria
+    ax.plot(
+        traj_interp[lon_col],
+        traj_interp[lat_col],
+        "-k",
+        lw=1.5,
+        label="Trajectory",
+        zorder=3,
+    )
+
+    # start / end
+    ax.scatter(
+        traj_interp[lon_col].iloc[0],
+        traj_interp[lat_col].iloc[0],
+        s=70,
+        marker="o",
+        label="Start",
+        zorder=4,
+    )
+    ax.scatter(
+        traj_interp[lon_col].iloc[-1],
+        traj_interp[lat_col].iloc[-1],
+        s=70,
+        marker="s",
+        label="End",
+        zorder=4,
+    )
+
+    # vettori velocità
+    sl = slice(None, None, stride)
+    q = ax.quiver(
+        traj_interp[lon_col].iloc[sl],
+        traj_interp[lat_col].iloc[sl],
+        traj_interp[u_col].iloc[sl],
+        traj_interp[v_col].iloc[sl],
+        angles="xy",
+        scale_units="xy",
+        scale=scale,
+        width=0.0025,
+        zorder=5,
+    )
+
+    # etichette temporali opzionali
+    for i, (_, row) in enumerate(traj_interp.iloc[sl].iterrows()):
+        ax.text(
+            row[lon_col],
+            row[lat_col],
+            pd.to_datetime(row[time_col]).strftime("%H:%M"),
+            fontsize=8,
+            ha="left",
+            va="bottom",
+            zorder=6,
+        )
+
+    ax.set_xlabel("Longitude")
+    ax.set_ylabel("Latitude")
+    ax.set_title(title)
+    ax.legend(loc="ur")
+    ax.set_aspect("equal", adjustable="box")
+    ax.grid(True, alpha=0.3)
+
+    plt.tight_layout()
+    plt.show()
+
+
+# ============================================================
+# 3. Lettura traiettoria collega e allineamento temporale
+# ============================================================
+def load_colleague_trajectory(
+    csv_path: str,
+    reference_traj: pd.DataFrame,
+    *,
+    time_col_ref: str = "time",
+) -> pd.DataFrame:
+    """
+    Legge una traiettoria CSV senza header nel formato:
+        obs, lon, lat
+
+    e assegna il tempo della traiettoria di riferimento.
+    """
+    other = pd.read_csv(csv_path, header=None, names=["obs", "lon", "lat"])
+
+    ref = reference_traj.copy()
+    ref[time_col_ref] = pd.to_datetime(ref[time_col_ref])
+
+    if len(other) != len(ref):
+        raise ValueError(
+            f"Lunghezze diverse: collega={len(other)}, riferimento={len(ref)}. "
+            "Non posso assegnare i tempi 1:1 in modo sicuro."
+        )
+
+    other["time"] = ref[time_col_ref].values
+    other["trajectory"] = "colleague"
+
+    return other
+
+
+# ============================================================
+# 4. Haversine distance (metri)
+# ============================================================
+def haversine_distance_m(lon1, lat1, lon2, lat2):
+    """
+    Distanza geodetica approssimata tra due punti lon/lat in metri.
+    Input in gradi.
+    """
+    R = 6371000.0  # raggio terrestre in metri
+
+    lon1 = np.deg2rad(lon1)
+    lat1 = np.deg2rad(lat1)
+    lon2 = np.deg2rad(lon2)
+    lat2 = np.deg2rad(lat2)
+
+    dlon = lon2 - lon1
+    dlat = lat2 - lat1
+
+    a = np.sin(dlat / 2.0) ** 2 + np.cos(lat1) * np.cos(lat2) * np.sin(dlon / 2.0) ** 2
+    c = 2.0 * np.arcsin(np.sqrt(a))
+
+    return R * c
+
+
+# ============================================================
+# 5. Merge e distanza nel tempo
+# ============================================================
+def compare_trajectories(
+    traj1: pd.DataFrame,
+    traj2: pd.DataFrame,
+    *,
+    time_col: str = "time",
+    lon_col: str = "lon",
+    lat_col: str = "lat",
+    label1: str = "my_traj",
+    label2: str = "colleague_traj",
+) -> pd.DataFrame:
+    """
+    Allinea due traiettorie sul tempo e calcola la distanza punto-punto.
+    """
+    a = traj1.copy()
+    b = traj2.copy()
+
+    a[time_col] = pd.to_datetime(a[time_col])
+    b[time_col] = pd.to_datetime(b[time_col])
+
+    a = a[[time_col, lon_col, lat_col]].rename(
+        columns={
+            lon_col: f"lon_{label1}",
+            lat_col: f"lat_{label1}",
+        }
+    )
+    b = b[[time_col, lon_col, lat_col]].rename(
+        columns={
+            lon_col: f"lon_{label2}",
+            lat_col: f"lat_{label2}",
+        }
+    )
+
+    df = pd.merge(a, b, on=time_col, how="inner").sort_values(time_col).reset_index(drop=True)
+
+    df["distance_m"] = haversine_distance_m(
+        df[f"lon_{label1}"].values,
+        df[f"lat_{label1}"].values,
+        df[f"lon_{label2}"].values,
+        df[f"lat_{label2}"].values,
+    )
+    df["distance_km"] = df["distance_m"] / 1000.0
+
+    return df
+
+
+# ============================================================
+# 6. Plot mappa con entrambe le traiettorie
+# ============================================================
+def plot_two_trajectories_map(
+    traj1: pd.DataFrame,
+    traj2: pd.DataFrame,
+    *,
+    lon_col: str = "lon",
+    lat_col: str = "lat",
+    label1: str = "My trajectory",
+    label2: str = "Colleague trajectory",
+    title: str = "Trajectory comparison",
+    annotate_every: int | None = None,
+):
+    fig, ax = plt.subplots(figsize=(10, 10))
+
+    ax.plot(
+        traj1[lon_col],
+        traj1[lat_col],
+        "-o",
+        markersize=3,
+        label=label1,
+    )
+    ax.plot(
+        traj2[lon_col],
+        traj2[lat_col],
+        "-s",
+        markersize=3,
+        label=label2,
+    )
+
+    # Start/end markers
+    ax.scatter(traj1[lon_col].iloc[0], traj1[lat_col].iloc[0], s=80, marker="o")
+    ax.scatter(traj1[lon_col].iloc[-1], traj1[lat_col].iloc[-1], s=80, marker="X")
+
+    ax.scatter(traj2[lon_col].iloc[0], traj2[lat_col].iloc[0], s=80, marker="o")
+    ax.scatter(traj2[lon_col].iloc[-1], traj2[lat_col].iloc[-1], s=80, marker="X")
+
+    if annotate_every is not None and annotate_every > 0:
+        for i in range(0, len(traj1), annotate_every):
+            ax.text(traj1[lon_col].iloc[i], traj1[lat_col].iloc[i], str(i), fontsize=8)
+        for i in range(0, len(traj2), annotate_every):
+            ax.text(traj2[lon_col].iloc[i], traj2[lat_col].iloc[i], str(i), fontsize=8)
+
+    ax.set_xlabel("Longitude")
+    ax.set_ylabel("Latitude")
+    ax.set_title(title)
+    ax.grid(True, alpha=0.3)
+    ax.legend()
+    ax.set_aspect("equal", adjustable="box")
+    plt.tight_layout()
+    plt.show()
+
+
+# ============================================================
+# 7. Plot distanza vs tempo
+# ============================================================
+def plot_distance_vs_time(
+    comp_df: pd.DataFrame,
+    *,
+    time_col: str = "time",
+    dist_col: str = "distance_km",
+    title: str = "Distance between trajectories",
+):
+    fig, ax = plt.subplots(figsize=(10, 5))
+
+    ax.plot(comp_df[time_col], comp_df[dist_col], "-o", markersize=4)
+    ax.set_xlabel("Time")
+    ax.set_ylabel("Distance [km]")
+    ax.set_title(title)
+    ax.grid(True, alpha=0.3)
+
+    plt.xticks(rotation=45)
+    plt.tight_layout()
+    plt.show()
+
+
+# ============================================================
+# 8. Esempio completo
+# ============================================================
+if __name__ == "__main__":
+    # tua traiettoria
+    traj = pd.read_parquet("outputs/postprocessing/one_trajectory_test/trajectory_table.parquet")
+    traj["time"] = pd.to_datetime(traj["time"])
+
+    # traiettoria collega
+    other = load_colleague_trajectory(
+        r"C:\Users\Jacopo\Documents\DATI\PATAGONIA\andreas_traj.csv",
+        traj,
+    )
+
+    # confronto
+    comp = compare_trajectories(
+        traj,
+        other,
+        label1="mine",
+        label2="andrea",
+    )
+
+    print(comp.head())
+    print()
+    print("Distance statistics:")
+    print(comp["distance_km"].describe())
+
+    # mappa
+    plot_two_trajectories_map(
+        traj,
+        other,
+        label1="My trajectory",
+        label2="Andrea trajectory",
+        title="My trajectory vs Andrea trajectory",
+        annotate_every=3,   # metti None se non vuoi etichette
+    )
+
+    # distanza nel tempo
+    plot_distance_vs_time(
+        comp,
+        title="Distance between trajectories vs time",
+    )
+
+
+
+# # ============================================================
+# # 3. Esempio di utilizzo
+# # ============================================================
+# if __name__ == "__main__":
+#     traj = pd.read_parquet("outputs/postprocessing/one_trajectory_test/trajectory_table.parquet")
+#     field = xr.open_dataset("C:/Users/Jacopo/Documents/DATI/PATAGONIA/ocean_uv_opendrift_final_V2.nc")
+
+#     traj_interp = interpolate_velocity_on_trajectory(traj, field)
+
+#     print(traj_interp[["time", "lon", "lat", "u_interp", "v_interp", "speed_interp"]])
+
+#     plot_trajectory_with_velocity_vectors(
+#         traj_interp,
+#         field=field,
+#         stride=1,                  # un vettore per ogni punto
+#         scale=20,                # automatico
+#         show_background_speed=True,
+#         bg_time_index=0,
+#         title="Trajectory + interpolated velocity vectors",
+#     )
+
+
+
+
+
+
+

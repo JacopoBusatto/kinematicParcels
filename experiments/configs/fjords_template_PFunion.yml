@@ -18,9 +18,9 @@ fieldset:
 
 release:
   mode: region_grid
-  region_label: PNnf
-  dlon: 0.001
-  dlat: 0.001
+  region_label: PFunion
+  dlon: 0.005
+  dlat: 0.005
   filter_domain: true # evita rilasciare particelle in punti dove non c'è campo (es. fuori dominio o in terra)
 
   depth:
@@ -32,8 +32,9 @@ release:
     remove_duplicate_depths: true
 
 simulation:
-  runtime_days: 2.8
-  dt_hours: .1
+  start_time: "2026-01-01 00:00"
+  runtime_days: 1.
+  dt_hours: 0.1
   outputdt_hours: 1
   particle_type: scipy
 

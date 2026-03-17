@@ -650,6 +650,149 @@ New analyses can be added by:
 3) registering it in the runner
 
 
+---
+
+## POSTPROCESSING SERIES (MULTIPLE RUNS)
+
+The framework also supports running post-processing on **multiple simulation outputs automatically**.
+
+This is particularly useful when working with:
+
+* time series of simulations
+* ensemble runs
+* parameter sweeps
+
+---
+
+## CONCEPT
+
+The system uses:
+
+1. A **template postprocess YAML**
+2. A **master series YAML**
+
+The series runner:
+
+* generates one YAML per simulation
+* links each YAML to the correct input dataset
+* writes outputs into matching directories
+* optionally executes all runs sequentially
+
+---
+
+## MASTER CONFIGURATION (SCHEDULE MODE)
+
+```
+template_config: .\experiments\configs\postprocess.yml
+
+series:
+  simulation_output_root: C:/Users/Jacopo/Documents/DATI/PATAGONIA/simulation_series
+  postprocess_output_root: C:/Users/Jacopo/Documents/DATI/PATAGONIA/postprocessing_series
+
+  schedule:
+    start_time: "2026-01-01 00:00"
+    frequency: "1D"
+    duration: "10D"
+    input_subdir_format: "%Y%m%d-%H%M"
+
+  dataset_filename: "output_PFall.zarr"
+  config_filename: "postprocess.yml"
+  runner_exe: "run-parcels-postprocess.exe"
+```
+
+---
+
+## AUTOMATIC MAPPING
+
+For each generated run:
+
+INPUT:
+
+```
+simulation_output_root/<run>/output_PFall.zarr
+```
+
+OUTPUT:
+
+```
+postprocess_output_root/<run>/
+```
+
+CONFIG:
+
+```
+postprocess_output_root/<run>/postprocess.yml
+```
+
+---
+
+## GENERATED STRUCTURE
+
+```
+simulation_series/
+  20260101-0000/output_PFall.zarr
+  20260102-0000/output_PFall.zarr
+
+postprocessing_series/
+  20260101-0000/postprocess.yml
+  20260101-0000/<products>
+
+  20260102-0000/postprocess.yml
+  20260102-0000/<products>
+```
+
+---
+
+## EXECUTION
+
+Generate YAMLs only:
+
+```
+python run_postprocessing_series.py master_postprocess.yml --generate-only
+```
+
+Generate and execute:
+
+```
+python run_postprocessing_series.py master_postprocess.yml
+```
+
+---
+
+## ALTERNATIVE: EXPLICIT RUN LIST
+
+Instead of using a time schedule, runs can be specified manually:
+
+```
+series:
+  run_dirs:
+    - "20260101-0000"
+    - "20260102-0000"
+    - "20260103-0000"
+```
+
+This is useful when:
+
+* runs are irregular
+* some runs failed and need reprocessing
+* only a subset must be analysed
+
+---
+
+## DESIGN PRINCIPLES
+
+The series system follows the same philosophy as the simulation runner:
+
+* each run has its own YAML configuration
+* no hidden logic inside the processing code
+* full reproducibility of results
+* clear mapping between input and output
+
+The single-run postprocessing remains unchanged and fully compatible.
+
+The series runner acts only as an orchestration layer.
+
+
 ------------------------------------------------------------
 FUTURE EXTENSIONS
 ------------------------------------------------------------
