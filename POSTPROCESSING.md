@@ -109,17 +109,19 @@ DATA MODEL
 TRAJECTORY TABLE
 
 The Parcels Zarr output is converted into a canonical trajectory table.
-
+```
 trajectory | obs | time | lon | lat
-
+```
 Each row represents one particle observation at one timestep.
 
 Example:
 
+```
 trajectory  obs  time   lon    lat
 0           0    t0     -73.6  -52.4
 0           1    t1     -73.59 -52.39
 1           0    t0     -73.5  -52.3
+```
 
 This format simplifies:
 
@@ -130,8 +132,9 @@ This format simplifies:
 
 Reader function:
 
+```python
 load_trajectory_table()
-
+```
 
 ------------------------------------------------------------
 TRAJECTORY CLEANING
@@ -163,11 +166,12 @@ When detected:
 
 Configuration example:
 
+```yaml
 cleaning:
   truncate_stagnant: true
   stagnant_tol: 1e-6
   stagnant_min_consecutive: 2
-
+```
 
 ------------------------------------------------------------
 PARTICLE SUMMARY
@@ -176,12 +180,13 @@ PARTICLE SUMMARY
 The particle summary reduces each trajectory to a single row of statistics.
 
 Example variables:
-
+```
 lon0
 lat0
 lonf
 latf
 lifetime_seconds
+```
 
 Meaning:
 
@@ -191,7 +196,9 @@ lifetime_seconds → particle lifetime
 
 Function:
 
+```python
 build_particle_summary()
+```
 
 This dataset is typically used for:
 
@@ -208,12 +215,14 @@ Many diagnostics require aggregating particles on a spatial grid.
 
 The RegularGrid class defines:
 
+```
 lon_min
 lon_max
 lat_min
 lat_max
 dlon
 dlat
+```
 
 and internally computes:
 
@@ -230,18 +239,24 @@ GRID MODES
 
 The grid is automatically constructed from the release positions.
 
+```yaml
 grid.mode: from_initial_centers
+```
 
 The grid spacing is defined by:
 
-dlon
-dlat
+```yaml
+dlon: 0.05
+dlat: 0.05
+```
 
 2) explicit_edges
 
 The grid limits are explicitly defined in the configuration file.
 
+```yaml
 grid.mode: explicit_edges
+```
 
 ------------------------------------------------------------
 BASE PRODUCTS AND PERSISTENCE POLICY
@@ -281,18 +296,21 @@ and keeps responsibilities clearly separated.
 
 Typical use:
 
+```yaml
 analysis:
   types:
     - summary
+```
 
 or:
 
+```yaml
 analysis:
   types:
     - summary
     - density
     - beaching_times
-
+```
 ------------------------------------------------------------
 IMPLEMENTED ANALYSES
 ------------------------------------------------------------
@@ -300,7 +318,7 @@ IMPLEMENTED ANALYSES
 Analyses are selected in the YAML configuration file.
 
 Example:
-
+```yaml
 analysis:
   types:
     - summary
@@ -308,7 +326,7 @@ analysis:
     - beaching_times
     - start_end_regions
     - trajectories
-
+```
 
 ------------------------------------------------------------
 SUMMARY WORKFLOW
@@ -326,17 +344,19 @@ This workflow is the only one that persists the base datasets.
 
 If the YAML contains:
 
+```yaml
 analysis:
   types:
     - summary
-
+```
 and:
 
+```yaml
 exports:
   save_trajectory_table: true
   save_particle_summary: true
   table_format: parquet
-
+```
 then the workflow writes:
 
 - trajectory_table.parquet
@@ -396,6 +416,7 @@ The currently supported analysis types are:
 
 These are selected in the YAML configuration:
 
+```yaml
 analysis:
   types:
     - summary
@@ -403,7 +424,7 @@ analysis:
     - beaching_times
     - start_end_regions
     - trajectories
-
+```
 
 ------------------------------------------------------------
 SUMMARY
@@ -512,7 +533,7 @@ as a diagnostic visualisation of the simulated particle paths.
 ------------------------------------------------------------
 YAML EXAMPLE (UPDATED)
 ------------------------------------------------------------
-
+```yaml
 dataset:
   input_path: outputs/simulation.zarr
 
@@ -573,7 +594,7 @@ trajectories:
 
 plotting:
   projection: PlateCarree
-
+```
 
 ------------------------------------------------------------
 CLI USAGE
@@ -581,11 +602,15 @@ CLI USAGE
 
 The post-processing pipeline is launched from the command line using:
 
+```bash
 run-parcels-postprocessing postprocess.yml
+```
 
 Alternative Python module execution:
 
+```bash
 python -m kinematicparcels.postprocessing.runner.run_postprocessing postprocess.yml
+```
 
 This command reads the YAML configuration, builds the required context,
 and executes the requested analyses in sequence.
@@ -597,7 +622,9 @@ WORKFLOW EXECUTION
 
 The execution driver is:
 
+```python
 run_postprocessing()
+```
 
 The runner performs:
 
@@ -607,8 +634,10 @@ The runner performs:
 
 Pseudo-logic:
 
+```python
 for analysis in cfg.analysis.types:
     run_analysis(...)
+```
 
 Shared data such as:
 
@@ -682,7 +711,7 @@ The series runner:
 
 ## MASTER CONFIGURATION (SCHEDULE MODE)
 
-```
+```yaml
 template_config: .\experiments\configs\postprocess.yml
 
 series:
@@ -747,13 +776,13 @@ postprocessing_series/
 
 Generate YAMLs only:
 
-```
+```bash
 python run_postprocessing_series.py master_postprocess.yml --generate-only
 ```
 
 Generate and execute:
 
-```
+```bash
 python run_postprocessing_series.py master_postprocess.yml
 ```
 
@@ -763,7 +792,7 @@ python run_postprocessing_series.py master_postprocess.yml
 
 Instead of using a time schedule, runs can be specified manually:
 
-```
+```yaml
 series:
   run_dirs:
     - "20260101-0000"
