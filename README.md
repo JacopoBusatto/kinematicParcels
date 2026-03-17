@@ -237,20 +237,20 @@ Experiments are defined through YAML configuration files.
 
 Example configuration:
 
-experiments/configs/exp_NPstg_surface.yml
+experiments/configs/fjords_test_1p.yml
 
 Run the simulation with:
 
 ```bash
-run-parcels-experiment experiments/configs/exp_NPstg_surface.yml
+run-parcels-experiment experiments/configs/fjords_test_1p.yml
 ```
 
 Example output:
 
-Experiment: NPstg_surface_test  
+Experiment: direct_points_test  
 Found 31 input files  
-ParticleSet created with 192 particles  
-Run completed: outputs/output_NPstg_surface.zarr
+ParticleSet created with 1 particles  
+Run completed: outputs/one_trajectory_test.zarr
 
 ---
 
@@ -259,44 +259,56 @@ Run completed: outputs/output_NPstg_surface.zarr
 The experiment runner can also be executed as a Python module:
 
 ```bash
-python -m kinematicparcels.runner.run_experiment experiments/configs/exp_NPstg_surface.yml
+python -m kinematicparcels.runner.run_experiment experiments/configs/fjords_test_1p.yml
 ```
 
 ---
 
 # YAML Configuration Example
-
+```yaml
 experiment:
-  name: NPstg_surface_test
+  name: one_trajectory_test
   output_dir: ./outputs
 
 fieldset:
-  file_pattern: ./fields/*.nc
+  file_pattern: C:/Users/Jacopo/Documents/DATI/PATAGONIA/ocean_uv_opendrift_final_V2.nc
+  periodic_halo: false
+  periodic_halo_size: 5
   variables:
-    U: ugos
-    V: vgos
+    U: x_sea_water_velocity
+    V: y_sea_water_velocity
   dimensions:
-    lon: longitude
-    lat: latitude
+    lon: lon_rho
+    lat: lat_rho
     time: time
+    depth: depth
   mesh: spherical
 
 release:
-  region_label: NPstg
-  dlon: 5
-  dlat: 5
+  mode: point_list
   filter_domain: true
+  filter_land: false
+
+  points:
+    - {lon: -72.80, lat: -51.90}
+
+  depth:
+    enabled: false
+    values: [0]
+    mode: snap_to_field
+    request_convention: positive_down
+    snap_method: nearest
+    remove_duplicate_depths: true
 
 simulation:
-  runtime_days: 10
-  dt_hours: 1
-  outputdt_hours: 24
+  runtime_days: 1
+  dt_hours: 0.1
+  outputdt_hours: 1
   particle_type: scipy
 
 output:
-  zarr_name: output_NPstg_surface.zarr
-
----
+  zarr_name: one_trajectory_test.zarr
+```
 
 ---
 
@@ -478,6 +490,7 @@ Particles can be released at multiple depths.
 
 Example configuration:
 
+```yaml
 depth:
   enabled: true
   values: [0, 50, 100]
@@ -485,6 +498,7 @@ depth:
   request_convention: positive_down
   snap_method: nearest
   remove_duplicate_depths: true
+```
 
 Available modes:
 
@@ -521,9 +535,11 @@ outputs/output_experiment.zarr
 
 Load them with xarray:
 
+```python
 import xarray as xr
 
 ds = xr.open_zarr("outputs/output_experiment.zarr")
+```
 
 ---
 
@@ -559,6 +575,7 @@ The system automatically:
 ```
 template_config: .\experiments\configs\fjords_01.yml
 
+```yaml
 series:
   output_root: C:/Users/Jacopo/Documents/DATI/PATAGONIA/simulation_series
 
@@ -614,7 +631,7 @@ python run_experiment_series.py master_series.yml
 
 The single experiment YAML supports:
 
-```
+```yaml
 simulation:
   start_time: "2026-01-01 00:00"
 ```
