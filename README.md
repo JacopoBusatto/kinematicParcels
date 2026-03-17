@@ -204,23 +204,28 @@ Simulation outputs (Zarr). Not versioned in Git.
 
 Clone the repository:
 
+```bash
 git clone https://github.com/JacopoBusatto/kinematicParcels.git
-
 cd kinematicParcels
-
+```
 
 Create the Conda environment:
 
+```bash
 conda env create -f environment.yml
+```
 
 Activate it:
 
+```bash
 conda activate parcels
-
+```
 
 Install the package in editable mode:
 
+```bash
 pip install -e .
+```
 
 This allows modifying the code without reinstalling the package.
 
@@ -236,7 +241,9 @@ experiments/configs/exp_NPstg_surface.yml
 
 Run the simulation with:
 
+```bash
 run-parcels-experiment experiments/configs/exp_NPstg_surface.yml
+```
 
 Example output:
 
@@ -251,7 +258,9 @@ Run completed: outputs/output_NPstg_surface.zarr
 
 The experiment runner can also be executed as a Python module:
 
+```bash
 python -m kinematicparcels.runner.run_experiment experiments/configs/exp_NPstg_surface.yml
+```
 
 ---
 
