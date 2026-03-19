@@ -246,12 +246,12 @@ run-parcels-experiment experiments/configs/fjords_test_1p.yml
 ```
 
 Example output:
-
+```
 Experiment: direct_points_test  
 Found 31 input files  
 ParticleSet created with 1 particles  
 Run completed: outputs/one_trajectory_test.zarr
-
+```
 ---
 
 # Alternative Execution Method
@@ -317,9 +317,9 @@ output:
 The framework supports both **regular lat/lon grids** and **curvilinear grids**.
 Velocity files can be provided as a single NetCDF file or as a time series
 using wildcards:
-
-file_pattern: ./fields/*.nc
-
+```yaml
+  file_pattern: ./fields/*.nc
+```
 ### Regular Grid Example
 
 Typical global reanalysis products:
