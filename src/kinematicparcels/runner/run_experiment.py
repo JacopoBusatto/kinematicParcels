@@ -21,6 +21,7 @@ warnings.filterwarnings(
 )
 
 from parcels import FieldSet, ParticleSet, ScipyParticle, JITParticle, AdvectionRK4
+from parcels.tools.statuscodes import StatusCode
 
 from kinematicparcels.utilities.geographicalRegions import (
     get_region_by_label,
@@ -137,6 +138,14 @@ def _build_release_points_from_list(rel_cfg: dict):
     return np.asarray(lons), np.asarray(lats)
 
 
+def DeleteErrorParticle(particle, fieldset, time):
+    if particle.state in (
+        StatusCode.ErrorOutOfBounds,
+        StatusCode.ErrorInterpolation,
+    ):
+        particle.delete()
+
+
 def parse_datetime_like(value: str) -> datetime:
     value = str(value).strip()
     for fmt in (
@@ -243,8 +252,10 @@ def run_simulation(cfg: dict, pset: ParticleSet):
         outputdt=timedelta(hours=sim_cfg["outputdt_hours"]),
     )
 
+    kernels = pset.Kernel(AdvectionRK4) + pset.Kernel(DeleteErrorParticle)
+
     pset.execute(
-        AdvectionRK4,
+        kernels,
         runtime=timedelta(days=sim_cfg["runtime_days"]),
         dt=timedelta(hours=sim_cfg["dt_hours"]),
         output_file=output_file,

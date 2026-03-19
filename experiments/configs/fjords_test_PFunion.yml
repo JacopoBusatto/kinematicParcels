@@ -19,8 +19,8 @@ fieldset:
 release:
   mode: region_grid
   region_label: PFunion
-  dlon: 0.05
-  dlat: 0.05
+  dlon: 0.005
+  dlat: 0.005
   filter_domain: true # evita rilasciare particelle in punti dove non c'è campo (es. fuori dominio o in terra)
 
   depth:
