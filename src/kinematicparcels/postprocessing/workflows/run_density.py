@@ -66,7 +66,7 @@ def run_density(cfg: PostprocessConfig, context: dict) -> None:
     grid = context["grid"]
 
     print("Computing density")
-
+    
     density_table, density_ds = compute_time_density(
         df,
         grid=grid,
@@ -75,6 +75,7 @@ def run_density(cfg: PostprocessConfig, context: dict) -> None:
         time_col=cfg.density.time_col,
         normalize_active=cfg.density.normalize_active,
         normalize_total=cfg.density.normalize_total,
+        fill_ever_active_empty_with_zero=cfg.density.fill_ever_active_empty_with_zero
     )
 
     outdir = Path(cfg.output.output_dir)

@@ -79,6 +79,7 @@ class DensityConfig:
     time_col: str = "time"
     normalize_active: bool = True
     normalize_total: bool = True
+    fill_ever_active_empty_with_zero: bool = False
 
     animate: bool = False
     animation_var: str = "particle_count"

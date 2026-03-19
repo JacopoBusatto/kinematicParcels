@@ -267,6 +267,7 @@ def _parse_density(section: dict[str, Any] | None) -> DensityConfig:
 
     normalize_active = bool(section.get("normalize_active", True))
     normalize_total = bool(section.get("normalize_total", True))
+    fill_ever_active_empty_with_zero = bool(section.get("fill_ever_active_empty_with_zero", False))
 
     animate = bool(section.get("animate", False))
     animation_var = _require_nonempty_string(
@@ -310,6 +311,7 @@ def _parse_density(section: dict[str, Any] | None) -> DensityConfig:
         animation_vmin=animation_vmin,
         animation_vmax=animation_vmax,
         show_time_bar=show_time_bar,
+        fill_ever_active_empty_with_zero=fill_ever_active_empty_with_zero
     )
 
 

@@ -37,6 +37,7 @@ density:
   time_col: time
   normalize_active: true
   normalize_total: true
+  fill_ever_active_empty_with_zero: true
 
   animate: true
   animation_var: particle_fraction_total
@@ -54,7 +55,7 @@ beaching_times:
   plot: true
 
 trajectories:
-  plot: true
+  plot: false
   animate: true
   title: "Trajectories"
   show_start: true

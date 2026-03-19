@@ -16,6 +16,7 @@ def compute_time_density(
     time_col: str = "time",
     normalize_active: bool = True,
     normalize_total: bool = True,
+    fill_ever_active_empty_with_zero: bool = False,
 ) -> tuple[pd.DataFrame, xr.Dataset]:
     """
     Compute time-dependent particle density on a regular lon/lat grid.
@@ -34,6 +35,10 @@ def compute_time_density(
     normalize_total
         If True, compute particle_fraction_total:
         particle_count / N_total
+    fill_ever_active_empty_with_zero
+        If True, cells that are occupied at least once during the simulation
+        are set to 0.0 at timesteps when they are empty. Cells never occupied
+        remain NaN.
 
     Returns
     -------
@@ -104,7 +109,6 @@ def compute_time_density(
     grouped = grouped.merge(active_counts, on=time_col, how="left")
 
     # Total number of trajectories in the dataset
-    # Use trajectory column if available, otherwise fallback to row-based unique count at t0 is impossible.
     if "trajectory" in work.columns:
         n_total = work["trajectory"].nunique()
     else:
@@ -141,6 +145,31 @@ def compute_time_density(
         if normalize_total and hasattr(row, "particle_fraction_total"):
             total_frac_data[t_idx, j, i] = float(row.particle_fraction_total)
 
+    # Cells that were active at least once during the simulation
+    if fill_ever_active_empty_with_zero:
+        ever_active_mask = np.any(~np.isnan(count_data), axis=0)  # (lat, lon)
+        ever_active_mask_3d = np.broadcast_to(ever_active_mask, count_data.shape)
+
+        count_data = np.where(
+            ever_active_mask_3d & np.isnan(count_data),
+            0.0,
+            count_data,
+        )
+
+        if normalize_active:
+            active_frac_data = np.where(
+                ever_active_mask_3d & np.isnan(active_frac_data),
+                0.0,
+                active_frac_data,
+            )
+
+        if normalize_total and not np.isnan(n_total) and n_total > 0:
+            total_frac_data = np.where(
+                ever_active_mask_3d & np.isnan(total_frac_data),
+                0.0,
+                total_frac_data,
+            )
+
     data_vars: dict[str, tuple[tuple[str, str, str], np.ndarray]] = {
         "particle_count": (("time", "lat", "lon"), count_data),
     }
@@ -174,9 +203,13 @@ def compute_time_density(
             "dlat": grid.dlat,
         },
     )
-    ds["particle_fraction_total"] .attrs["units"] = "%"
-    ds["particle_fraction_active"].attrs["units"] = "%"
-    ds["particle_fraction_total"]  = ds["particle_fraction_total"] * 100
-    ds["particle_fraction_active"] = ds["particle_fraction_active"] * 100
+
+    if "particle_fraction_total" in ds:
+        ds["particle_fraction_total"].attrs["units"] = "%"
+        ds["particle_fraction_total"] = ds["particle_fraction_total"] * 100
+
+    if "particle_fraction_active" in ds:
+        ds["particle_fraction_active"].attrs["units"] = "%"
+        ds["particle_fraction_active"] = ds["particle_fraction_active"] * 100
 
     return grouped, ds
