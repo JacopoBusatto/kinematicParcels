@@ -310,6 +310,8 @@ analysis:
     - summary
     - density
     - beaching_times
+    # - trajectories
+    # - start_end_regions
 ```
 ------------------------------------------------------------
 IMPLEMENTED ANALYSES
@@ -368,7 +370,7 @@ inside the configured output directory.
 ------------------------------------------------------------
 UPDATED PACKAGE ARCHITECTURE
 ------------------------------------------------------------
-
+```
 postprocessing/
 
 config/
@@ -400,7 +402,7 @@ workflows/
     - run_start_end_regions
     - run_trajectories
     - base_products
-
+```
 
 ------------------------------------------------------------
 IMPLEMENTED ANALYSES (UPDATED)
@@ -460,9 +462,38 @@ Output:
 Variables include:
 
 - particle_count
-- particle_fraction_active
-- particle_fraction_total
+- particle_fraction_active [%]
+- particle_fraction_total [%]
 
+Options:
+
+```yaml
+density:
+  lon_col: lon
+  lat_col: lat
+  time_col: time
+  normalize_active: true
+  normalize_total: true
+  fill_ever_active_empty_with_zero: true
+
+  animate: true
+  animation_var: particle_fraction_total
+  animation_label: "density [%]"
+  animation_fps: 6
+  animation_vmin: 0
+  animation_vmax: 0.05
+  show_time_bar: true
+```
+
+- `time_col`, `lon_col`  and `lat_col` string name of coordinates
+- `normalize_active` and `normalize_total` calculate the fraction of trajectory in each pixel with respect to the active or total number
+- `fill_ever_active_empty_with_zero` set to 0 empty (but explored at least once) pixels
+- `animate` plot an animation
+- `animatioon_var` which variable to plot
+- `animation_label` colorbar label
+- `animation_fps` fps of the gif
+- `animation_vmin` and `animation_vmin` min and max values for the colorbar. setting them clips smaller than `vmin` and higher than `vmax` values
+- `show_time_bar` draw a time progression bar
 
 ------------------------------------------------------------
 BEACHING TIMES
@@ -570,6 +601,7 @@ density:
   time_col: time
   normalize_active: true
   normalize_total: true
+  fill_ever_active_empty_with_zero: false
 
 beaching_times:
   lon_col: lon0
