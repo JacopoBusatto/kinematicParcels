@@ -236,9 +236,9 @@ This allows modifying the code without reinstalling the package.
 Experiments are defined through YAML configuration files.
 
 Example configuration:
-
+```
 experiments/configs/fjords_test_1p.yml
-
+```
 Run the simulation with:
 
 ```bash
