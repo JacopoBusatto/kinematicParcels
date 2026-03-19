@@ -516,6 +516,20 @@ Default aggregation:
 This gives a conservative estimate of the earliest beaching/exit time
 associated with each release pixel.
 
+Options:
+```yaml
+beaching_times:
+  lon_col: lon0
+  lat_col: lat0
+  value_col: lifetime_seconds
+  statistic: min
+  plot: true
+```
+
+- `lon_col` and `lat_col` column names of the coordinates to use
+- `value_col` name of the variable
+- `statistic` in case of overlapping values, which statistics to use. Available options: mean, count, sum, min, max, median, std,
+- `plot` draw a plot
 
 ------------------------------------------------------------
 START / END REGIONS
@@ -547,6 +561,23 @@ Outputs include:
 - end region map
 - optional plots
 
+Options:
+```yaml
+start_end_regions:
+  region_labels: null
+  how_many: last
+  priority_level: 6
+  priority_mode: atleast
+  input_lon_mode: "-180_180"
+  plot: true
+```
+
+- `region_labels` regions to inglude, null includes all regions avalilable
+- `priority_level` priority level to choose, behave together with `how_many` and `priority_mode`
+- `how_many` which region to choose in case of multiple possibilities. Avaliabe: first (min), last (max), all, priority_min (all with min priority) or priority_max (all with max priority)
+- `priority_mode` which priority level to choose. Available: exact, atleast, atmost
+- `input_lon_mode` format of the longitude. Available: "-180_180", "0_360"
+- `plot` draw a plot
 
 ------------------------------------------------------------
 TRAJECTORIES
@@ -560,6 +591,36 @@ Input:
 The analysis uses the stagnation-cleaned trajectories and is intended
 as a diagnostic visualisation of the simulated particle paths.
 
+
+Options:
+```yaml
+trajectories:
+  plot: false
+  animate: true
+  title: "Trajectories"
+  show_start: true
+  show_end: false
+
+  animation_fps: 6
+  animation_color_by: lat0
+  animation_vmin: -52.5
+  animation_vmax: -51.3
+  animation_label: "initial latitude"
+  show_time_bar: true
+  trail: true
+  trail_steps: 20
+```
+
+- `plot` draw string plot
+- `animate` draw the animation
+- `title` string title of the plot
+- `show_start` and `show_end` mark start and end point
+- `animation_fps`
+- `animation_color_by` and `animation_label` variable to plot as color and colorbar label
+- `animation_vmin` and `animation_vmax` 
+- `show_time_bar`
+- `trail` and `trail_steps` plot a trail behind trajectories and its lenght
+- `show_time_bar` draw a time progression bar
 
 ------------------------------------------------------------
 YAML EXAMPLE (UPDATED)
