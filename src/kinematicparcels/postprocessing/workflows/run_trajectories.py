@@ -35,6 +35,7 @@ def run_trajectories(cfg: PostprocessConfig, context: dict) -> None:
             title=cfg.trajectories.title,
             show_start=cfg.trajectories.show_start,
             show_end=cfg.trajectories.show_end,
+            max_group_member=cfg.trajectories.max_group_member,
         )
 
     if cfg.trajectories.animate:
@@ -54,4 +55,5 @@ def run_trajectories(cfg: PostprocessConfig, context: dict) -> None:
             trail=cfg.trajectories.trail,
             trail_steps=cfg.trajectories.trail_steps,
             summary_df=summary,
+            max_group_member=cfg.trajectories.max_group_member,
         )

@@ -5,189 +5,108 @@ Lightweight framework to run **Lagrangian particle experiments with OceanParcels
 The goal of this project is to **separate experiment configuration from simulation logic**, allowing multiple experiments to be run without creating many different Python scripts.
 
 All experiment parameters are defined in YAML files:
-- release region
+- release region / points
 - initial particle grid
+- **grouped-particle initialization** (multi-particle ensembles, pair dispersion)
 - vertical levels
 - velocity fields
 - simulation duration
 - integration timestep
 - output timestep
 
-The framework provides a **generic experiment runner** that reads the configuration file and executes the simulation.
+The framework provides a **generic experiment runner** that reads the configuration file and executes the simulation, with optional postprocessing for analysis and visualization.
 
 ---
 
 # Project Structure
 
+```
 kinematicParcels/
-
 ├── src/
-
 │   └── kinematicparcels/
-
 │       ├── __init__.py
-
 │       ├── runner/
-
 │       │   ├── __init__.py
-
 │       │   ├── run_experiment.py
-
 │       │   └── run_experiment_series.py
-
 │       ├── postprocessing/
-
 │       │   ├── __init__.py
-
 │       │   ├── analyses/
-
 │       │   │   ├── __init__.py
-
 │       │   │   ├── beaching_times.py
-
 │       │   │   ├── density.py
-
 │       │   │   └── start_end_regions.py
-
 │       │   ├── animations/
-
 │       │   │   ├── __init__.py
-
 │       │   │   ├── density.py
-
 │       │   │   ├── trajectories.py
-
 │       │   │   └── utils.py
-
 │       │   ├── config/
-
 │       │   │   ├── __init__.py
-
 │       │   │   ├── loader.py
-
 │       │   │   └── models.py
-
 │       │   ├── core/
-
 │       │   │   ├── __init__.py
-
 │       │   │   ├── filters.py
-
 │       │   │   ├── gridding.py
-
 │       │   │   └── summaries.py
-
 │       │   ├── io/
-
 │       │   │   ├── __init__.py
-
 │       │   │   ├── exports.py
-
 │       │   │   └── parcels.py
-
 │       │   ├── plotting/
-
 │       │   │   ├── __init__.py
-
 │       │   │   ├── maps.py
-
 │       │   │   ├── projections.py
-
 │       │   │   └── trajectories.py
-
 │       │   ├── runner/
-
 │       │   │   ├── __init__.py
-
 │       │   │   ├── cli.py
-
 │       │   │   ├── run_postprocessing.py
-
 │       │   │   └── run_postprocessing_series.py
-
 │       │   └── workflows/
-
-│       │       ├── __init.__.py
-
+│       │       ├── __init__.py
 │       │       ├── base_products.py
-
 │       │       ├── quicklook.py
-
 │       │       ├── run_beaching_times.py
-
 │       │       ├── run_density.py
-
 │       │       ├── run_start_end_regions.py
-
 │       │       ├── run_summary.py
-
 │       │       └── run_trajectories.py
-
 │       └── utilities/
-
 │           ├── __init__.py
-
 │           ├── compare_region_shape.py
-
 │           ├── geographicalRegions.py
-
 │           ├── geographicalRegions_rectangles.py
-
+│           ├── group_expansion.py
 │           ├── init_checks.py
-
 │           ├── init_depths.py
-
 │           └── regions_definitions.py
-
-│
-
 ├── experiments/
-
 │   └── configs/
-
 │       ├── exp_NPstg_surface.yml
-
 │       ├── exp_NPstg_multilevel.yml
-
 │       ├── fjords_template_PFunion.yml
-
 │       ├── fjords_template_postprocessing.yml
-
 │       ├── fjords_test_1p.yml
-
 │       ├── fjords_test_PFunion.yml
-
 │       ├── multiple_simulation_postprocessing.yml
-
 │       └── multiple_simulation_run.yml
-
-│
-
-├── fields/          (input velocity fields, not tracked)
-
-├── outputs/         (simulation outputs, not tracked)
-
-├── logs/            (optional run logs)
-
+├── fields/                    (input velocity fields, not tracked)
+├── outputs/                   (simulation outputs, not tracked)
+├── logs/                      (optional run logs)
 ├── testing_utils/
-
 │   ├── interpolate_field_over_trajectory.py
-
 │   ├── test.py
-
 │   └── test_shapes.py
-
 ├── environment.yml
-
 ├── pyproject.toml
-
 ├── LICENSE.md
-
 ├── POSTPROCESSING.md
-
+├── GROUPED_PARTICLES.md
 ├── .gitignore
-
 └── README.md
+```
 
 experiments/configs  
 YAML configuration files describing experiments.
@@ -512,10 +431,77 @@ If multiple requested depths collapse onto the same field level, duplicates can 
 
 ---
 
+# Grouped-Particle Release
+
+The framework supports **multi-particle ensembles** (grouped-particle initialization), where each base release point expands into a group of particles for ensemble statistics or pair-dispersion experiments.
+
+## Concept
+
+Instead of releasing a single particle per location, grouped mode releases **n particles per base point**:
+
+- 1 particle at the release center
+- (n-1) particles arranged on a circle around the center at configurable radius
+
+This is useful for:
+
+- **Pair-dispersion studies**: Track how two nearby particles separate over time
+- **Ensemble statistics**: Release groups to quantify uncertainty  
+- **Sensitivity analysis**: Perturb release locations by known distances
+
+## Configuration Example
+
+```yaml
+release:
+  mode: point_list
+  filter_domain: true
+  
+  points:
+    - {lon: -72.80, lat: -51.90}
+    - {lon: -73.00, lat: -52.00}
+  
+  group:
+    size: 3                    # Particles per group
+    radius_km: 0.5             # Distance from center to circle
+    placement: equal_angles    # or 'random'
+```
+
+Configuration parameters:
+
+**size**  
+Number of particles per group (1 = no grouping, 2+ = enabled).
+
+**radius_km**  
+Distance (kilometers) from the base point to circle perimeter. Uses Cartesian approximation valid for ≤100 km.
+
+**placement**  
+- `equal_angles`: Deterministic angular spacing (360° / (size-1)) 
+- `random`: Random starting angle on the circle
+
+## Metadata Storage
+
+Each particle automatically receives metadata fields:
+
+- `group_id`: Index of the base release point (shared across group members)
+- `group_member`: Member index within group (1 to size)
+- `group_size`: Total particles per group
+
+These fields enable filtering and visualization by group membership during postprocessing.
+
+## Postprocessing with Groups
+
+See [POSTPROCESSING.md](#grouped-trajectories) for visualization examples of grouped trajectories, including member-based coloring and filtering.
+
+For comprehensive documentation, refer to [GROUPED_PARTICLES.md](GROUPED_PARTICLES.md).
+
+---
+
 # Utilities
 
 geographicalRegions.py  
 Defines geographic regions and builds regular release grids.
+
+group_expansion.py  
+Geometric transformation for grouped-particle initialization. Expands base release points into multi-particle groups with domain filtering.
 
 init_checks.py  
 Checks initial particle positions and removes points outside the velocity field domain.
@@ -573,7 +559,7 @@ The system automatically:
 ## Master Configuration Example
 
 ```yaml
-template_config: .\experiments\configs\fjords_01.yml
+template_config: ./experiments/configs/fjords_01.yml
 
 series:
   output_root: C:/Users/Jacopo/Documents/DATI/PATAGONIA/simulation_series

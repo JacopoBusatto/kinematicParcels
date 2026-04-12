@@ -38,6 +38,7 @@ def animate_trajectories(
     add_coastlines: bool = True,
     add_gridlines: bool = True,
     summary_df: pd.DataFrame | None = None,
+    max_group_member: int | None = None,
 ) -> Path:
     """
     Animate trajectories as moving particle positions on a map.
@@ -45,6 +46,12 @@ def animate_trajectories(
     Color logic:
     - if color_by is in summary_df, color is fixed per trajectory
     - elif color_by is in trajectory_df, color is taken from the current frame
+    
+    Parameters
+    ----------
+    max_group_member
+        If set and group_member column exists, animate only members <= max_group_member.
+        If None, animate all available members.
     """
     required = ["trajectory", "obs", "time", "lon", "lat"]
     missing = [c for c in required if c not in trajectory_df.columns]
@@ -57,6 +64,18 @@ def animate_trajectories(
     df = trajectory_df.copy()
     df["time"] = pd.to_datetime(df["time"])
     df = df.sort_values(["trajectory", "obs"]).reset_index(drop=True)
+
+    # =========================================================================
+    # GROUPED TRAJECTORIES: Filter by max_group_member if present
+    # =========================================================================
+    has_group_member = "group_member" in df.columns
+    if has_group_member and max_group_member is not None:
+        # Filter to keep only group members 1..max_group_member
+        df = df[df["group_member"] <= max_group_member].copy()
+        if df.empty:
+            raise ValueError(
+                f"No trajectories found with group_member <= {max_group_member}"
+            )
 
     times = np.sort(df["time"].dropna().unique())
     if len(times) == 0:

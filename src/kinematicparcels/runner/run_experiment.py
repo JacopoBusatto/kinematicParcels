@@ -20,7 +20,7 @@ warnings.filterwarnings(
     category=UserWarning,
 )
 
-from parcels import FieldSet, ParticleSet, ScipyParticle, JITParticle, AdvectionRK4
+from parcels import FieldSet, ParticleSet, ScipyParticle, JITParticle, AdvectionRK4, Variable
 from parcels.tools.statuscodes import StatusCode
 
 from kinematicparcels.utilities.geographicalRegions import (
@@ -36,11 +36,29 @@ from kinematicparcels.utilities.init_depths import (
     summarize_depth_axis,
     build_multilevel_release,
 )
+from kinematicparcels.utilities.group_expansion import expand_groups
 
 
-# -----------------------------------------------------------------------------
+# ============================================================================
+# Custom Particle Classes with Grouped-Release Metadata Variables
+# ============================================================================
+class ScipyParticleGrouped(ScipyParticle):
+    """ScipyParticle with group_id, group_member, group_size variables."""
+    group_id = Variable('group_id', dtype=np.int32, initial=0)
+    group_member = Variable('group_member', dtype=np.int32, initial=1)
+    group_size = Variable('group_size', dtype=np.int32, initial=1)
+
+
+class JITParticleGrouped(JITParticle):
+    """JITParticle with group_id, group_member, group_size variables."""
+    group_id = Variable('group_id', dtype=np.int32, initial=0)
+    group_member = Variable('group_member', dtype=np.int32, initial=1)
+    group_size = Variable('group_size', dtype=np.int32, initial=1)
+
+
+# ============================================================================
 # Helpers
-# -----------------------------------------------------------------------------
+# ============================================================================
 def load_config(path: str | Path) -> dict:
     with open(path, "r", encoding="utf-8") as f:
         return yaml.safe_load(f)
@@ -49,9 +67,9 @@ def load_config(path: str | Path) -> dict:
 def get_particle_class(name: str):
     name = name.lower()
     if name == "scipy":
-        return ScipyParticle
+        return ScipyParticleGrouped
     if name == "jit":
-        return JITParticle
+        return JITParticleGrouped
     raise ValueError(f"Unsupported particle_type: {name}")
 
 
@@ -188,6 +206,39 @@ def build_release(cfg: dict, fieldset: FieldSet):
         lons_raw, lats_raw = filter_inside_domain(lons_raw, lats_raw, fieldset)
         summarize_initial_points(lons_raw, lats_raw, name="filtered release points")
 
+    # =========================================================================
+    # GROUPED-RELEASE EXPANSION (new)
+    # =========================================================================
+    group_cfg = rel_cfg.get("group", {})
+    group_size = group_cfg.get("size", 1)
+
+    if group_size > 1:
+        lons_raw, lats_raw, group_id, group_member, group_size_arr = expand_groups(
+            lons_base=lons_raw,
+            lats_base=lats_raw,
+            fieldset=fieldset,
+            group_size=group_size,
+            radius_km=group_cfg.get("radius_km", 0.1),
+            placement=group_cfg.get("placement", "random"),
+        )
+        summarize_initial_points(lons_raw, lats_raw, name="grouped release points")
+
+        metadata = {
+            "group_id": group_id,
+            "group_member": group_member,
+            "group_size": group_size_arr,
+        }
+    else:
+        # Single mode: trivial metadata (one particle per base center)
+        metadata = {
+            "group_id": np.arange(len(lons_raw), dtype=int),
+            "group_member": np.ones(len(lons_raw), dtype=int),
+            "group_size": np.ones(len(lons_raw), dtype=int),
+        }
+
+    # =========================================================================
+    # DEPTH EXPANSION (existing, now applied to expanded lons_raw/lats_raw)
+    # =========================================================================
     depth_cfg = rel_cfg.get("depth", {})
     use_depth = depth_cfg.get("enabled", False)
 
@@ -205,12 +256,12 @@ def build_release(cfg: dict, fieldset: FieldSet):
             remove_duplicate_depths=depth_cfg.get("remove_duplicate_depths", True),
             verbose=True,
         )
-        return lons, lats, depths
+        return lons, lats, depths, metadata
 
-    return lons_raw, lats_raw, None
+    return lons_raw, lats_raw, None, metadata
 
 
-def build_particleset(cfg: dict, fieldset: FieldSet, lons, lats, depths=None):
+def build_particleset(cfg: dict, fieldset: FieldSet, lons, lats, depths=None, metadata_dict=None):
     sim_cfg = cfg["simulation"]
     pclass = get_particle_class(sim_cfg.get("particle_type", "scipy"))
 
@@ -223,6 +274,11 @@ def build_particleset(cfg: dict, fieldset: FieldSet, lons, lats, depths=None):
 
     if depths is not None:
         kwargs["depth"] = depths
+
+    # Add grouped-release metadata to ParticleSet
+    # NOTE: Custom fields are passed to Parcels, but output to Zarr must be verified
+    if metadata_dict:
+        kwargs.update(metadata_dict)
 
     start_time = sim_cfg.get("start_time", None)
     if start_time is not None:
@@ -276,8 +332,8 @@ def main():
     print(f"Experiment: {cfg['experiment']['name']}")
 
     fieldset = build_fieldset(cfg)
-    lons, lats, depths = build_release(cfg, fieldset)
-    pset = build_particleset(cfg, fieldset, lons, lats, depths=depths)
+    lons, lats, depths, metadata = build_release(cfg, fieldset)
+    pset = build_particleset(cfg, fieldset, lons, lats, depths=depths, metadata_dict=metadata)
     run_simulation(cfg, pset)
 
 

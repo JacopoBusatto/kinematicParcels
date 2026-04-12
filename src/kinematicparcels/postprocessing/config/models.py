@@ -116,6 +116,9 @@ class TrajectoriesConfig:
     trail: bool = True
     trail_steps: int | None = None
 
+    # Grouped particle support
+    max_group_member: int | None = None  # None = plot all members
+
 
 @dataclass(frozen=True)
 class StartEndRegionsConfig:

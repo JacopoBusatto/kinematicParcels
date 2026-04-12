@@ -1,0 +1,37 @@
+experiment:
+  name: test_group_pairs
+  output_dir: ./outputs
+
+fieldset:
+  file_pattern: ./fields/mfs/med_sea_phys_rean_2000010*.nc
+  variables:
+    U: uo
+    V: vo
+  dimensions:
+    lon: longitude
+    lat: latitude
+    time: time
+    depth: depth
+  mesh: spherical
+
+release:
+  mode: point_list
+  points:
+    - {lon: 12.0, lat: 36.0}
+    - {lon: 14.0, lat: 36.0}
+  filter_domain: true
+  group:
+    size: 5
+    radius_km: 3.
+    placement: random
+  depth:
+    enabled: false
+
+simulation:
+  particle_type: scipy
+  runtime_days: 8
+  dt_hours: 0.2
+  outputdt_hours: 1
+
+output:
+  zarr_name: test_group_pairs.zarr

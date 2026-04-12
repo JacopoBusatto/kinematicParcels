@@ -174,6 +174,75 @@ cleaning:
 ```
 
 ------------------------------------------------------------
+GROUPED TRAJECTORIES
+------------------------------------------------------------
+
+When simulation release uses grouped-particle mode (see README.md), the output contains metadata describing group membership:
+
+- `group_id`: Shared index across all members of a group
+- `group_member`: Member index within the group (1, 2, 3, ...)
+- `group_size`: Total particles per group
+
+The postprocessing framework provides visualization and filtering support for grouped trajectories.
+
+## Trajectory Visualization with Groups
+
+The trajectory plotting module automatically detects group membership in the trajectory data and provides:
+
+**Group filtering**: Display only specific group members
+- Controlled by `max_group_member` configuration parameter
+- `null` = show all members with distinct colors
+- `1` = show only center particles (member 1 of each group)
+- `2` = show center + one ring member, etc.
+
+**Member-based coloring**: Each group member gets a distinct color across all groups
+- Enables visual tracking of dispersion patterns
+- Useful for pair-dispersion studies
+
+Configuration example:
+
+```yaml
+trajectories:
+  # Plot only center particles and first ring member
+  max_group_member: 2
+  animate: false
+```
+
+With `max_group_member: null` (plot all members):
+
+```yaml
+trajectories:
+  max_group_member: null
+  animate: true
+```
+
+## Example: Pair Dispersion Visualization
+
+For pair-dispersion experiments (group.size: 2):
+
+- **Member 1**: Center particle (blue)
+- **Member 2**: Offset particle (orange)
+
+The distance between member 1 and member 2 trajectories visualizes dispersion growth.
+
+Configuration:
+
+```yaml
+release:
+  group:
+    size: 2
+    radius_km: 0.1
+    placement: equal_angles
+
+trajectories:
+  max_group_member: 2
+  animate: true
+  title: "Pair Dispersion over Time"
+```
+
+For more details on grouped-particle setup and advanced analysis, see [GROUPED_PARTICLES.md](GROUPED_PARTICLES.md).
+
+------------------------------------------------------------
 PARTICLE SUMMARY
 ------------------------------------------------------------
 

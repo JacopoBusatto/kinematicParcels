@@ -1,16 +1,12 @@
 dataset:
-  input_path: C:/Users/Jacopo/Documents/DATI/PATAGONIA/simulation/output_PFall.zarr
+  input_path: ./outputs/test_group_pairs.zarr
 
 analysis:
   types:
-    - summary
     - trajectories
-    - density
-    - beaching_times
-    - start_end_regions
 
 output:
-  output_dir: C:/Users/Jacopo/Documents/DATI/PATAGONIA/simulation/output_PFall.zarr/postprocessing
+  output_dir: ./outputs/postprocessing/test_group_pairs
 
 exports:
   save_trajectory_table: true
@@ -55,16 +51,15 @@ beaching_times:
   plot: true
 
 trajectories:
-  plot: false
+  plot: true
   animate: true
-  title: "Trajectories"
+  title: "Grouped Trajectories"
   show_start: true
-  show_end: false
+  show_end: true
+  max_group_member: null  # null = all members, or set to 1,2,3,etc to filter
 
-  animation_fps: 6
+  animation_fps: 3
   animation_color_by: lat0
-  animation_vmin: -52.5
-  animation_vmax: -51.3
   animation_label: "initial latitude"
   show_time_bar: true
   trail: true
