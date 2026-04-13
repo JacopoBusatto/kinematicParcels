@@ -1,12 +1,12 @@
 dataset:
-  input_path: ./outputs/triplets_cpf.zarr
+  input_path: ./outputs/singles_cpf.zarr
 
 analysis:
   types:
     - trajectories
 
 output:
-  output_dir: ./outputs/postprocessing/triplets_cpf
+  output_dir: ./outputs/postprocessing/singles_cpf
 
 exports:
   save_trajectory_table: true
@@ -58,9 +58,9 @@ trajectories:
   show_end: true
   max_group_member: null  # null = all members, or set to 1,2,3,etc to filter
 
-  animation_fps: 6
-  animation_color_by: group_id #example: lat0
-  animation_label: "groups"
+  animation_fps: 9
+  animation_color_by: lat0 #example: lat0
+  animation_label: "initial latitude"
   show_time_bar: true
   trail: true
   trail_steps: 20

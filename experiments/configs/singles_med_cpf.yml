@@ -1,5 +1,5 @@
 experiment:
-  name: test_group_pairs
+  name: med_cpf_singles_20260410-1200
   output_dir: ./outputs
 
 fieldset:
@@ -15,16 +15,13 @@ fieldset:
   mesh: spherical
 
 release:
-  mode: point_list
-  points:
-    - {lon: 15.9, lat: 37.3}
-    - {lon: 14.4, lat: 36.5}
-    - {lon: 15.3, lat: 36.5}
-    - {lon: 15.6, lat: 36.0}
-    - {lon: 15.9, lat: 35.5}
+  mode: region_grid
+  region_label: med_cpf
+  dlon: 0.05
+  dlat: 0.05
   filter_domain: true
   group:
-    size: 5
+    size: 1
     radius_km: 1.
     placement: random
   depth:
@@ -33,9 +30,9 @@ release:
 simulation:
   start_time: "2026-04-10 12:00"
   particle_type: scipy
-  runtime_days: 8
+  runtime_days: 3
   dt_hours: 0.2
   outputdt_hours: 1
 
 output:
-  zarr_name: test_group_pairs.zarr
+  zarr_name: singles_cpf.zarr

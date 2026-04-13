@@ -42,3 +42,7 @@ logs/*
 *.jpg
 *.jpeg
 *.pdf
+
+# Local data download scripts (operator-specific)
+download_mfs_forecast.py
+copernicus_env.yml

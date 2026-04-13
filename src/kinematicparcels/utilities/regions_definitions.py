@@ -93,6 +93,21 @@ REGIONS_DATA = [
     ),
 
     dict(
+        name="Cape Passero Filament",
+        label="med_cpf",
+        numericLabel=1,
+        polygons=[
+            [
+                (14.50, 37.00),
+                (14.50, 35.00),
+                (16.00, 35.00),
+                (16.00, 37.00),
+            ]
+        ],
+        priority=5,
+    ),
+
+    dict(
         name="Aegean Sea 1",
         label="aeg",
         numericLabel=9,

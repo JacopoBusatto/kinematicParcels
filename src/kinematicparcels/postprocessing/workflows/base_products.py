@@ -52,6 +52,7 @@ def get_trajectory_table(
         truncate_stagnant=cfg.cleaning.truncate_stagnant,
         stagnant_tol=cfg.cleaning.stagnant_tol,
         stagnant_min_consecutive=cfg.cleaning.stagnant_min_consecutive,
+        extra_vars=['group_id', 'group_member', 'group_size'],
     )
     context["trajectory_table"] = df
     return df

@@ -1,12 +1,12 @@
 dataset:
-  input_path: ./outputs/triplets_cpf.zarr
+  input_path: ./outputs/test_group_pairs.zarr
 
 analysis:
   types:
     - trajectories
 
 output:
-  output_dir: ./outputs/postprocessing/triplets_cpf
+  output_dir: ./outputs/postprocessing/test_group_pairs
 
 exports:
   save_trajectory_table: true
