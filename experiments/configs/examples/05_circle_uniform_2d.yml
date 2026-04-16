@@ -1,0 +1,52 @@
+experiment:
+  name: ex05_circle_uniform_2d
+  output_dir: ./test_output/examples
+
+fieldset:
+  file_pattern: ./test_fields/zero_velocity_april_2026.nc
+  periodic_halo: false
+  periodic_halo_size: 5
+  variables:
+    U: x_sea_water_velocity
+    V: y_sea_water_velocity
+  dimensions:
+    lon: lon
+    lat: lat
+    time: time
+  mesh: spherical
+
+release:
+  mode: circle
+
+  circle:
+    lat: 36.8
+    lon: 15.4
+    dimension: 2D
+    radius_km: 3.0
+    count_per_timestep: 20
+    release_interval: 6H
+    release_period: 2D
+    sampling: uniform
+    seed: 42
+    out_of_domain_policy: retry
+    bathymetry_policy: drop
+
+  group:
+    size: 1
+
+  depth:
+    enabled: false
+    values: [0]
+
+simulation:
+  start_time: "2026-04-01 00:00"
+  runtime_days: 3.0
+  dt_hours: 0.1
+  outputdt_hours: 1.0
+  particle_type: scipy
+
+lkm:
+  enabled: false
+
+output:
+  zarr_name: ex05_circle_uniform_2d.zarr

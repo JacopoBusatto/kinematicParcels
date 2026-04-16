@@ -1,0 +1,720 @@
+\documentclass[11pt,a4paper]{article}
+\usepackage[margin=2.5cm]{geometry}
+\usepackage[T1]{fontenc}
+\usepackage[utf8]{inputenc}
+\usepackage{lmodern}
+\usepackage{amsmath,amssymb,bm}
+\usepackage{hyperref}
+\usepackage{enumitem}
+\usepackage{xcolor}
+\usepackage{booktabs}
+\usepackage{longtable}
+\usepackage{array}
+\usepackage{titlesec}
+\usepackage{mathtools}
+
+\hypersetup{
+	colorlinks=true,
+	linkcolor=blue,
+	urlcolor=blue,
+	citecolor=blue
+}
+
+\title{Implementation Notes for a Parcels Kernel Coupling the Lagrangian Kinematic Model (LKM) to Grouped-Particle Integration}
+\author{}
+\date{}
+
+\begin{document}
+	\maketitle
+	
+	\section{Purpose}
+	
+	This note collects the information needed to implement, inside the current \texttt{kinematicParcels} grouped-particle workflow, a Parcels kernel that adds a \emph{Lagrangian Kinematic Model} (LKM) contribution to the resolved velocity field.
+	
+	The goal is not just to restate the paper, but to translate its content into an implementation blueprint that can be handed to a VS Code agent.
+	
+	The two source constraints are:
+	\begin{enumerate}[label=\arabic*.]
+		\item the scientific definition of the kinematic model from \emph{Lagrangian predictability characteristics of an Ocean Model} (Lacorata, Palatella, Santoleri, 2014),
+		\item the current project architecture for grouped particles, where each release center expands into a group and stores \texttt{group\_id}, \texttt{group\_member}, and \texttt{group\_size} metadata.
+	\end{enumerate}
+
+	\paragraph{Implementation status note (April 2026).}
+	This document mixes (i) a physics-driven target design and (ii) implementation details.
+	In the current repository there are two runtime paths:
+	\begin{itemize}
+		\item a member-based synchronized path (\texttt{update\_group\_centers\_and\_relative\_coords}),
+		\item a grouped-entity path (default for \texttt{group.size > 1}) using fixed member fields (\texttt{lon\_1..lon\_4}, \texttt{lat\_1..lat\_4}).
+	\end{itemize}
+	The grouped-entity kernel currently computes the group center with arithmetic lon/lat averaging and local metric conversion.
+	The spherical-center workflow described below remains the recommended scientific target, not a statement that every active runtime path already uses it.
+	
+	\section{Scientific model to be implemented}
+	
+	\subsection{Resolved flow plus unresolved contribution}
+	
+	The paper frames the trajectory problem as a decomposition between a resolved large-scale velocity and an unresolved small-scale contribution. In continuous form, the ``true'' dynamics is written as
+	\begin{equation}
+		\frac{d\mathbf{x}}{dt}(t) = \mathbf{U}^{(k<k_0)}(\mathbf{x},t) + \mathbf{u}^{(k>k_0)}(\mathbf{x},t),
+	\end{equation}
+	while the modelled dynamics replaces the unresolved contribution with a parameterization. In our case, the resolved Parcels fieldset velocity is the first term and the LKM is the parameterized unresolved term.
+	
+	Therefore, the particle equation to implement in practice is
+	\begin{equation}
+		\frac{d\mathbf{x}}{dt} = \mathbf{U}_{\mathrm{resolved}}(\mathbf{x},t) + \mathbf{u}_{\mathrm{LKM}}(\mathbf{x},t).
+	\end{equation}
+	
+	In Parcels language, this means: sample the Eulerian velocity from the fieldset as usual, then add a deterministic, time-dependent, incompressible, multiscale horizontal velocity computed in the kernel.
+	
+	\subsection{Exact LKM form used in the paper}
+	
+	The paper defines a two-dimensional, multiscale, time-dependent convective velocity field:
+	\begin{align}
+		u_{\mathrm{LKM}}(x,y,t) &= \sum_{n=1}^{N_m} A_n\,\sin\!\left[k_n x - k_n \epsilon_n \sin(\omega_n t)\right]
+		\cos\!\left[k_n y - k_n \epsilon_n \sin(\omega_n t + \phi_n)\right], \\
+		v_{\mathrm{LKM}}(x,y,t) &= -\sum_{n=1}^{N_m} A_n\,\cos\!\left[k_n x - k_n \epsilon_n \sin(\omega_n t)\right]
+		\sin\!\left[k_n y - k_n \epsilon_n \sin(\omega_n t + \phi_n)\right].
+	\end{align}
+	
+	Important properties explicitly stated or implied by the paper:
+	\begin{itemize}[leftmargin=1.5em]
+		\item it is \textbf{2-D} and horizontal,
+		\item it is \textbf{incompressible},
+		\item it is \textbf{deterministic} but time dependent,
+		\item it is built as a superposition of independent spatial modes,
+		\item each mode is intended to generate chaotic Lagrangian motion at its own scale,
+		\item the model is added to compensate the mesoscale ``dynamical gap'' of the resolved velocity field.
+	\end{itemize}
+	
+	\subsection{Meaning of the parameters}
+	
+	For each mode $n$:
+	\begin{itemize}[leftmargin=1.5em]
+		\item $A_n$ is the velocity amplitude,
+		\item $k_n$ is the wavenumber,
+		\item $\epsilon_n$ is the oscillation amplitude of the mode perturbation,
+		\item $\omega_n$ is the oscillation frequency,
+		\item $\phi_n$ is a phase shift,
+		\item the number of modes is not prescribed directly, but derived from the scale range.
+	\end{itemize}
+	
+	The paper then gives a concrete calibration used to match mesoscale pair-dispersion statistics:
+	\begin{align}
+		A_n &= A_0 \left(\frac{k_n}{k_0}\right)^{-1/3}, \\
+		A_0 &= C_0 (\epsilon/ k_0)^{1/3}, \\
+		\epsilon_n &= 10^{-1} / k_n, \\
+		\omega_n &= 2\pi / T_n, \\
+		T_n &= 2 l_n / A_n, \\
+		l_n &= 2\pi / k_n.
+	\end{align}
+	
+	For the implementation, it is preferable to parameterize the modes through a geometric progression of spatial scales rather than by prescribing $N_m$ and a single $L_0$.
+	
+	Define:
+	\begin{itemize}[leftmargin=1.5em]
+		\item $L_{\min}$ = smallest wavelength to include,
+		\item $L_{\max}$ = largest wavelength to include,
+		\item $r$ = increment factor, with $r>1$.
+	\end{itemize}
+	
+	Then build the modal wavelengths as
+	\begin{equation}
+		l_n = L_{\min} \, r^n, \qquad n=0,1,\dots,N_m,
+	\end{equation}
+	where the largest valid index is the greatest $N_m$ such that
+	\begin{equation}
+		l_n \le L_{\max}.
+	\end{equation}
+	Equivalently,
+	\begin{equation}
+		N_m = \left\lfloor \frac{\log(L_{\max}/L_{\min})}{\log r} \right\rfloor.
+	\end{equation}
+	
+	The wavenumbers are then
+	\begin{equation}
+		k_n = \frac{2\pi}{l_n}.
+	\end{equation}
+	
+	This is the preferred parametrization for code because it makes the scale range explicit and produces a log-spaced ladder of modes, which is more natural for cascade-like dynamics.
+	
+	A paper-consistent starting range would still be approximately:
+	\begin{itemize}[leftmargin=1.5em]
+		\item $L_{\max} \sim 10\ \mathrm{km}$,
+		\item $L_{\min}$ in the sub-kilometric to kilometric range,
+		\item $\epsilon \approx 10^{-9}\ \mathrm{m}^2\,\mathrm{s}^{-3}$,
+		\item $C_0 \approx O(1)$ as a tuning constant,
+		\item $\phi_n = \pi/4$ or fixed random phases.
+	\end{itemize}
+	
+	\subsection{Why the center-of-mass frame matters}
+	
+	The paper explicitly states that the kinematic velocity should be computed in the \textbf{reference frame of the mass center of a particle pair} to avoid the sweeping problem. This is the key bridge to the current grouped-particle architecture.
+	
+	For our code base, this means the LKM must not be evaluated in a fixed global frame only. It should be evaluated using particle coordinates relative to the group center of mass, so that the unresolved kinematic field acts on the \emph{internal separation dynamics} of the group rather than imposing a spurious absolute drift.
+	
+	This is the most important design requirement from the paper for grouped simulations.
+	
+	\section{Translation to the current grouped-particle code}
+	
+	\subsection{What already exists in the project}
+	
+	The current code base already supports grouped release centers:
+	\begin{itemize}[leftmargin=1.5em]
+		\item one base release point expands into a group of particles,
+		\item each particle has \texttt{group\_id}, \texttt{group\_member}, and \texttt{group\_size},
+		\item member 1 is the center particle and other members are placed on a circle,
+		\item group expansion happens before integration,
+		\item domain filtering discards the full group if any member is invalid.
+	\end{itemize}
+	
+	So the missing piece is not grouped release, but \textbf{group-aware dynamics during integration}.
+	
+	\subsection{Core conceptual adaptation}
+	
+	The original paper is formulated for \emph{pairs}. Our implementation target is \emph{groups}. The natural generalization is:
+	\begin{enumerate}[label=\arabic*.]
+		\item At each time step, identify all particles belonging to the same \texttt{group\_id}.
+		\item Compute the group center of mass in physical horizontal coordinates.
+		\item For each member, compute its local coordinates relative to that center.
+		\item Evaluate the LKM velocity using those relative coordinates.
+		\item Add the LKM velocity to the resolved fieldset velocity for that particle.
+	\end{enumerate}
+	
+	This reproduces, in grouped form, the pair-center-of-mass idea in the paper.
+	
+	\subsection{Group center definition}
+	
+	For a group $g$ with $M$ particles, define the center at time $t$ as
+	\begin{equation}
+		\bar{x}_g(t) = \frac{1}{M}\sum_{i\in g} x_i(t), \qquad
+		\bar{y}_g(t) = \frac{1}{M}\sum_{i\in g} y_i(t).
+	\end{equation}
+	
+	Then the coordinates entering the LKM are
+	\begin{equation}
+		x_i'(t) = x_i(t)-\bar{x}_g(t), \qquad
+		y_i'(t) = y_i(t)-\bar{y}_g(t).
+	\end{equation}
+	
+	The LKM is evaluated on $(x_i', y_i', t)$, not directly on the absolute longitude/latitude.
+	
+	\section{Coordinate system requirements}
+	
+	\subsection{Do not evaluate the trigonometric model directly in degrees}
+	
+	The analytical model is written in planar coordinates $x,y$ with consistent metric units. Therefore:
+	\begin{itemize}[leftmargin=1.5em]
+		\item \textbf{Do not} plug longitude and latitude in degrees directly into the sine/cosine arguments.
+		\item Convert relative offsets to meters or kilometers in a local tangent-plane approximation.
+		\item The simplest practical choice is a local equirectangular conversion around each group center.
+	\end{itemize}
+	
+	For group center $(\bar\lambda, \bar\varphi)$ and particle $(\lambda_i, \varphi_i)$ in radians:
+	\begin{align}
+		x_i' &\approx R \cos(\bar\varphi) (\lambda_i - \bar\lambda), \\
+		y_i' &\approx R (\varphi_i - \bar\varphi),
+	\end{align}
+	where $R$ is Earth radius.
+	
+	Because grouped particles are initially very close and the LKM is intended for unresolved local scales, this tangent-plane approximation is appropriate.
+	
+	
+	
+	
+	\subsection{Geometry of the group center and local LKM coordinates}
+	
+	The geometry should be handled in two distinct steps:
+	
+	\begin{enumerate}
+		\item compute the \emph{group center on the sphere};
+		\item build a \emph{local tangent plane} at that center and evaluate the LKM there.
+	\end{enumerate}
+	
+	This separation is recommended because the center-of-mass computation is sensitive to spherical geometry, while the LKM itself is a local two-dimensional kinematic model and is naturally defined in a flat plane.
+	
+	\paragraph{Recommendation.}
+	Do \textbf{not} compute the group center by averaging longitude and latitude directly. Instead, for each group, convert all particle positions to Earth-centered Cartesian coordinates, average there, renormalize back to the sphere, and only then define a tangent plane at the resulting center.
+	This recommendation describes the target geometry treatment; the grouped-entity kernel currently uses an equirectangular local approximation around an arithmetic center.
+	
+	\paragraph{Step 1: spherical center in Earth-centered coordinates.}
+	For a particle at longitude $\lambda_i$ and latitude $\phi_i$ on a sphere of radius $R$:
+	\begin{align}
+		X_i &= R \cos\phi_i \cos\lambda_i, \\
+		Y_i &= R \cos\phi_i \sin\lambda_i, \\
+		Z_i &= R \sin\phi_i.
+	\end{align}
+	
+	For a group of $N_g$ particles, compute the Cartesian mean:
+	\begin{align}
+		\bar X &= \frac{1}{N_g}\sum_{i=1}^{N_g} X_i, \\
+		\bar Y &= \frac{1}{N_g}\sum_{i=1}^{N_g} Y_i, \\
+		\bar Z &= \frac{1}{N_g}\sum_{i=1}^{N_g} Z_i.
+	\end{align}
+	
+	Then renormalize the mean vector back to the sphere:
+	\begin{align}
+		\hat{\mathbf c} &= \frac{(\bar X,\bar Y,\bar Z)}{\sqrt{\bar X^2+\bar Y^2+\bar Z^2}}, \\
+		\mathbf c &= R\,\hat{\mathbf c}.
+	\end{align}
+	
+	The spherical group center is then:
+	\begin{align}
+		\lambda_c &= \operatorname{atan2}(Y_c, X_c), \\
+		\phi_c &= \arcsin\left(\frac{Z_c}{R}\right).
+	\end{align}
+	
+	This center should be stored in every particle of the same group through the particle variables \texttt{center\_lon} and \texttt{center\_lat}.
+	
+	\paragraph{Step 2: local tangent-plane coordinates for the LKM.}
+	Once the spherical center is known, define the local orthonormal basis at the center:
+	\begin{align}
+		\hat{\mathbf r}_c &= (\cos\phi_c\cos\lambda_c,\ \cos\phi_c\sin\lambda_c,\ \sin\phi_c), \\
+		\hat{\mathbf e}_E &= (-\sin\lambda_c,\ \cos\lambda_c,\ 0), \\
+		\hat{\mathbf e}_N &= (-\sin\phi_c\cos\lambda_c,\ -\sin\phi_c\sin\lambda_c,\ \cos\phi_c).
+	\end{align}
+	
+	For each particle position $\mathbf r_i = (X_i,Y_i,Z_i)$, define the displacement from the group center:
+	\begin{equation}
+		\Delta \mathbf r_i = \mathbf r_i - \mathbf r_c.
+	\end{equation}
+	
+	Project this displacement onto the local east and north directions:
+	\begin{align}
+		x_i &= \Delta \mathbf r_i \cdot \hat{\mathbf e}_E, \\
+		y_i &= \Delta \mathbf r_i \cdot \hat{\mathbf e}_N.
+	\end{align}
+	
+	The pair $(x_i, y_i)$ provides the local Cartesian coordinates in which the LKM should be evaluated.
+	
+	\paragraph{Why this is preferred.}
+	This is more robust than using the simpler linearized formulas
+	\[
+	x \approx R\cos\phi_c(\lambda-\lambda_c), \qquad y \approx R(\phi-\phi_c),
+	\]
+	because it automatically handles longitude wrapping and remains geometrically consistent for larger angular separations.
+	
+	\paragraph{Scale of validity.}
+	For maximum separations of order $10^3$ km, corresponding to roughly $10^\circ$ on Earth, spherical treatment of the group center is advisable. However, once the center is correctly defined, using the tangent plane at that center for the LKM remains an appropriate approximation. In other words:
+	\begin{itemize}
+		\item the \emph{center computation} should be spherical;
+		\item the \emph{LKM dynamics} can still be treated in a local flat plane.
+	\end{itemize}
+	
+	A fully spherical reformulation of the LKM is not recommended at this stage, because the LKM itself is a local approximate model and the main geometric improvement is already captured by the spherical center and tangent-plane construction.
+	
+	\paragraph{Velocities back to the advection step.}
+	The LKM outputs should be interpreted as local eastward and northward velocity components, $u_{lkm}$ and $v_{lkm}$, defined in the tangent plane at the group center. These can then be added to the resolved horizontal velocity before the particle position is updated.
+	
+	\paragraph{Implementation summary.}
+	At every timestep, for each group:
+	\begin{enumerate}
+		\item convert particle lon/lat to Earth-centered Cartesian coordinates;
+		\item compute the spherical group center by Cartesian averaging and renormalization;
+		\item store \texttt{center\_lon} and \texttt{center\_lat} in all particles of the group;
+		\item build the local east--north basis at the center;
+		\item project each particle position onto the tangent plane to obtain $(x_i,y_i)$;
+		\item evaluate the LKM in those local coordinates;
+		\item add the resulting $u_{lkm}, v_{lkm}$ to the resolved velocity in the advection step.
+	\end{enumerate}
+	For the current grouped-entity runtime path, this should be read as a target algorithmic summary.
+	
+	
+	
+	
+	\subsection{Velocity unit consistency}
+	
+	The LKM amplitudes $A_n$ must be in the same units as the resolved velocity returned by Parcels, typically \texttt{m s$^{-1}$}. Therefore:
+	\begin{itemize}[leftmargin=1.5em]
+		\item use meters for $x,y,l_n,\epsilon_n$ and inverse meters for $k_n$,
+		\item compute $u_{\mathrm{LKM}},v_{\mathrm{LKM}}$ in \texttt{m s$^{-1}$},
+		\item only at the very end convert to the form expected by Parcels if any internal conversion is needed by the chosen kernel style.
+	\end{itemize}
+	
+	\section{Implementation constraints specific to Parcels}
+	
+	\subsection{Main technical difficulty}
+	
+	A standard Parcels kernel updates one particle at a time. However, the LKM needed here is \textbf{group-coupled}: each particle needs access to the instantaneous positions of the other particles in the same group, because the center of mass is a group property.
+	
+	That means a pure stateless one-particle kernel is not enough unless the group center is somehow made available beforehand.
+	
+	\subsection{Practical implementation strategies}
+	
+	There are three realistic strategies.
+	
+	\subsubsection*{Strategy A: external synchronized group update loop (recommended)}
+	
+	Do not try to do the full center-of-mass computation inside a vanilla per-particle kernel. Instead:
+	\begin{enumerate}[label=\arabic*.]
+		\item Advance the simulation in short synchronized steps.
+		\item Before each step, read the current positions of all active particles.
+		\item Compute group centers for each \texttt{group\_id} in Python.
+		\item Store those centers, or directly compute member-specific LKM velocities.
+		\item Inject these values into particle variables.
+		\item Execute a Parcels kernel that simply uses the precomputed LKM velocity for the particle during that step.
+	\end{enumerate}
+	
+	This is the cleanest way because it respects the group coupling explicitly.
+	
+	\subsubsection*{Strategy B: custom repeated field update}
+	
+	At each synchronization step, build temporary fields or arrays carrying group-specific LKM contributions. This is less natural because the LKM is not an Eulerian field shared by all particles; it is group-relative.
+	
+	This strategy is not recommended unless the code architecture already supports frequent dynamic field replacement.
+	
+	\subsubsection*{Strategy C: approximate center particle as moving reference}
+	
+	If each group always contains a designated central particle (currently \texttt{group\_member == 1}), one could approximate the reference frame using that particle instead of the full instantaneous center of mass:
+	\begin{equation}
+		x_i' = x_i - x_{\mathrm{member1}}, \qquad y_i' = y_i - y_{\mathrm{member1}}.
+	\end{equation}
+	
+	This is easier to implement but is not exactly what the paper prescribes. It is acceptable only as an approximation or as a first implementation stage.
+	
+	\section{Revised Architecture: Group-Based Interaction for LKM}
+	
+	\subsection{Concept}
+	
+	The Lagrangian Kinematic Model (LKM) must be applied at the level of particle groups.
+	
+	Each particle belongs to a group identified by \texttt{group\_id}. The interaction set is defined as:
+	
+	\[
+	\mathcal G_i = \{j \;|\; group\_id_j = group\_id_i\}
+	\]
+	
+	This replaces any notion of geometric neighbor search.
+	
+	\subsection{Algorithm}
+	
+	At each timestep $t_n$:
+	
+	\paragraph{1. Group aggregation}
+	For each group $g$:
+	\begin{itemize}
+		\item Collect all particles with \texttt{group\_id = g}
+		\item Compute group center:
+		\[
+		\lambda_c^{(g)} = \frac{1}{N_g}\sum_i \lambda_i, \quad
+		\phi_c^{(g)} = \frac{1}{N_g}\sum_i \phi_i
+		\]
+		\item Assign $(\lambda_c^{(g)}, \phi_c^{(g)})$ to all particles in the group
+	\end{itemize}
+	
+	\paragraph{2. Local coordinate transform}
+	For each particle:
+	\[
+	x_i = R \cos(\phi_c)(\lambda_i - \lambda_c), \quad
+	y_i = R (\phi_i - \phi_c)
+	\]
+	
+	\paragraph{3. LKM velocity}
+	\[
+	u_{lkm,i}, v_{lkm,i} = \sum_n A_n f_n(x_i, y_i, t)
+	\]
+	
+	\paragraph{4. Total velocity}
+	\[
+	u_i = u_{resolved} + u_{lkm,i}, \quad
+	v_i = v_{resolved} + v_{lkm,i}
+	\]
+	
+	\paragraph{5. Integration}
+	Update particle positions to $t_{n+1}$.
+	
+	\subsection{Particle Variables}
+	
+	Each particle must store:
+	\begin{itemize}
+		\item \texttt{group\_id}
+		\item \texttt{group\_member}
+		\item \texttt{group\_size}
+		\item \texttt{center\_lon}
+		\item \texttt{center\_lat}
+		\item \texttt{u\_lkm}
+		\item \texttt{v\_lkm}
+	\end{itemize}
+	
+	\subsection{Design Principles}
+	
+	\begin{itemize}
+		\item Interaction is \textbf{group-based}
+		\item Group membership is fixed and exact
+		\item LKM is evaluated in the \textbf{center-of-mass frame}
+		\item Planar approximation is valid for small groups
+	\end{itemize}
+	
+	\subsection{Implementation Note}
+	
+	The group center computation requires access to all particles in a group and must
+	therefore be implemented as a synchronized group-reduction step before particle-wise updates.
+	
+	
+	\section{Configuration parameters that should exist in YAML}
+	
+	A dedicated section is advisable, for example:
+	
+	\begin{verbatim}
+		lkm:
+		enabled: true
+		mode: group_center_of_mass      # or center_member_approx
+		L_min_km: 0.15625
+		L_max_km: 10.0
+		increment_factor: 2.0
+		epsilon_tke: 1.0e-9             # m^2 s^-3
+		c0: 1.0
+		phi_mode: constant
+		phi_value: 0.78539816339        # pi/4
+		update_every_steps: 1
+		apply_to_group_size_min: 2
+		debug_output: false
+	\end{verbatim}
+	
+	Recommended semantics:
+	\begin{longtable}{p{0.28\textwidth}p{0.68\textwidth}}
+		\toprule
+		\textbf{Parameter} & \textbf{Meaning} \\
+		\midrule
+		\texttt{enabled} & Activate or deactivate the LKM contribution. \\
+		\texttt{mode} & \texttt{group\_center\_of\_mass} for the faithful implementation; \texttt{center\_member\_approx} for the simpler approximation. \\
+		\texttt{L\_min\_km} & Smallest wavelength included in the modal ladder. \\
+		\texttt{L\_max\_km} & Largest wavelength included in the modal ladder. \\
+		\texttt{increment\_factor} & Geometric spacing factor $r$ used to build $l_n = L_{\min} r^n$ until $L_{\max}$ is reached. \\
+		\texttt{epsilon\_tke} & Mean turbulent dissipation-rate proxy $\epsilon$ entering the amplitude scaling. \\
+		\texttt{c0} & Order-one tuning constant in $A_0 = C_0(\epsilon/k_0)^{1/3}$. \\
+		\texttt{phi\_mode} & Whether phases are constant, random but fixed per mode, or user-specified. \\
+		\texttt{phi\_value} & Default value if a constant phase is used; the paper example uses $\pi/4$. \\
+		\texttt{update\_every\_steps} & Synchronization interval for recomputing centers and LKM velocities. \\
+		\texttt{apply\_to\_group\_size\_min} & Safety threshold so the LKM is only applied when a group has enough members. \\
+		\texttt{debug\_output} & Save diagnostic quantities for validation. \\
+		\bottomrule
+	\end{longtable}
+	
+	\subsection{Scale-selection constraint relative to grouped release}
+	
+	The grouped-particle geometry and the LKM scale range should be mutually consistent. A useful rule of thumb is:
+	\begin{equation}
+		R_{\mathrm{group}} \ll L_{\max},
+	\end{equation}
+	so the largest kinematic modes act as unresolved structure relative to the group extent, while at the same time the smallest modes should not be so tiny that all members sample nearly identical perturbations. In practice, the initial group radius should not be far below $L_{\min}$ if the goal is to generate measurable relative dispersion within the group.
+	
+	\section{How to compute the modal coefficients in code}
+	
+	A practical algorithm:
+	\begin{enumerate}[label=\arabic*.]
+		\item Choose $L_{\min}$, $L_{\max}$, and the increment factor $r$ in meters.
+		\item Build the wavelength ladder
+		\begin{equation*}
+			l_n = L_{\min} r^n,
+		\end{equation*}
+		for all indices such that $l_n \le L_{\max}$.
+		\item Convert to wavenumbers
+		\begin{equation*}
+			k_n = \frac{2\pi}{l_n}.
+		\end{equation*}
+		\item Compute amplitudes. A paper-consistent form is
+		\begin{equation*}
+			A_0 = C_0 \left(\frac{\epsilon}{k_0}\right)^{1/3}, \qquad
+			A_n = A_0 \left(\frac{k_n}{k_0}\right)^{-1/3}.
+		\end{equation*}
+		Since $k_n \propto 1/l_n$, this is equivalent to
+		\begin{equation*}
+			A_n \propto \epsilon^{1/3} l_n^{1/3},
+		\end{equation*}
+		up to the constant prefactor.
+		\item Compute oscillation amplitudes
+		\begin{equation*}
+			\epsilon_n = \frac{O(10^{-1})}{k_n}.
+		\end{equation*}
+		\item Compute turnover times and pulsations
+		\begin{equation*}
+			T_n = \frac{2 l_n}{A_n}, \qquad \omega_n = \frac{2\pi}{T_n}.
+		\end{equation*}
+		In scaling form, this also means $\omega_n \sim k_n A_n$.
+		\item Choose phases $\phi_n$.
+	\end{enumerate}
+	
+	Implementation note: precompute all mode coefficients once at simulation initialization and store them in a configuration object, particle class constants, or fieldset constants if convenient. They should not be recomputed at every particle step.
+	
+	\section{Suggested software design}
+	
+	\subsection{New module responsibilities}
+	
+	A clean split would be:
+	\begin{itemize}[leftmargin=1.5em]
+		\item \texttt{utilities/lkm.py}: coefficient builder and pure functions evaluating the LKM given relative coordinates and time,
+		\item \texttt{runner/run\_experiment.py}: parse YAML, initialize LKM settings, add particle variables, orchestrate synchronized updates,
+		\item a new Parcels kernel file or local function: add \texttt{u\_lkm}, \texttt{v\_lkm} to the resolved velocity during integration,
+		\item optional postprocessing diagnostics: separation growth and LKM velocity statistics.
+	\end{itemize}
+	
+	\subsection{Pure function API}
+	
+	A useful pure-Python API could look like:
+	\begin{verbatim}
+		def build_lkm_coefficients(L_min_m, L_max_m, increment_factor, epsilon_tke, c0, phi_spec):
+		...
+		return coeffs
+		
+		
+		def evaluate_lkm_xy(x_rel_m, y_rel_m, t_s, coeffs):
+		...
+		return u_lkm_ms, v_lkm_ms
+		
+		
+		def compute_group_centers(lon_deg, lat_deg, group_ids):
+		...
+		return lon_cm_deg, lat_cm_deg
+		
+		
+		def compute_group_relative_xy(lon_deg, lat_deg, lon_cm_deg, lat_cm_deg):
+		...
+		return x_rel_m, y_rel_m
+	\end{verbatim}
+	
+	\subsection{Kernel API}
+	
+	The additive kernel can remain simple if \texttt{u\_lkm} and \texttt{v\_lkm} are already available on each particle before the integration substep.
+	
+	Conceptually:
+	\begin{verbatim}
+		def AdvectionRK4_LKM(particle, fieldset, time):
+		# same resolved velocity sampling as usual
+		# but using U_total = U_resolved + particle.u_lkm
+		# and V_total = V_resolved + particle.v_lkm
+	\end{verbatim}
+	
+	If modifying a standard RK4 kernel, the cleanest interpretation is that \texttt{u\_lkm} and \texttt{v\_lkm} are frozen during the current integration chunk and added at each RK stage.
+	
+	\section{Important numerical choices}
+	
+	\subsection{Synchronization frequency}
+	
+	Because group centers evolve in time, the precomputed LKM contributions should be refreshed often enough. The safest initial choice is:
+	\begin{itemize}[leftmargin=1.5em]
+		\item recompute group centers and LKM velocities every integration step.
+	\end{itemize}
+	
+	Later, one may test \texttt{update\_every\_steps > 1} for speed.
+	
+	\subsection{What happens when a group loses members}
+	
+	The grouped-particle logic assumes intact groups. But during real runs, members may beach, go out of bounds, or be deleted.
+	
+	This must be defined explicitly. Recommended rule:
+	\begin{enumerate}[label=\arabic*.]
+		\item If all members are active, compute the center using all active members.
+		\item If some members are lost, either:
+		\begin{itemize}[leftmargin=1.5em]
+			\item recompute the center from remaining active members until they are at least 2, or
+			\item deactivate LKM for that group once the original structure is broken, or
+			\item remove all members
+		\end{itemize}
+	\end{enumerate}
+	
+	For a first implementation, the second option is safer and easier to reason about.
+	
+	\subsection{Interaction with depth}
+	
+	The paper model is 2-D horizontal. Therefore the LKM contribution should:
+	\begin{itemize}[leftmargin=1.5em]
+		\item act only on horizontal velocity,
+		\item not change depth directly,
+		\item be compatible with multi-depth release, but with no vertical dependence unless explicitly added later.
+	\end{itemize}
+	
+	\section{Validation targets}
+	
+	The paper is about relative dispersion. Therefore the implementation should be validated using \textbf{group statistics}, not only single-trajectory plots.
+	
+	Minimum tests to request from the VS Code agent:
+	\begin{enumerate}[label=\arabic*.]
+		\item \textbf{Zero-LKM regression}: with \texttt{lkm.enabled=false}, trajectories must match the current code.
+		\item \textbf{Single-group sanity test}: for one group in zero resolved flow, the group center should remain stationary while members move relative to it under the LKM.
+		\item \textbf{Center-of-mass invariance check}: with symmetric groups and no resolved flow, the net LKM drift of the group should be approximately zero if computed in the group frame.
+		\item \textbf{Pair/group separation growth}: compare runs with and without LKM and verify enhanced relative dispersion at sub-mesoscale/separation scales.
+		\item \textbf{Sensitivity to update frequency}: compare \texttt{update\_every\_steps = 1, 2, 5}.
+		\item \textbf{Broken-group handling}: verify the chosen rule when one member is deleted.
+	\end{enumerate}
+	
+	\section{What the paper suggests for calibration}
+	
+	The paper example indicates that a six-mode LKM with largest wavelength around $10\ \mathrm{km}$ and smallest around $10/2^6\ \mathrm{km}$, together with a Kolmogorov-like amplitude scaling $A_n \propto k_n^{-1/3}$, restores a Richardson-like relative-dispersion regime in the approximate inertial range of the kinematic model.
+	
+	Operationally, this implies the initial implementation should begin with the same order of magnitude, not with arbitrary scales.
+	
+	A good default configuration for first tests is therefore:
+	\begin{verbatim}
+		lkm:
+		enabled: true
+		mode: group_center_of_mass
+		nmodes: 6
+		L0_km: 10.0
+		epsilon_tke: 1.0e-9
+		c0: 1.0
+		phi_mode: constant
+		phi_value: 0.78539816339
+		update_every_steps: 1
+	\end{verbatim}
+	
+	These values are not sacred, but they are the paper-based starting point.
+	
+	\section{Direct instructions to the implementation agent}
+	
+	The following is the concise engineering brief.
+	
+	\subsection*{Required behavior}
+	
+	Implement an optional LKM contribution to grouped-particle integration such that:
+	\begin{enumerate}[label=\arabic*.]
+		\item the resolved Parcels velocity is still sampled from the fieldset,
+		\item an additional 2-D horizontal LKM velocity is added,
+		\item the LKM is evaluated in coordinates relative to the instantaneous group center of mass,
+		\item the implementation works with the existing \texttt{group\_id}, \texttt{group\_member}, \texttt{group\_size} metadata,
+		\item the feature is activated through YAML,
+		\item when disabled, the code path is identical to the current model behavior.
+	\end{enumerate}
+	
+	\subsection*{Preferred implementation path}
+	
+	\begin{enumerate}[label=\arabic*.]
+		\item Add new particle variables \texttt{u\_lkm} and \texttt{v\_lkm}.
+		\item Add an \texttt{lkm} section to the simulation YAML and parse it, using \texttt{L\_min\_km}, \texttt{L\_max\_km}, and \texttt{increment\_factor} rather than a fixed \texttt{nmodes}.
+		\item Create a pure-Python module to build the geometric scale ladder, derive the mode coefficients, and evaluate the LKM from $(x',y',t)$.
+		\item Change the runner so integration is executed in synchronized chunks.
+		\item Before each chunk, compute group centers from the current particle positions.
+		\item Convert member positions to local metric offsets relative to each center.
+		\item Evaluate \texttt{u\_lkm}, \texttt{v\_lkm} for every active particle and write them to particle variables.
+		\item Use a modified advection kernel that adds those components to the resolved velocity.
+		\item Add diagnostics and tests.
+	\end{enumerate}
+	
+	\subsection*{Acceptable first-stage simplification}
+	
+	If center-of-mass synchronization proves too invasive for the first pass, implement a temporary \texttt{center\_member\_approx} mode where the reference is the particle with \texttt{group\_member == 1}. But keep the software design ready for the full center-of-mass implementation.
+	
+	\section{Likely pitfalls}
+	
+	\begin{itemize}[leftmargin=1.5em]
+		\item Using lon/lat in degrees inside the trigonometric arguments.
+		\item Forgetting that the paper model is pair/group-relative, not an absolute background drift.
+		\item Trying to compute group reductions in a standard one-particle JIT kernel without orchestration.
+		\item Recomputing the geometric modal ladder and coefficients at every step instead of once.
+		\item Mixing kilometers and meters.
+		\item Applying LKM to singleton particles without a defined reference frame.
+		\item Ignoring what happens when one member disappears.
+	\end{itemize}
+	
+	\section{Bottom line}
+	
+	Scientifically, the implementation should represent
+	\begin{equation}
+		\mathbf{U}_{\mathrm{total}} = \mathbf{U}_{\mathrm{resolved}} + \mathbf{u}_{\mathrm{LKM}}(\mathbf{x}-\mathbf{x}_{\mathrm{group\ center}},t),
+	\end{equation}
+	with $\mathbf{u}_{\mathrm{LKM}}$ given by the multiscale incompressible analytical model from the paper.
+	
+	From a software point of view, the critical insight is that the LKM is \textbf{group-coupled}. Therefore the best implementation is not a purely local one-particle kernel, but a synchronized integration loop that updates per-particle LKM velocities from the current group geometry and then lets Parcels advect with resolved plus precomputed LKM velocity.
+	
+	That is the implementation target most faithful both to the paper and to the current grouped-particle architecture.
+	
+\end{document}

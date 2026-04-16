@@ -63,12 +63,13 @@ def animate_trajectories(
 
     df = trajectory_df.copy()
     df["time"] = pd.to_datetime(df["time"])
-    df = df.sort_values(["trajectory", "obs"]).reset_index(drop=True)
 
     # =========================================================================
     # GROUPED TRAJECTORIES: Filter by max_group_member if present
     # =========================================================================
     has_group_member = "group_member" in df.columns
+    group_cols = ["trajectory"] + (["group_member"] if has_group_member else [])
+    df = df.sort_values(group_cols + ["obs"]).reset_index(drop=True)
     if has_group_member and max_group_member is not None:
         # Filter to keep only group members 1..max_group_member
         df = df[df["group_member"] <= max_group_member].copy()
@@ -136,7 +137,7 @@ def animate_trajectories(
     lon_pad = max(0.5, 0.05 * (lon_max - lon_min if lon_max > lon_min else 1.0))
     lat_pad = max(0.5, 0.05 * (lat_max - lat_min if lat_max > lat_min else 1.0))
 
-    grouped = {tid: g.copy() for tid, g in df.groupby("trajectory", sort=False)}
+    grouped = {tid: g.copy() for tid, g in df.groupby(group_cols, sort=False)}
 
     with tempfile.TemporaryDirectory() as tmpdir:
         tmpdir = Path(tmpdir)
@@ -195,7 +196,8 @@ def animate_trajectories(
                 ys.append(float(row["lat"]))
 
                 if source == "summary":
-                    cs.append(float(color_values_summary.loc[tid]))
+                    summary_key = tid[0] if isinstance(tid, tuple) else tid
+                    cs.append(float(color_values_summary.loc[summary_key]))
                 else:
                     cs.append(float(row[color_by]))
 

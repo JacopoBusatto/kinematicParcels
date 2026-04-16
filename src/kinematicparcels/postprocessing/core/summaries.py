@@ -50,13 +50,23 @@ def build_particle_summary(
     has_z = "z" in df.columns
 
     summaries = []
+    group_cols = ["trajectory"]
+    has_group_member = "group_member" in df.columns
+    if has_group_member:
+        group_cols.append("group_member")
 
-    for traj, g in df.groupby("trajectory", sort=False):
+    for group_key, g in df.groupby(group_cols, sort=False):
 
         g = g.sort_values("obs")
 
         first = g.iloc[0]
         last = g.iloc[-1]
+
+        if has_group_member:
+            traj, group_member = group_key
+        else:
+            traj = group_key
+            group_member = None
 
         row = {
             "trajectory": traj,
@@ -71,6 +81,9 @@ def build_particle_summary(
             "latf": last["lat"],
         }
 
+        if has_group_member:
+            row["group_member"] = group_member
+
         if has_z:
             row["z0"] = first["z"]
             row["zf"] = last["z"]
@@ -82,6 +95,6 @@ def build_particle_summary(
 
     summary_df = pd.DataFrame(summaries)
 
-    summary_df = summary_df.sort_values("trajectory").reset_index(drop=True)
+    summary_df = summary_df.sort_values(group_cols).reset_index(drop=True)
 
     return summary_df

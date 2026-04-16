@@ -1,0 +1,58 @@
+experiment:
+  name: ex07_lkm_grouped_2d
+  output_dir: ./test_output/examples
+
+fieldset:
+  file_pattern: ./test_fields/zero_velocity_april_2026.nc
+  periodic_halo: false
+  periodic_halo_size: 5
+  variables:
+    U: x_sea_water_velocity
+    V: y_sea_water_velocity
+  dimensions:
+    lon: lon
+    lat: lat
+    time: time
+  mesh: spherical
+
+release:
+  mode: point_list
+  points:
+    - {lon: 15.9, lat: 37.3}
+    - {lon: 14.4, lat: 36.5}
+    - {lon: 15.3, lat: 36.5}
+    - {lon: 15.6, lat: 36.0}
+  filter_domain: true
+
+  group:
+    size: 4
+    radius_km: 1.0
+    placement: random
+
+  depth:
+    enabled: false
+    values: [0]
+
+simulation:
+  start_time: "2026-04-01 00:00"
+  runtime_days: 3.0
+  dt_hours: 0.1
+  outputdt_hours: 1.0
+  particle_type: scipy
+
+lkm:
+  enabled: true
+  mode: group_center_of_mass
+  L_min_km: 0.1
+  L_max_km: 10.0
+  increment_factor: 1.414
+  epsilon_tke: 3.0e-9
+  c0: 1.0
+  phi_mode: constant
+  phi_value: 0.78539816339
+  update_every_steps: 1
+  apply_to_group_size_min: 2
+  debug_output: false
+
+output:
+  zarr_name: ex07_lkm_grouped_2d.zarr

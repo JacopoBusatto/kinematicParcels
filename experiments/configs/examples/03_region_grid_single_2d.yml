@@ -1,0 +1,43 @@
+experiment:
+  name: ex03_region_grid_single_2d
+  output_dir: ./test_output/examples
+
+fieldset:
+  file_pattern: ./test_fields/zero_velocity_april_2026.nc
+  periodic_halo: false
+  periodic_halo_size: 5
+  variables:
+    U: x_sea_water_velocity
+    V: y_sea_water_velocity
+  dimensions:
+    lon: lon
+    lat: lat
+    time: time
+  mesh: spherical
+
+release:
+  mode: region_grid
+  region_label: med_cpf
+  dlon: 0.2
+  dlat: 0.2
+  filter_domain: true
+
+  group:
+    size: 1
+
+  depth:
+    enabled: false
+    values: [0]
+
+simulation:
+  start_time: "2026-04-01 00:00"
+  runtime_days: 2.0
+  dt_hours: 0.1
+  outputdt_hours: 1.0
+  particle_type: scipy
+
+lkm:
+  enabled: false
+
+output:
+  zarr_name: ex03_region_grid_single_2d.zarr

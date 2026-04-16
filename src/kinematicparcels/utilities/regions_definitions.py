@@ -93,6 +93,27 @@ REGIONS_DATA = [
     ),
 
     dict(
+        name = "Southern Sicily Upwelling system",
+        label = "ssu",
+        numericLabel = 3,
+        polygons = [
+            [
+                (12.50, 37.90),
+                (15.10, 36.78),
+                (15.25, 36.50),
+                (14.40, 36.60),
+                (14.25, 36.70),
+                (14.00, 36.85),
+                (13.70, 36.90),
+                (12.60, 37.40),
+                (12.20, 37.60),
+                (12.06, 37.97)
+            ]
+        ],
+        priority=5,
+    ),
+
+    dict(
         name="Cape Passero Filament",
         label="med_cpf",
         numericLabel=1,
@@ -104,7 +125,7 @@ REGIONS_DATA = [
                 (16.00, 37.00),
             ]
         ],
-        priority=5,
+        priority=6,
     ),
 
     dict(

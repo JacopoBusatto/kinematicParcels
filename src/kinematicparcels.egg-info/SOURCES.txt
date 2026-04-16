@@ -9,6 +9,7 @@ src/kinematicparcels.egg-info/entry_points.txt
 src/kinematicparcels.egg-info/requires.txt
 src/kinematicparcels.egg-info/top_level.txt
 src/kinematicparcels/postprocessing/__init__.py
+src/kinematicparcels/postprocessing/lkm_diagnostics.py
 src/kinematicparcels/postprocessing/analyses/__init__.py
 src/kinematicparcels/postprocessing/analyses/beaching_times.py
 src/kinematicparcels/postprocessing/analyses/density.py
@@ -34,6 +35,7 @@ src/kinematicparcels/postprocessing/plotting/trajectories.py
 src/kinematicparcels/postprocessing/runner/__init__.py
 src/kinematicparcels/postprocessing/runner/cli.py
 src/kinematicparcels/postprocessing/runner/run_postprocessing.py
+src/kinematicparcels/postprocessing/runner/run_postprocessing_series.py
 src/kinematicparcels/postprocessing/workflows/__init.__.py
 src/kinematicparcels/postprocessing/workflows/base_products.py
 src/kinematicparcels/postprocessing/workflows/quicklook.py
@@ -43,12 +45,17 @@ src/kinematicparcels/postprocessing/workflows/run_start_end_regions.py
 src/kinematicparcels/postprocessing/workflows/run_summary.py
 src/kinematicparcels/postprocessing/workflows/run_trajectories.py
 src/kinematicparcels/runner/__init__.py
+src/kinematicparcels/runner/kernels.py
 src/kinematicparcels/runner/run_experiment.py
 src/kinematicparcels/runner/run_experiment_series.py
 src/kinematicparcels/utilities/__init__.py
 src/kinematicparcels/utilities/compare_region_shape.py
 src/kinematicparcels/utilities/geographicalRegions.py
 src/kinematicparcels/utilities/geographicalRegions_rectangles.py
+src/kinematicparcels/utilities/geometry.py
+src/kinematicparcels/utilities/group_dynamics.py
+src/kinematicparcels/utilities/group_expansion.py
 src/kinematicparcels/utilities/init_checks.py
 src/kinematicparcels/utilities/init_depths.py
+src/kinematicparcels/utilities/lkm.py
 src/kinematicparcels/utilities/regions_definitions.py

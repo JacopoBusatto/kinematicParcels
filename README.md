@@ -27,6 +27,9 @@ kinematicParcels/
 │       ├── __init__.py
 │       ├── runner/
 │       │   ├── __init__.py
+│       │   ├── grouped_kernels.py
+│       │   ├── kernels.py
+│       │   ├── kernels_lkm_inline.py
 │       │   ├── run_experiment.py
 │       │   └── run_experiment_series.py
 │       ├── postprocessing/
@@ -78,9 +81,12 @@ kinematicParcels/
 │           ├── compare_region_shape.py
 │           ├── geographicalRegions.py
 │           ├── geographicalRegions_rectangles.py
+│           ├── geometry.py
+│           ├── group_dynamics.py
 │           ├── group_expansion.py
 │           ├── init_checks.py
 │           ├── init_depths.py
+│           ├── lkm.py
 │           └── regions_definitions.py
 ├── experiments/
 │   └── configs/
@@ -431,6 +437,83 @@ If multiple requested depths collapse onto the same field level, duplicates can 
 
 ---
 
+# Circle/Sphere Release Mode
+
+The framework supports a time-dependent release mode based on a geometric cloud around a center point.
+
+Set `release.mode: circle` to emit particles at each release timestep inside:
+
+- a **disk** (`dimension: 2D`)
+- a **sphere** (`dimension: 3D`)
+
+No center particle is forced: all points are sampled from the chosen distribution.
+
+## Configuration Example
+
+```yaml
+release:
+  mode: circle
+
+  circle:
+    lat: 37.0
+    lon: 15.5
+    depth: 20                    # required for 3D, ignored in 2D
+    dimension: 3D                # 2D or 3D
+    radius_km: 5.0
+
+    count_per_timestep: 50
+    release_interval: 6H         # e.g. 30min, 1H, 1D
+    release_period: 3D
+
+    sampling: uniform            # uniform or gaussian
+    seed: 42
+
+    out_of_domain_policy: retry  # retry, drop, error
+    bathymetry_policy: drop      # drop, clip_to_depth_axis, ignore
+```
+
+## Parameters
+
+**lat, lon, depth**
+Center of the geometric release cloud.
+
+- In `2D`, `depth` is ignored and depth is managed by the existing `release.depth` options.
+- In `3D`, `depth` is required and interpreted using the fieldset depth convention.
+
+**dimension**
+`2D` for disk sampling, `3D` for spherical sampling.
+
+**radius_km**
+Disk/sphere radius in kilometers.
+
+**count_per_timestep**
+Number of base release points generated at each release time.
+
+**release_interval / release_period**
+Time cadence and total release window length.
+
+**sampling**
+Sampling law inside the geometry:
+
+- `uniform`: area/volume-uniform
+- `gaussian`: Gaussian cloud truncated at the radius
+
+**out_of_domain_policy**
+Controls how invalid points are handled:
+
+- `retry`: resample until target count is reached
+- `drop`: keep only valid points at that step
+- `error`: fail if any invalid point is generated
+
+**bathymetry_policy** (`3D`)
+How deep samples are constrained against the field depth axis:
+
+- `drop`: remove points deeper than axis max depth
+- `clip_to_depth_axis`: clip depths to valid range
+- `ignore`: skip this check
+
+---
+
 # Grouped-Particle Release
 
 The framework supports **multi-particle ensembles** (grouped-particle initialization), where each base release point expands into a group of particles for ensemble statistics or pair-dispersion experiments.
@@ -479,13 +562,12 @@ Distance (kilometers) from the base point to circle perimeter. Uses Cartesian ap
 
 ## Metadata Storage
 
-Each particle automatically receives metadata fields:
+Two storage layouts are currently supported:
 
-- `group_id`: Index of the base release point (shared across group members)
-- `group_member`: Member index within group (1 to size)
-- `group_size`: Total particles per group
+- **Member-based layout** (legacy grouped release): one Parcels particle per member.
+- **Grouped-entity layout** (current default for `group.size > 1`): one Parcels particle per group, with member coordinates stored as `lon_1..lon_4`, `lat_1..lat_4` and group diagnostics (`group_id`, `group_size`, `center_lon`, `center_lat`).
 
-These fields enable filtering and visualization by group membership during postprocessing.
+In postprocessing, grouped-entity outputs are expanded to member-wise rows so filtering with `max_group_member` and member-based plotting work as expected.
 
 ## Postprocessing with Groups
 
@@ -508,6 +590,9 @@ Checks initial particle positions and removes points outside the velocity field 
 
 init_depths.py  
 Handles vertical coordinates, snapping to field levels, and duplicate removal.
+
+circle_release.py
+Generates disk/sphere releases with configurable sampling, scheduling, and validity policies.
 
 ---
 
@@ -653,7 +738,6 @@ The framework aims to:
 
 Possible future developments:
 
-- time-dependent particle release
 - custom Parcels kernels
 - automatic trajectory plotting
 - integration with HPC batch systems

@@ -1,0 +1,61 @@
+dataset:
+  input_path: ./outputs/sicily/ex08_circle_uniform_2d_sicily.zarr
+
+analysis:
+  types:
+    # - trajectories
+    - density
+
+output:
+  output_dir: ./outputs/sicily/postprocessing/ex08_circle_uniform_2d_sicily
+
+exports:
+  save_trajectory_table: true
+  save_particle_summary: true
+  table_format: parquet
+
+cleaning:
+  truncate_stagnant: false
+  stagnant_tol: 1.0e-6
+  stagnant_min_consecutive: 2
+
+grid:
+  mode: from_initial_centers
+  lon_min: 10.0
+  lon_max: 13.5
+  lat_min: 35.0
+  lat_max: 38.0
+  dlon: 0.05
+  dlat: 0.05
+
+density:
+  lon_col: lon
+  lat_col: lat
+  time_col: time
+  normalize_active: true
+  normalize_total: true
+
+  animate: true
+  animation_var: particle_fraction_active   # or particle_count / particle_fraction_total
+  animation_label: "density [%]"
+  animation_fps: 6
+  animation_vmin: 0
+  animation_vmax: 3.0
+  show_time_bar: true
+
+trajectories:
+  plot: true
+  animate: true
+  title: "Circle Release Sicily - Trajectories"
+  show_start: true
+  show_end: true
+
+  animation_fps: 6
+  animation_color_by: lat0
+  animation_label: "initial latitude"
+  show_time_bar: true
+  trail: true
+  trail_steps: 20
+
+plotting:
+  projection: PlateCarree

@@ -46,3 +46,10 @@ logs/*
 # Local data download scripts (operator-specific)
 download_mfs_forecast.py
 copernicus_env.yml
+
+# Legacy local-only sources
+cpp_legacy/
+legacy/
+*.pem
+id_rsa*
+*.key

@@ -73,12 +73,12 @@ def plot_trajectories_map(
     outpath = Path(outpath)
     outpath.parent.mkdir(parents=True, exist_ok=True)
 
-    df = df.sort_values(["trajectory", "obs"]).reset_index(drop=True)
-
     # =========================================================================
     # GROUPED TRAJECTORIES: Filter by max_group_member if present
     # =========================================================================
     has_group_member = "group_member" in df.columns
+    group_cols = ["trajectory"] + (["group_member"] if has_group_member else [])
+    df = df.sort_values(group_cols + ["obs"]).reset_index(drop=True)
     if has_group_member and max_group_member is not None:
         # Filter to keep only group members 1..max_group_member
         df = df[df["group_member"] <= max_group_member].copy()
@@ -125,18 +125,18 @@ def plot_trajectories_map(
             for i, m in enumerate(group_members)
         }
 
-        for traj_id, g in df.groupby("trajectory", sort=False):
-            for member in group_members:
-                g_member = g[g["group_member"] == member]
-                if len(g_member) > 0:
-                    ax.plot(
-                        g_member["lon"].to_numpy(),
-                        g_member["lat"].to_numpy(),
-                        transform=ccrs.PlateCarree(),
-                        color=member_to_color[member],
-                        linewidth=linewidth,
-                        alpha=alpha,
-                    )
+        for _, g in df.groupby(group_cols, sort=False):
+            member = g["group_member"].iloc[0]
+            color = member_to_color[member]
+
+            ax.plot(
+                g["lon"].to_numpy(),
+                g["lat"].to_numpy(),
+                transform=ccrs.PlateCarree(),
+                color=color,
+                linewidth=linewidth,
+                alpha=alpha,
+            )
 
             if show_start:
                 first = g.iloc[0]
@@ -144,9 +144,12 @@ def plot_trajectories_map(
                     first["lon"],
                     first["lat"],
                     transform=ccrs.PlateCarree(),
-                    s=10,
+                    s=16,
                     marker="o",
-                    zorder=3,
+                    color=color,
+                    edgecolors="black",
+                    linewidths=0.4,
+                    zorder=4,
                 )
 
             if show_end:
@@ -155,9 +158,11 @@ def plot_trajectories_map(
                     last["lon"],
                     last["lat"],
                     transform=ccrs.PlateCarree(),
-                    s=12,
+                    s=22,
                     marker="x",
-                    zorder=3,
+                    color=color,
+                    linewidths=1.0,
+                    zorder=5,
                 )
     else:
         # Standard mode: all trajectories one color

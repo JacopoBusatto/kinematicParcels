@@ -123,17 +123,17 @@ def compute_time_density(
         grouped["particle_fraction_total"] = grouped["particle_count"] / n_total
 
     # Build xarray Dataset
-    time_values = np.sort(grouped[time_col].unique())
+    time_values = pd.DatetimeIndex(pd.to_datetime(grouped[time_col].unique())).sort_values()
     nt = len(time_values)
 
     count_data = np.full((nt, grid.nlat, grid.nlon), np.nan, dtype=float)
     active_frac_data = np.full((nt, grid.nlat, grid.nlon), np.nan, dtype=float)
     total_frac_data = np.full((nt, grid.nlat, grid.nlon), np.nan, dtype=float)
 
-    time_index = {t: i for i, t in enumerate(time_values)}
+    time_index = {pd.Timestamp(t): i for i, t in enumerate(time_values)}
 
     for row in grouped.itertuples(index=False):
-        t_idx = time_index[getattr(row, time_col)]
+        t_idx = time_index[pd.Timestamp(getattr(row, time_col))]
         j = int(row.lat_bin)
         i = int(row.lon_bin)
 
