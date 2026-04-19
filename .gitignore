@@ -51,5 +51,4 @@ copernicus_env.yml
 cpp_legacy/
 legacy/
 *.pem
-id_rsa*
 *.key

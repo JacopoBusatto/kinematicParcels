@@ -12,7 +12,7 @@ from __future__ import annotations
 import numpy as np
 from parcels import FieldSet
 
-from kinematicparcels.utilities.init_checks import mask_inside_domain
+from kinematicparcels.utilities.init_checks import mask_inside_domain, mask_inside_ocean
 
 
 def km_to_degrees(distance_km: float) -> float:
@@ -90,6 +90,7 @@ def expand_groups(
     radius_km: float,
     placement: str = "random",
     seed: int | None = None,
+    filter_land: bool = False,
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
     """
     Expand base release centers into groups of particles.
@@ -206,7 +207,9 @@ def expand_groups(
         lats_group = np.asarray(lats_group)
         
         mask = mask_inside_domain(lons_group, lats_group, fieldset, inclusive=False)
-        
+        if filter_land:
+            mask &= mask_inside_ocean(lons_group, lats_group, fieldset)
+
         if np.all(mask):
             # All members are valid, keep the group
             lons_all.extend(lons_group)

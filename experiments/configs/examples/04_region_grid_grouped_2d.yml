@@ -22,6 +22,11 @@ release:
   dlat: 0.3
   filter_domain: true
 
+  continuous:
+    enabled: true
+    release_interval: 12H
+    release_period: 1D
+
   group:
     size: 3
     radius_km: 0.5

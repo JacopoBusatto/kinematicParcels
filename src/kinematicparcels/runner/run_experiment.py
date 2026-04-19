@@ -7,6 +7,7 @@ from pathlib import Path
 import warnings
 
 import numpy as np
+import xarray as xr
 import yaml
 
 warnings.filterwarnings(
@@ -30,7 +31,9 @@ from kinematicparcels.utilities.init_checks import (
     summarize_initial_points,
     check_initial_points_in_domain,
     filter_inside_domain,
+    filter_inside_ocean,
     mask_inside_domain,
+    mask_inside_ocean,
 )
 from kinematicparcels.utilities.init_depths import (
     summarize_depth_axis,
@@ -135,6 +138,7 @@ def _build_group_entity_release(
     lats_base: np.ndarray,
     fieldset: FieldSet,
     group_cfg: dict,
+    filter_land: bool = False,
 ):
     group_size = int(group_cfg.get("size", 1))
     if group_size < 2 or group_size > 4:
@@ -149,6 +153,7 @@ def _build_group_entity_release(
         group_size=group_size,
         radius_km=group_cfg.get("radius_km", 0.1),
         placement=group_cfg.get("placement", "random"),
+        filter_land=filter_land,
     )
     summarize_initial_points(lons_grouped, lats_grouped, name="grouped release points")
 
@@ -196,6 +201,60 @@ def _build_group_entity_release(
     return center_lons, center_lats, metadata
 
 
+def _needs_xarray_fieldset_fallback(sample_file: str, variables: dict, dims_cfg: dict) -> bool:
+    """Detect whether source variable order is non-standard for Parcels direct loading."""
+    lat_dim = dims_cfg["lat"]
+    lon_dim = dims_cfg["lon"]
+
+    with xr.open_dataset(sample_file) as ds:
+        for var_name in variables.values():
+            dims = tuple(ds[var_name].dims)
+            if lat_dim not in dims or lon_dim not in dims:
+                continue
+            if dims[-2:] != (lat_dim, lon_dim):
+                return True
+    return False
+
+
+def _build_fieldset_via_xarray(files: list[str], variables: dict, dims_cfg: dict, mesh: str) -> FieldSet:
+    """Build a Parcels fieldset from xarray after reordering named dimensions explicitly."""
+    ds = xr.open_mfdataset(files, combine="by_coords")
+    try:
+        lon_dim = dims_cfg["lon"]
+        lat_dim = dims_cfg["lat"]
+        time_dim = dims_cfg["time"]
+        depth_dim = dims_cfg.get("depth")
+
+        u = ds[variables["U"]]
+        v = ds[variables["V"]]
+
+        target_dims = [time_dim]
+        if depth_dim and depth_dim in u.dims:
+            target_dims.append(depth_dim)
+        target_dims.extend([lat_dim, lon_dim])
+
+        u = u.transpose(*[d for d in target_dims if d in u.dims])
+        v = v.transpose(*[d for d in target_dims if d in v.dims])
+
+        data = {
+            "U": np.asarray(u.values),
+            "V": np.asarray(v.values),
+        }
+        dimensions = {
+            "lon": np.asarray(ds[lon_dim].values),
+            "lat": np.asarray(ds[lat_dim].values),
+            "time": np.asarray(ds[time_dim].values),
+        }
+        if depth_dim and depth_dim in ds:
+            dimensions["depth"] = np.asarray(ds[depth_dim].values)
+
+        fieldset = FieldSet.from_data(data=data, dimensions=dimensions, mesh=mesh)
+    finally:
+        ds.close()
+
+    return fieldset
+
+
 def build_fieldset(cfg: dict) -> FieldSet:
     fs_cfg = cfg["fieldset"]
 
@@ -233,12 +292,23 @@ def build_fieldset(cfg: dict) -> FieldSet:
         dimensions["U"]["depth"] = dims_cfg["depth"]
         dimensions["V"]["depth"] = dims_cfg["depth"]
 
-    fieldset = FieldSet.from_netcdf(
-        filenames=filenames,
-        variables=variables,
-        dimensions=dimensions,
-        mesh=fs_cfg.get("mesh", "spherical"),
-    )
+    mesh = fs_cfg.get("mesh", "spherical")
+
+    if _needs_xarray_fieldset_fallback(files[0], variables, dims_cfg):
+        print("Detected non-standard variable dimension order; reordering via xarray")
+        fieldset = _build_fieldset_via_xarray(files, variables, dims_cfg, mesh)
+    else:
+        fieldset = FieldSet.from_netcdf(
+            filenames=filenames,
+            variables=variables,
+            dimensions=dimensions,
+            mesh=mesh,
+        )
+
+    # Cache source metadata for release-time ocean/land filtering.
+    fieldset._kp_source_files = files
+    fieldset._kp_variables = variables.copy()
+    fieldset._kp_dimensions = dims_cfg.copy()
 
     print(fieldset)
     return fieldset
@@ -288,6 +358,38 @@ def _tile_metadata(metadata: dict, repeat_factor: int) -> dict:
         arr_np = np.asarray(arr)
         out[key] = np.tile(arr_np, repeat_factor)
     return out
+
+
+def _build_continuous_release_schedule(sim_cfg: dict, continuous_cfg: dict) -> np.ndarray:
+    if not continuous_cfg.get("enabled", False):
+        return None
+
+    for key in ("release_interval", "release_period"):
+        if key not in continuous_cfg:
+            raise ValueError(f"release.continuous.{key} is required when continuous.enabled=true")
+
+    if "start_time" not in sim_cfg:
+        raise ValueError(
+            "simulation.start_time is required for continuous release scheduling"
+        )
+
+    t0 = parse_datetime_like(sim_cfg["start_time"])
+    dt_release = parse_timedelta_like(continuous_cfg["release_interval"])
+    release_period = parse_timedelta_like(continuous_cfg["release_period"])
+
+    if dt_release.total_seconds() <= 0:
+        raise ValueError("release.continuous.release_interval must be > 0")
+    if release_period.total_seconds() < 0:
+        raise ValueError("release.continuous.release_period must be >= 0")
+
+    release_times_dt = []
+    t = t0
+    t_end = t0 + release_period
+    while t <= t_end:
+        release_times_dt.append(t)
+        t += dt_release
+
+    return np.asarray(release_times_dt, dtype="datetime64[ns]")
 
 
 def _build_circle_release(
@@ -584,6 +686,31 @@ def build_release(cfg: dict, fieldset: FieldSet):
         lons_raw, lats_raw = filter_inside_domain(lons_raw, lats_raw, fieldset)
         summarize_initial_points(lons_raw, lats_raw, name="filtered release points")
 
+    if release_mode != "circle" and rel_cfg.get("filter_land", False):
+        ocean_mask = mask_inside_ocean(lons_raw, lats_raw, fieldset)
+        n_land = int((~ocean_mask).sum())
+        if n_land > 0:
+            print(f"[land filter] removed {n_land} release points on masked land cells")
+        lons_raw, lats_raw = filter_inside_ocean(lons_raw, lats_raw, fieldset)
+        summarize_initial_points(lons_raw, lats_raw, name="ocean-filtered release points")
+
+    continuous_cfg = rel_cfg.get("continuous", {})
+    if release_mode != "circle" and continuous_cfg.get("enabled", False):
+        release_steps = _build_continuous_release_schedule(sim_cfg, continuous_cfg)
+        n_base_points = len(lons_raw)
+
+        if n_base_points == 0:
+            raise ValueError("continuous release has zero valid base points after filtering")
+
+        release_times = np.repeat(release_steps, n_base_points)
+        lons_raw = np.tile(lons_raw, len(release_steps))
+        lats_raw = np.tile(lats_raw, len(release_steps))
+
+        print(
+            f"Continuous release: steps={len(release_steps)}, "
+            f"base_points={n_base_points}, generated={len(lons_raw)} points"
+        )
+
     # =========================================================================
     # GROUPED/SINGLETON RELEASE BUILDING
     # =========================================================================
@@ -604,7 +731,10 @@ def build_release(cfg: dict, fieldset: FieldSet):
             lats_base=lats_raw,
             fieldset=fieldset,
             group_cfg=group_cfg,
+            filter_land=rel_cfg.get("filter_land", False),
         )
+        if release_times is not None:
+            release_times = np.asarray(release_times)[metadata["group_id"]]
         return center_lons, center_lats, None, metadata, release_times
 
     if group_size > 1:
@@ -615,6 +745,7 @@ def build_release(cfg: dict, fieldset: FieldSet):
             group_size=group_size,
             radius_km=group_cfg.get("radius_km", 0.1),
             placement=group_cfg.get("placement", "random"),
+            filter_land=rel_cfg.get("filter_land", False),
         )
         summarize_initial_points(lons_raw, lats_raw, name="grouped release points")
 
