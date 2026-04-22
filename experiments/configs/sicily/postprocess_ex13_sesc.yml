@@ -1,0 +1,94 @@
+dataset:
+  input_path: ./outputs/sicily/ex13_sesc.zarr
+
+analysis:
+  types:
+    - summary
+    - density
+    - start_end_regions
+
+output:
+  output_dir: ./outputs/sicily/postprocessing/ex13_sesc
+
+exports:
+  save_trajectory_table: true
+  save_particle_summary: true
+  table_format: parquet
+
+cleaning:
+  truncate_stagnant: false
+  stagnant_tol: 1.0e-6
+  stagnant_min_consecutive: 2
+
+grid:
+  mode: from_initial_centers
+  lon_min: 14.0
+  lon_max: 16.0
+  lat_min: 35.0
+  lat_max: 37.6
+  dlon: 0.1
+  dlat: 0.1
+
+release:
+  mode: region_grid
+  continuous: true
+
+density:
+  lon_col: lon
+  lat_col: lat
+  time_col: time
+  normalize_active: true
+  normalize_total: true
+
+  animate: true
+  animation_var: particle_fraction_active
+  animation_label: "density [%]"
+  animation_fps: 6
+  animation_vmin: 0
+  animation_vmax: 1.5
+  show_time_bar: true
+
+trajectories:
+  plot: false
+  animate: false
+  title: "Ex12 LKM SESC - trajectories"
+  show_start: true
+  show_end: false
+
+  animation_fps: 6
+  animation_color_by: lon0
+  animation_label: "initial longitude"
+  show_time_bar: true
+  trail: true
+  trail_steps: 20
+  max_group_member: 2
+
+plotting:
+  projection: PlateCarree
+
+start_end_regions:
+  region_labels:
+    - sic
+    - sesc
+    - sesc-mod
+    - sesc-sir
+  how_many: priority_max
+  priority_level: 7
+  priority_mode: exact
+  input_lon_mode: "-180_180"
+  plot: true
+
+  plot_connectivity: true
+  animate_connectivity: true
+  connectivity_segments: true
+  connectivity_color_by: start_region
+  connectivity_label: "start region"
+  connectivity_title: "South Eastern Sicilian Coast"
+  connectivity_show_start: false
+  connectivity_show_end: true
+  connectivity_alpha: 0.3
+  connectivity_max_group_member: 1
+  connectivity_animation_fps: 6
+  connectivity_animation_show_tracer: false
+  connectivity_trail: true
+  connectivity_trail_steps: 6

@@ -4,7 +4,7 @@ from pathlib import Path
 
 from ..analyses import compute_beaching_times
 from ..config.models import PostprocessConfig
-from ..core import build_release_grid_from_summary
+from ..core import build_grid_from_config
 from ..io import save_dataset_netcdf, save_grid_table
 from ..plotting import plot_grid_map
 from .base_products import get_particle_summary
@@ -18,10 +18,12 @@ def run_beaching_times(cfg: PostprocessConfig, context: dict) -> None:
     summary = get_particle_summary(cfg, context)
 
     print("Building release grid from particle summary")
-    grid = build_release_grid_from_summary(
+    grid = build_grid_from_config(
+        cfg,
         summary,
         lon_col=cfg.beaching_times.lon_col,
         lat_col=cfg.beaching_times.lat_col,
+        time_col="time0",
     )
 
     print("Computing beaching times")

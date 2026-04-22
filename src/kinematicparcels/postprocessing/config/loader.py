@@ -16,6 +16,7 @@ from .models import (
     OutputConfig,
     PostprocessConfig,
     BeachingTimesConfig,
+    ReleaseConfig,
     TrajectoriesConfig,
     PlottingConfig,
     StartEndRegionsConfig,
@@ -367,6 +368,11 @@ def _parse_trajectories(section: dict[str, Any] | None) -> TrajectoriesConfig:
     show_start = bool(section.get("show_start", True))
     show_end = bool(section.get("show_end", True))
 
+    alpha_raw = section.get("alpha", 0.7)
+    alpha = _require_number(alpha_raw, "trajectories.alpha")
+    if not (0.0 <= alpha <= 1.0):
+        raise ValueError("'trajectories.alpha' must be between 0 and 1.")
+
     animate = bool(section.get("animate", False))
 
     animation_fps_raw = section.get("animation_fps", 8)
@@ -418,6 +424,7 @@ def _parse_trajectories(section: dict[str, Any] | None) -> TrajectoriesConfig:
         title=title,
         show_start=show_start,
         show_end=show_end,
+        alpha=alpha,
         animate=animate,
         animation_fps=animation_fps,
         animation_color_by=animation_color_by,
@@ -442,6 +449,24 @@ def _parse_plotting(section: dict[str, Any] | None) -> PlottingConfig:
     )
 
     return PlottingConfig(projection=projection)
+
+
+def _parse_release(section: dict[str, Any] | None) -> ReleaseConfig:
+    """
+    Parse the optional release section.
+    """
+    if section is None:
+        return ReleaseConfig()
+
+    section = _require_dict(section, "release")
+
+    mode = _require_nonempty_string(
+        section.get("mode", "region_grid"),
+        "release.mode",
+    )
+    continuous = bool(section.get("continuous", False))
+
+    return ReleaseConfig(mode=mode, continuous=continuous)
 
 
 def _parse_start_end_regions(section: dict[str, Any] | None) -> StartEndRegionsConfig:
@@ -483,6 +508,67 @@ def _parse_start_end_regions(section: dict[str, Any] | None) -> StartEndRegionsC
         "start_end_regions.input_lon_mode",
     )
     plot = bool(section.get("plot", False))
+    plot_connectivity = bool(section.get("plot_connectivity", False))
+    animate_connectivity = bool(section.get("animate_connectivity", False))
+    connectivity_segments = bool(section.get("connectivity_segments", True))
+    connectivity_color_by = _require_nonempty_string(
+        section.get("connectivity_color_by", "start_region"),
+        "start_end_regions.connectivity_color_by",
+    )
+    connectivity_label = _require_nonempty_string(
+        section.get("connectivity_label", "region"),
+        "start_end_regions.connectivity_label",
+    )
+    connectivity_title = _require_nonempty_string(
+        section.get("connectivity_title", "Trajectories by region"),
+        "start_end_regions.connectivity_title",
+    )
+    connectivity_show_start = bool(section.get("connectivity_show_start", True))
+    connectivity_show_end = bool(section.get("connectivity_show_end", True))
+
+    connectivity_alpha_raw = section.get("connectivity_alpha", None)
+    if connectivity_alpha_raw is None:
+        connectivity_alpha = None
+    else:
+        connectivity_alpha = _require_number(connectivity_alpha_raw, "start_end_regions.connectivity_alpha")
+        if not (0.0 <= connectivity_alpha <= 1.0):
+            raise ValueError("'start_end_regions.connectivity_alpha' must be between 0 and 1 or null.")
+
+    connectivity_max_group_member_raw = section.get("connectivity_max_group_member", None)
+    if connectivity_max_group_member_raw is None:
+        connectivity_max_group_member = None
+    else:
+        if not isinstance(connectivity_max_group_member_raw, int) or connectivity_max_group_member_raw <= 0:
+            raise ValueError("'start_end_regions.connectivity_max_group_member' must be an integer > 0 or null.")
+        connectivity_max_group_member = connectivity_max_group_member_raw
+
+    connectivity_animation_fps_raw = section.get("connectivity_animation_fps", None)
+    if connectivity_animation_fps_raw is None:
+        connectivity_animation_fps = None
+    else:
+        if not isinstance(connectivity_animation_fps_raw, int) or connectivity_animation_fps_raw <= 0:
+            raise ValueError("'start_end_regions.connectivity_animation_fps' must be an integer > 0 or null.")
+        connectivity_animation_fps = connectivity_animation_fps_raw
+
+    connectivity_animation_show_tracer_raw = section.get("connectivity_animation_show_tracer", None)
+    if connectivity_animation_show_tracer_raw is None:
+        connectivity_animation_show_tracer = None
+    else:
+        connectivity_animation_show_tracer = bool(connectivity_animation_show_tracer_raw)
+
+    connectivity_trail_raw = section.get("connectivity_trail", None)
+    if connectivity_trail_raw is None:
+        connectivity_trail = None
+    else:
+        connectivity_trail = bool(connectivity_trail_raw)
+
+    connectivity_trail_steps_raw = section.get("connectivity_trail_steps", None)
+    if connectivity_trail_steps_raw is None:
+        connectivity_trail_steps = None
+    else:
+        if not isinstance(connectivity_trail_steps_raw, int) or connectivity_trail_steps_raw <= 0:
+            raise ValueError("'start_end_regions.connectivity_trail_steps' must be an integer > 0 or null.")
+        connectivity_trail_steps = connectivity_trail_steps_raw
 
     priority_level_raw = section.get("priority_level", None)
     if priority_level_raw is None:
@@ -499,6 +585,20 @@ def _parse_start_end_regions(section: dict[str, Any] | None) -> StartEndRegionsC
         priority_mode=priority_mode,
         input_lon_mode=input_lon_mode,
         plot=plot,
+        plot_connectivity=plot_connectivity,
+        animate_connectivity=animate_connectivity,
+        connectivity_segments=connectivity_segments,
+        connectivity_color_by=connectivity_color_by,
+        connectivity_label=connectivity_label,
+        connectivity_title=connectivity_title,
+        connectivity_show_start=connectivity_show_start,
+        connectivity_show_end=connectivity_show_end,
+        connectivity_alpha=connectivity_alpha,
+        connectivity_max_group_member=connectivity_max_group_member,
+        connectivity_animation_fps=connectivity_animation_fps,
+        connectivity_animation_show_tracer=connectivity_animation_show_tracer,
+        connectivity_trail=connectivity_trail,
+        connectivity_trail_steps=connectivity_trail_steps,
     )
 
 
@@ -524,6 +624,7 @@ def load_postprocess_config(path: str | Path) -> PostprocessConfig:
     output = _parse_output(raw.get("output"))
     exports = _parse_exports(raw.get("exports"))
     grid = _parse_grid(raw.get("grid"))
+    release = _parse_release(raw.get("release"))
     density = _parse_density(raw.get("density"))
     cleaning = _parse_cleaning(raw.get("cleaning"))
     beaching_times = _parse_beaching_times(raw.get("beaching_times"))
@@ -537,6 +638,7 @@ def load_postprocess_config(path: str | Path) -> PostprocessConfig:
         output=output,
         exports=exports,
         grid=grid,
+        release=release,
         density=density,
         cleaning=cleaning,
         beaching_times=beaching_times,

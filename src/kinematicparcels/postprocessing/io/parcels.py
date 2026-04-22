@@ -9,6 +9,31 @@ import numpy as np
 from ..config.models import DatasetCoordinatesConfig, ParcelsSchema
 
 
+def _scalarize_cell(value):
+    if isinstance(value, np.ndarray):
+        if value.ndim == 0 or value.size == 1:
+            return _scalarize_cell(value.item() if value.ndim == 0 else value.reshape(-1)[0])
+        return tuple(_scalarize_cell(v) for v in value.tolist())
+
+    if isinstance(value, (list, tuple)):
+        if len(value) == 1:
+            return _scalarize_cell(value[0])
+        return tuple(_scalarize_cell(v) for v in value)
+
+    return value
+
+
+def _normalize_object_scalars(df: pd.DataFrame) -> pd.DataFrame:
+    if df.empty:
+        return df.copy()
+
+    out = df.copy()
+    object_cols = [col for col in out.columns if out[col].dtype == "object"]
+    for col in object_cols:
+        out[col] = out[col].map(_scalarize_cell)
+    return out
+
+
 def open_parcels_dataset(
     path: str | Path,
     *,
@@ -189,6 +214,7 @@ def build_trajectory_table(
         rename_map[schema.z_var] = "z"
 
     df = df.rename(columns=rename_map)
+    df = _normalize_object_scalars(df)
 
     required_columns = ["trajectory", "obs", "time", "lon", "lat"]
     missing = [col for col in required_columns if col not in df.columns]

@@ -6,6 +6,7 @@ import tempfile
 import cartopy.crs as ccrs
 import cartopy.feature as cfeature
 import imageio.v2 as imageio
+import matplotlib.colors as mcolors
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
@@ -13,10 +14,19 @@ from matplotlib.cm import ScalarMappable
 import xarray as xr  # not required but harmless if already in env
 
 from ..plotting.projections import get_projection
+from ..plotting.trajectories import _normalize_key_columns, _normalize_key_value
 from .utils import (
     add_time_progress_bar,
     build_animation_colormap,
 )
+
+
+def _resolve_trail_color(*, show_tracer: bool, color_code, cmap, norm):
+    if show_tracer:
+        return "0.4"
+    if pd.isna(color_code):
+        return (0.5, 0.5, 0.5, 1.0)
+    return cmap(norm(color_code))
 
 
 def animate_trajectories(
@@ -33,6 +43,7 @@ def animate_trajectories(
     show_time_bar: bool = True,
     trail: bool = True,
     trail_steps: int | None = None,
+    show_tracer: bool = True,
     figsize: tuple[float, float] = (12, 8),
     add_land: bool = True,
     add_coastlines: bool = True,
@@ -46,12 +57,8 @@ def animate_trajectories(
     Color logic:
     - if color_by is in summary_df, color is fixed per trajectory
     - elif color_by is in trajectory_df, color is taken from the current frame
-    
-    Parameters
-    ----------
-    max_group_member
-        If set and group_member column exists, animate only members <= max_group_member.
-        If None, animate all available members.
+
+    Supports both numeric and categorical variables.
     """
     required = ["trajectory", "obs", "time", "lon", "lat"]
     missing = [c for c in required if c not in trajectory_df.columns]
@@ -64,14 +71,11 @@ def animate_trajectories(
     df = trajectory_df.copy()
     df["time"] = pd.to_datetime(df["time"])
 
-    # =========================================================================
-    # GROUPED TRAJECTORIES: Filter by max_group_member if present
-    # =========================================================================
     has_group_member = "group_member" in df.columns
     group_cols = ["trajectory"] + (["group_member"] if has_group_member else [])
+    df = _normalize_key_columns(df, group_cols)
     df = df.sort_values(group_cols + ["obs"]).reset_index(drop=True)
     if has_group_member and max_group_member is not None:
-        # Filter to keep only group members 1..max_group_member
         df = df[df["group_member"] <= max_group_member].copy()
         if df.empty:
             raise ValueError(
@@ -82,50 +86,77 @@ def animate_trajectories(
     if len(times) == 0:
         raise ValueError("No time steps available for trajectory animation.")
 
-    source = None
-    color_values_summary = None
-
     if summary_df is not None and color_by in summary_df.columns:
-        source = "summary"
         if "trajectory" not in summary_df.columns:
             raise KeyError("summary_df must contain 'trajectory' column.")
-        color_values_summary = (
-            summary_df[["trajectory", color_by]]
-            .drop_duplicates(subset=["trajectory"])
-            .set_index("trajectory")[color_by]
+        lookup_cols = group_cols if all(c in summary_df.columns for c in group_cols) else ["trajectory"]
+        source = "summary"
+        summary_norm = _normalize_key_columns(summary_df, lookup_cols)
+        color_lookup = (
+            summary_norm[lookup_cols + [color_by]]
+            .drop_duplicates(subset=lookup_cols)
+            .set_index(lookup_cols)[color_by]
         )
-
     elif color_by in df.columns:
         source = "trajectory"
-
+        lookup_cols = group_cols
+        color_lookup = None
     else:
         raise KeyError(
             f"animation_color_by='{color_by}' not found in summary_df or trajectory_df."
         )
 
     if source == "summary":
-        all_values = color_values_summary.to_numpy(dtype=float)
+        raw_values = pd.Series(color_lookup.to_numpy(), dtype=object)
     else:
-        all_values = df[color_by].to_numpy(dtype=float)
+        raw_values = df[color_by]
 
-    finite = np.isfinite(all_values)
-    if not finite.any():
-        raise ValueError(f"No finite values found for color variable '{color_by}'.")
+    non_null = raw_values.dropna()
+    if non_null.empty:
+        raise ValueError(f"No valid values found for color variable '{color_by}'.")
 
-    if vmin is None:
-        vmin = float(np.nanmin(all_values))
-    if vmax is None:
-        vmax = float(np.nanmax(all_values))
-    if vmax < vmin:
-        raise ValueError("vmax must be greater than or equal to vmin.")
+    numeric = pd.to_numeric(non_null, errors="coerce")
+    categorical_mode = not numeric.notna().all()
 
-    cmap, norm = build_animation_colormap(
-        cmap_name="viridis",
-        under_color="magenta",
-        over_color="red",
-        vmin=vmin,
-        vmax=vmax,
-    )
+    if categorical_mode:
+        categories = [str(v) for v in pd.unique(non_null.astype(str))]
+        base_cmap = plt.cm.get_cmap(
+            "tab10" if len(categories) <= 10 else "tab20" if len(categories) <= 20 else "hsv"
+        )
+        if hasattr(base_cmap, "colors") and len(getattr(base_cmap, "colors", [])) >= len(categories):
+            colors = [base_cmap.colors[i] for i in range(len(categories))]
+        else:
+            colors = [
+                base_cmap((i / max(len(categories) - 1, 1)) if len(categories) > 1 else 0)
+                for i in range(len(categories))
+            ]
+        cmap = mcolors.ListedColormap(colors, name="trajectory_categories")
+        norm = mcolors.BoundaryNorm(np.arange(len(categories) + 1) - 0.5, len(categories))
+        category_to_code = {cat: i for i, cat in enumerate(categories)}
+    else:
+        all_values = pd.to_numeric(raw_values, errors="coerce").to_numpy(dtype=float)
+        finite = np.isfinite(all_values)
+        if not finite.any():
+            raise ValueError(f"No finite values found for color variable '{color_by}'.")
+
+        if vmin is None:
+            vmin = float(np.nanmin(all_values))
+        if vmax is None:
+            vmax = float(np.nanmax(all_values))
+        if vmax < vmin:
+            raise ValueError("vmax must be greater than or equal to vmin.")
+        if np.isclose(vmin, vmax):
+            vmax = vmin + 1.0
+
+        cmap, norm = build_animation_colormap(
+            cmap_name="viridis",
+            under_color="magenta",
+            over_color="red",
+            vmin=vmin,
+            vmax=vmax,
+        )
+        category_to_code = None
+        categories = None
 
     proj = get_projection(projection)
     colorbar_label = colorbar_label or color_by
@@ -176,6 +207,29 @@ def animate_trajectories(
 
                 row = g_now.iloc[0]
 
+                xs.append(float(row["lon"]))
+                ys.append(float(row["lat"]))
+
+                if source == "summary":
+                    lookup_key = tid if isinstance(tid, tuple) else (_normalize_key_value(tid),)
+                    if len(lookup_cols) == 1:
+                        lookup_key = lookup_key[0]
+
+                    if lookup_key in color_lookup.index:
+                        raw_value = color_lookup.loc[lookup_key]
+                        if isinstance(raw_value, pd.Series):
+                            raw_value = raw_value.iloc[0]
+                    else:
+                        raw_value = np.nan
+                else:
+                    raw_value = row[color_by]
+
+                if categorical_mode:
+                    color_code = category_to_code.get(str(raw_value), np.nan) if pd.notna(raw_value) else np.nan
+                else:
+                    color_code = float(raw_value) if pd.notna(raw_value) else np.nan
+                cs.append(color_code)
+
                 if trail:
                     g_past = g.loc[g["time"] <= time_value]
                     if trail_steps is not None:
@@ -188,39 +242,39 @@ def animate_trajectories(
                             transform=ccrs.PlateCarree(),
                             linewidth=0.8,
                             alpha=0.35,
-                            color="0.4",
+                            color=_resolve_trail_color(
+                                show_tracer=show_tracer,
+                                color_code=color_code,
+                                cmap=cmap,
+                                norm=norm,
+                            ),
                             zorder=2,
                         )
 
-                xs.append(float(row["lon"]))
-                ys.append(float(row["lat"]))
-
-                if source == "summary":
-                    summary_key = tid[0] if isinstance(tid, tuple) else tid
-                    cs.append(float(color_values_summary.loc[summary_key]))
-                else:
-                    cs.append(float(row[color_by]))
-
             if len(xs) > 0:
-                sc = ax.scatter(
-                    xs,
-                    ys,
-                    c=cs,
-                    cmap=cmap,
-                    norm=norm,
-                    s=18,
-                    transform=ccrs.PlateCarree(),
-                    zorder=3,
-                )
+                if show_tracer:
+                    ax.scatter(
+                        xs,
+                        ys,
+                        c=cs,
+                        cmap=cmap,
+                        norm=norm,
+                        s=18,
+                        transform=ccrs.PlateCarree(),
+                        zorder=3,
+                    )
 
                 cbar = plt.colorbar(
                     ScalarMappable(norm=norm, cmap=cmap),
                     ax=ax,
                     shrink=0.9,
                     pad=0.03,
-                    extend="both",
+                    extend="both" if not categorical_mode else "neither",
                 )
                 cbar.set_label(colorbar_label)
+                if categorical_mode and categories is not None:
+                    cbar.set_ticks(np.arange(len(categories)))
+                    cbar.set_ticklabels(categories)
 
             ax.set_extent(
                 [lon_min - lon_pad, lon_max + lon_pad, lat_min - lat_pad, lat_max + lat_pad],

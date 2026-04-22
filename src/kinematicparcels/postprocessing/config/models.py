@@ -80,6 +80,8 @@ class DensityConfig:
     normalize_active: bool = True
     normalize_total: bool = True
     fill_ever_active_empty_with_zero: bool = False
+    # None = all members (default); int = only that group_member value
+    group_member: int | None = None
 
     animate: bool = False
     animation_var: str = "particle_count"
@@ -105,6 +107,7 @@ class TrajectoriesConfig:
     title: str = "Trajectories"
     show_start: bool = True
     show_end: bool = True
+    alpha: float = 0.7
 
     animate: bool = False
     animation_fps: int = 8
@@ -129,6 +132,40 @@ class StartEndRegionsConfig:
     input_lon_mode: str = "-180_180"
     plot: bool = False
 
+    # Connectivity outputs: trajectory/segment plots coloured by region.
+    # plot_connectivity activates both the trajectories-by-region PNG and
+    # the dual-coloured connectivity map PNG.
+    # connectivity_segments=True (default) draws straight start→end segments;
+    # False loads full trajectory paths (heavier but accurate).
+    plot_connectivity: bool = False
+    animate_connectivity: bool = False
+    connectivity_segments: bool = True
+    connectivity_color_by: str = "start_region"
+    connectivity_label: str = "region"
+    connectivity_title: str = "Trajectories by region"
+    connectivity_show_start: bool = True
+    connectivity_show_end: bool = True
+    connectivity_alpha: float | None = None
+    connectivity_max_group_member: int | None = None
+    connectivity_animation_fps: int | None = None
+    connectivity_animation_show_tracer: bool | None = None
+    connectivity_trail: bool | None = None
+    connectivity_trail_steps: int | None = None
+
+
+@dataclass(frozen=True)
+class ReleaseConfig:
+    """
+    Describes how particles were released in the simulation.
+
+    Used by the postprocessing pipeline to decide whether grid-based outputs
+    (start/end region maps, NetCDF) are meaningful.
+    Grid outputs are only produced when mode is 'region_grid' and continuous
+    release is disabled.
+    """
+    mode: str = "region_grid"
+    continuous: bool = False
+
 
 @dataclass(frozen=True)
 class PlottingConfig:
@@ -149,6 +186,7 @@ class PostprocessConfig:
     output: OutputConfig = field(default_factory=OutputConfig)
     exports: ExportsConfig = field(default_factory=ExportsConfig)
     grid: GridConfig | None = None
+    release: ReleaseConfig = field(default_factory=ReleaseConfig)
     density: DensityConfig = field(default_factory=DensityConfig)
     cleaning: CleaningConfig = field(default_factory=CleaningConfig)
     beaching_times: BeachingTimesConfig = field(default_factory=BeachingTimesConfig)

@@ -63,10 +63,17 @@ trajectories:
 plotting:
   projection: PlateCarree
 
+release:
+  mode: point_list
+  continuous: false
+
 start_end_regions:
   region_labels: null
   how_many: priority_max
   priority_level: 6
   priority_mode: atleast
   input_lon_mode: "-180_180"
-  plot: true
+  plot: false  # no grid outputs for point_list release
+  plot_connectivity: true
+  animate_connectivity: false
+  connectivity_segments: true

@@ -35,6 +35,7 @@ def run_trajectories(cfg: PostprocessConfig, context: dict) -> None:
             title=cfg.trajectories.title,
             show_start=cfg.trajectories.show_start,
             show_end=cfg.trajectories.show_end,
+            alpha=cfg.trajectories.alpha,
             max_group_member=cfg.trajectories.max_group_member,
         )
 

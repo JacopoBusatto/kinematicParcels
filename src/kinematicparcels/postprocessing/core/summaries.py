@@ -1,6 +1,21 @@
 from __future__ import annotations
 
+import numpy as np
 import pandas as pd
+
+
+def _scalarize_identifier(value):
+    if isinstance(value, np.ndarray):
+        if value.ndim == 0 or value.size == 1:
+            return _scalarize_identifier(value.item() if value.ndim == 0 else value.reshape(-1)[0])
+        return tuple(_scalarize_identifier(v) for v in value.tolist())
+
+    if isinstance(value, (list, tuple)):
+        if len(value) == 1:
+            return _scalarize_identifier(value[0])
+        return tuple(_scalarize_identifier(v) for v in value)
+
+    return value
 
 
 def build_particle_summary(
@@ -69,7 +84,7 @@ def build_particle_summary(
             group_member = None
 
         row = {
-            "trajectory": traj,
+            "trajectory": _scalarize_identifier(traj),
             "n_obs": len(g),
 
             "time0": first["time"],
@@ -82,7 +97,7 @@ def build_particle_summary(
         }
 
         if has_group_member:
-            row["group_member"] = group_member
+            row["group_member"] = _scalarize_identifier(group_member)
 
         if has_z:
             row["z0"] = first["z"]

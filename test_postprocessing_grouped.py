@@ -1,10 +1,21 @@
 from __future__ import annotations
 
+from pathlib import Path
+
+import numpy as np
 import pandas as pd
+import xarray as xr
 
 from kinematicparcels.postprocessing.analyses.density import compute_time_density
-from kinematicparcels.postprocessing.core.gridding import RegularGrid
+from kinematicparcels.postprocessing.analyses.start_end_regions import compute_start_end_region_maps
+from kinematicparcels.postprocessing.animations.trajectories import _resolve_trail_color, animate_trajectories
+from kinematicparcels.postprocessing.config import load_postprocess_config
+from kinematicparcels.postprocessing.config.models import DatasetConfig, DatasetCoordinatesConfig, ExportsConfig, GridConfig, OutputConfig, PostprocessConfig
+from kinematicparcels.postprocessing.core.gridding import RegularGrid, build_grid_from_config
 from kinematicparcels.postprocessing.core.summaries import build_particle_summary
+from kinematicparcels.postprocessing.plotting.trajectories import plot_trajectories_map
+from kinematicparcels.postprocessing.workflows.run_start_end_regions import _prepare_region_trajectory_inputs
+from kinematicparcels.postprocessing.workflows.run_summary import run_summary
 
 
 def test_build_particle_summary_separates_group_members() -> None:
@@ -31,6 +42,21 @@ def test_build_particle_summary_separates_group_members() -> None:
     assert len(summary) == 2
     assert set(summary["group_member"]) == {1, 2}
     assert set(summary["lat0"]) == {37.0, 37.2}
+
+
+def test_resolve_trail_color_depends_on_tracer_visibility() -> None:
+    import matplotlib.colors as mcolors
+    import matplotlib.pyplot as plt
+
+    cmap = plt.cm.get_cmap("tab10")
+    norm = mcolors.Normalize(vmin=0, vmax=1)
+
+    grey = _resolve_trail_color(show_tracer=True, color_code=0.0, cmap=cmap, norm=norm)
+    colored = _resolve_trail_color(show_tracer=False, color_code=0.0, cmap=cmap, norm=norm)
+
+    assert grey == "0.4"
+    assert colored != "0.4"
+
 
 
 def test_compute_time_density_accepts_pandas_timestamps() -> None:
@@ -66,3 +92,345 @@ def test_compute_time_density_accepts_pandas_timestamps() -> None:
     assert len(table) == 4
     assert ds.sizes["time"] == 2
     assert float(table["particle_count"].sum()) == 4.0
+
+
+def test_run_density_group_member_filter() -> None:
+    """DensityConfig.group_member filters rows before density is computed."""
+    from kinematicparcels.postprocessing.config.models import DensityConfig
+
+    df = pd.DataFrame(
+        {
+            "trajectory": ["1_m1", "1_m1", "1_m2", "1_m2"],
+            "group_member": [1, 1, 2, 2],
+            "obs": [0, 1, 0, 1],
+            "time": pd.to_datetime(
+                [
+                    "2026-04-15T12:00:00",
+                    "2026-04-15T18:00:00",
+                    "2026-04-15T12:00:00",
+                    "2026-04-15T18:00:00",
+                ]
+            ),
+            "lon": [12.0, 12.1, 12.2, 12.3],
+            "lat": [37.0, 37.0, 37.1, 37.1],
+        }
+    )
+
+    grid = RegularGrid(
+        lon_min=11.9,
+        lon_max=12.4,
+        lat_min=36.9,
+        lat_max=37.2,
+        dlon=0.1,
+        dlat=0.1,
+    )
+
+    # Filter to member 1 only: expect 2 rows (one per timestep), count == 2
+    member1_only = df.loc[df["group_member"] == 1].copy()
+    table, ds = compute_time_density(member1_only, grid=grid)
+
+    assert float(table["particle_count"].sum()) == 2.0
+    assert ds.sizes["time"] == 2
+
+    # DensityConfig.group_member=None (default) includes all members
+    cfg_default = DensityConfig()
+    assert cfg_default.group_member is None
+
+    # DensityConfig.group_member=1 restricts to member 1
+    cfg_member1 = DensityConfig(group_member=1)
+    assert cfg_member1.group_member == 1
+
+
+def test_plot_trajectories_map_accepts_categorical_summary_coloring(tmp_path: Path) -> None:
+    df = pd.DataFrame(
+        {
+            "trajectory": ["1", "1", "2", "2"],
+            "obs": [0, 1, 0, 1],
+            "time": pd.to_datetime(
+                [
+                    "2026-04-15T00:00:00",
+                    "2026-04-15T06:00:00",
+                    "2026-04-15T00:00:00",
+                    "2026-04-15T06:00:00",
+                ]
+            ),
+            "lon": [14.30, 14.45, 15.10, 15.22],
+            "lat": [36.90, 36.82, 37.20, 37.26],
+        }
+    )
+    summary = pd.DataFrame(
+        {
+            "trajectory": ["1", "2"],
+            "start_region": ["sesc-mod", "sesc-sir"],
+        }
+    )
+
+    outpath = tmp_path / "trajectories_by_start_region.png"
+    plot_trajectories_map(
+        df,
+        outpath=outpath,
+        title="Trajectories by start region",
+        summary_df=summary,
+        color_by="start_region",
+        show_end=False,
+    )
+
+    assert outpath.exists()
+    assert outpath.stat().st_size > 0
+
+
+def test_plot_trajectories_map_accepts_array_like_summary_trajectory_ids(tmp_path: Path) -> None:
+    df = pd.DataFrame(
+        {
+            "trajectory": [1, 1, 2, 2],
+            "obs": [0, 1, 0, 1],
+            "time": pd.to_datetime(
+                [
+                    "2026-04-15T00:00:00",
+                    "2026-04-15T06:00:00",
+                    "2026-04-15T00:00:00",
+                    "2026-04-15T06:00:00",
+                ]
+            ),
+            "lon": [14.30, 14.45, 15.10, 15.22],
+            "lat": [36.90, 36.82, 37.20, 37.26],
+        }
+    )
+    summary = pd.DataFrame(
+        {
+            "trajectory": [np.array([1]), np.array([2])],
+            "start_region": ["sesc-mod", "sesc-sir"],
+        }
+    )
+
+    outpath = tmp_path / "trajectories_by_start_region_array_ids.png"
+    plot_trajectories_map(
+        df,
+        outpath=outpath,
+        title="Trajectories by start region",
+        summary_df=summary,
+        color_by="start_region",
+        show_end=False,
+    )
+
+    assert outpath.exists()
+    assert outpath.stat().st_size > 0
+
+
+def test_animate_trajectories_accepts_categorical_summary_coloring(tmp_path: Path) -> None:
+    df = pd.DataFrame(
+        {
+            "trajectory": ["1", "1", "2", "2"],
+            "obs": [0, 1, 0, 1],
+            "time": pd.to_datetime(
+                [
+                    "2026-04-15T00:00:00",
+                    "2026-04-15T06:00:00",
+                    "2026-04-15T00:00:00",
+                    "2026-04-15T06:00:00",
+                ]
+            ),
+            "lon": [14.30, 14.45, 15.10, 15.22],
+            "lat": [36.90, 36.82, 37.20, 37.26],
+        }
+    )
+    summary = pd.DataFrame(
+        {
+            "trajectory": ["1", "2"],
+            "start_region": ["sesc-mod", "sesc-sir"],
+        }
+    )
+
+    outpath = tmp_path / "trajectories_by_start_region.gif"
+    animate_trajectories(
+        df,
+        outpath=outpath,
+        title="Trajectories by start region",
+        summary_df=summary,
+        color_by="start_region",
+        colorbar_label="Start region",
+        fps=2,
+        show_time_bar=False,
+        trail=False,
+        show_tracer=False,
+    )
+
+    assert outpath.exists()
+    assert outpath.stat().st_size > 0
+
+
+def test_prepare_region_trajectory_inputs_filters_member1_and_labels() -> None:
+    traj = pd.DataFrame(
+        {
+            "trajectory": ["1_m1", "1_m1", "1_m2", "1_m2", "2_m1", "2_m1"],
+            "group_member": [1, 1, 2, 2, 1, 1],
+            "obs": [0, 1, 0, 1, 0, 1],
+            "time": pd.to_datetime(
+                [
+                    "2026-04-15T00:00:00",
+                    "2026-04-15T06:00:00",
+                    "2026-04-15T00:00:00",
+                    "2026-04-15T06:00:00",
+                    "2026-04-15T00:00:00",
+                    "2026-04-15T06:00:00",
+                ]
+            ),
+            "lon": [14.1, 14.2, 14.1, 14.2, 15.1, 15.2],
+            "lat": [36.8, 36.9, 36.8, 36.9, 37.0, 37.1],
+        }
+    )
+    summary = pd.DataFrame(
+        {
+            "trajectory": ["1_m1", "1_m2", "2_m1"],
+            "group_member": [1, 2, 1],
+            "start_region": ["sesc-mod", "sesc-mod", "sesc-sir"],
+        }
+    )
+
+    traj_plot, summary_plot, labels = _prepare_region_trajectory_inputs(
+        traj,
+        summary,
+        color_by="start_region",
+        max_group_member=1,
+    )
+
+    assert sorted(traj_plot["group_member"].unique().tolist()) == [1]
+    assert sorted(summary_plot["group_member"].unique().tolist()) == [1]
+    assert labels == ["sesc-mod", "sesc-sir"]
+
+
+
+def test_run_summary_preserves_group_member_for_grouped_datasets(tmp_path: Path) -> None:
+    ds = xr.Dataset(
+        {
+            "time": (("trajectory", "obs"), np.array([
+                ["2026-04-15T00:00:00", "2026-04-15T06:00:00"],
+                ["2026-04-15T00:00:00", "2026-04-15T06:00:00"],
+            ], dtype="datetime64[ns]")),
+            "lon": (("trajectory", "obs"), np.array([[14.0, 14.1], [14.2, 14.3]])),
+            "lat": (("trajectory", "obs"), np.array([[36.8, 36.9], [37.0, 37.1]])),
+            "z": (("trajectory", "obs"), np.zeros((2, 2))),
+            "group_size": (("trajectory", "obs"), np.array([[2, 2], [2, 2]])),
+            "lon_1": (("trajectory", "obs"), np.array([[14.0, 14.1], [14.2, 14.3]])),
+            "lat_1": (("trajectory", "obs"), np.array([[36.8, 36.9], [37.0, 37.1]])),
+            "lon_2": (("trajectory", "obs"), np.array([[14.05, 14.15], [14.25, 14.35]])),
+            "lat_2": (("trajectory", "obs"), np.array([[36.85, 36.95], [37.05, 37.15]])),
+        },
+        coords={"trajectory": [0, 1], "obs": [0, 1]},
+    )
+    dataset_path = tmp_path / "grouped.nc"
+    ds.to_netcdf(dataset_path)
+
+    cfg = PostprocessConfig(
+        dataset=DatasetConfig(input_path=str(dataset_path)),
+        output=OutputConfig(output_dir=str(tmp_path / "out")),
+        exports=ExportsConfig(save_trajectory_table=True, save_particle_summary=True),
+    )
+
+    context: dict = {}
+    run_summary(cfg, context)
+
+    traj = context["trajectory_table"]
+    summary = context["particle_summary"]
+
+    assert "group_member" in traj.columns
+    assert sorted(traj["group_member"].unique().tolist()) == [1, 2]
+    assert "group_member" in summary.columns
+    assert sorted(summary["group_member"].unique().tolist()) == [1, 2]
+
+
+def test_build_grid_from_config_uses_member1_release_centers() -> None:
+    df = pd.DataFrame(
+        {
+            "time0": pd.to_datetime(
+                [
+                    "2026-04-15T00:00:00",
+                    "2026-04-15T00:00:00",
+                    "2026-04-15T06:00:00",
+                    "2026-04-15T06:00:00",
+                ]
+            ),
+            "lon0": [14.30, 14.3008, 14.35, 14.3508],
+            "lat0": [36.90, 36.9008, 36.95, 36.9508],
+            "group_member": [1, 2, 1, 2],
+        }
+    )
+    cfg = PostprocessConfig(
+        dataset=DatasetConfig(input_path="dummy.zarr"),
+        grid=GridConfig(
+            mode="from_initial_centers",
+            lon_min=14.0,
+            lon_max=15.0,
+            lat_min=36.5,
+            lat_max=37.5,
+            dlon=0.05,
+            dlat=0.05,
+        ),
+    )
+
+    grid = build_grid_from_config(
+        cfg,
+        df,
+        lon_col="lon0",
+        lat_col="lat0",
+        time_col="time0",
+    )
+
+    assert grid.dlon == 0.05
+    assert grid.dlat == 0.05
+    assert grid.nlon < 100
+    assert grid.nlat < 100
+
+
+def test_load_postprocess_config_parses_connectivity_alpha(tmp_path: Path) -> None:
+    cfg_path = tmp_path / "post.yml"
+    cfg_path.write_text(
+        """
+        dataset:
+          input_path: ./dummy.zarr
+        trajectories:
+          alpha: 0.35
+        start_end_regions:
+          connectivity_alpha: 0.25
+          connectivity_animation_show_tracer: false
+        """,
+        encoding="utf-8",
+    )
+
+    cfg = load_postprocess_config(cfg_path)
+
+    assert cfg.trajectories.alpha == 0.35
+    assert cfg.start_end_regions.connectivity_alpha == 0.25
+    assert cfg.start_end_regions.connectivity_animation_show_tracer is False
+
+
+
+def test_compute_start_end_region_maps_prefers_highest_priority() -> None:
+    classified = pd.DataFrame(
+        {
+            "lon0": [14.3, 14.3],
+            "lat0": [36.9, 36.9],
+            "start_numericLabel": [30.0, 1.0],
+            "start_priority": [7.0, 6.0],
+            "end_numericLabel": [11.0, 99.0],
+            "end_priority": [4.0, 8.0],
+        }
+    )
+    grid = RegularGrid(
+        lon_min=14.25,
+        lon_max=14.35,
+        lat_min=36.85,
+        lat_max=36.95,
+        dlon=0.1,
+        dlat=0.1,
+    )
+
+    start_table, _, end_table, _ = compute_start_end_region_maps(
+        classified,
+        grid=grid,
+        lon_col="lon0",
+        lat_col="lat0",
+    )
+
+    assert float(start_table["start_numericLabel"].iloc[0]) == 30.0
+    assert float(end_table["end_numericLabel"].iloc[0]) == 99.0

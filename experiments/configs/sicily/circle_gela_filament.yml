@@ -1,0 +1,64 @@
+experiment:
+  name: ex14_gela_filament_lkm
+  output_dir: ./outputs/sicily
+output:
+  zarr_name: ex14_gela_filament_lkm.zarr
+
+fieldset:
+  file_pattern: ./fields/mfs/hourly/sicily/med_currents_20260*.nc
+  periodic_halo: false
+  periodic_halo_size: 5
+  variables:
+    U: uo
+    V: vo
+  dimensions:
+    lon: longitude
+    lat: latitude
+    time: time
+  mesh: spherical
+
+release:
+  mode: circle
+
+  circle:
+    lat: 37.2
+    lon: 13.2
+    dimension: 2D
+    radius_km: 12.0
+    count_per_timestep: 15
+    release_interval: 3H
+    release_period: 5D
+    sampling: uniform
+    seed: 42
+    out_of_domain_policy: retry
+    bathymetry_policy: drop
+
+  group:
+    size: 2
+    radius_km: 1.0
+    placement: random
+
+  depth:
+    enabled: false
+    values: [0]
+
+simulation:
+  start_time: "2026-04-20 12:00"
+  runtime_days: 8.0
+  dt_hours: 0.2
+  outputdt_hours: 2.0
+  particle_type: scipy
+
+lkm:
+  enabled: false
+  mode: group_center_of_mass
+  L_min_km: 40
+  L_max_km: 100.0
+  increment_factor: 1.414
+  epsilon_tke: 2.0e-9
+  c0: 1.0
+  phi_mode: constant
+  phi_value: 0.78539816339
+  update_every_steps: 1
+  apply_to_group_size_min: 2
+  debug_output: false

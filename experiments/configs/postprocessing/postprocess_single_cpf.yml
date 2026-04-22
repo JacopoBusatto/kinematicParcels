@@ -68,6 +68,10 @@ trajectories:
 plotting:
   projection: PlateCarree
 
+release:
+  mode: region_grid
+  continuous: false
+
 start_end_regions:
   region_labels: null
   how_many: last
@@ -75,3 +79,6 @@ start_end_regions:
   priority_mode: atleast
   input_lon_mode: "-180_180"
   plot: true
+  plot_connectivity: false
+  animate_connectivity: false
+  connectivity_segments: true

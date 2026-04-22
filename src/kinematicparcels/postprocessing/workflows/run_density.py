@@ -5,7 +5,7 @@ from pathlib import Path
 from ..analyses import compute_time_density
 from ..animations import animate_density
 from ..config.models import PostprocessConfig
-from ..core import RegularGrid
+from ..core import build_grid_from_config
 from ..io import save_dataset_netcdf, save_grid_table
 from .base_products import get_trajectory_table
 
@@ -19,54 +19,22 @@ def run_density(cfg: PostprocessConfig, context: dict) -> None:
 
     if "grid" not in context:
         print("Building grid")
-
-        g = cfg.grid
-        if g is None:
-            raise ValueError("Density analysis requires a 'grid' section in the config.")
-
-        if g.mode == "explicit_edges":
-            grid = RegularGrid(
-                lon_min=g.lon_min,
-                lon_max=g.lon_max,
-                lat_min=g.lat_min,
-                lat_max=g.lat_max,
-                dlon=g.dlon,
-                dlat=g.dlat,
-            )
-
-        elif g.mode == "from_initial_centers":
-            time_col = cfg.density.time_col
-            if time_col not in df.columns:
-                raise KeyError(
-                    f"Time column '{time_col}' required to build grid from initial centers."
-                )
-
-            t0 = df[time_col].min()
-            df0 = df.loc[df[time_col] == t0].copy()
-
-            if df0.empty:
-                raise ValueError("Cannot build grid from initial centers: no points at first time.")
-
-            grid = RegularGrid.from_aligned_initial_centers(
-                df0[cfg.density.lon_col],
-                df0[cfg.density.lat_col],
-                lon_min=g.lon_min,
-                lon_max=g.lon_max,
-                lat_min=g.lat_min,
-                lat_max=g.lat_max,
-                dlon=g.dlon,
-                dlat=g.dlat,
-            )
-
-        else:
-            raise ValueError(f"Unsupported grid mode: {g.mode}")
-
+        grid = build_grid_from_config(
+            cfg,
+            df,
+            lon_col=cfg.density.lon_col,
+            lat_col=cfg.density.lat_col,
+            time_col=cfg.density.time_col,
+        )
         context["grid"] = grid
 
     grid = context["grid"]
 
+    if cfg.density.group_member is not None and "group_member" in df.columns:
+        df = df.loc[df["group_member"] == cfg.density.group_member].copy()
+
     print("Computing density")
-    
+
     density_table, density_ds = compute_time_density(
         df,
         grid=grid,

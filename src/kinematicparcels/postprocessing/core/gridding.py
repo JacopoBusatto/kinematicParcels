@@ -498,35 +498,152 @@ def infer_regular_spacing_from_centers(
     return spacing
 
 
-def build_release_grid_from_summary(
+def _select_release_centers(
     summary_df: pd.DataFrame,
     *,
-    lon_col: str = "lon0",
-    lat_col: str = "lat0",
-    round_decimals: int = 6,
-) -> RegularGrid:
+    lon_col: str,
+    lat_col: str,
+    time_col: str | None = "time0",
+    primary_group_member: int | None = 1,
+) -> pd.DataFrame:
     """
-    Build the release grid from particle summary initial positions.
+    Select native release centers from a particle summary.
 
-    The initial positions are interpreted as grid-cell centers.
+    For grouped releases, only the reference member is used so partner offsets do
+    not contaminate grid-spacing inference. If deployment time is available, it is
+    included in the duplicate filter so repeated releases at the same grid point
+    are handled cleanly.
     """
     required = [lon_col, lat_col]
     missing = [c for c in required if c not in summary_df.columns]
     if missing:
         raise KeyError(f"Input dataframe missing required columns: {missing}")
 
+    keep_cols = [lon_col, lat_col]
+    if time_col is not None and time_col in summary_df.columns:
+        keep_cols = [time_col] + keep_cols
+    if "group_member" in summary_df.columns:
+        keep_cols.append("group_member")
+
+    centers = summary_df[keep_cols].copy()
+
+    if primary_group_member is not None and "group_member" in centers.columns:
+        centers_primary = centers.loc[centers["group_member"] == primary_group_member].copy()
+        if not centers_primary.empty:
+            centers = centers_primary
+
+    dedup_subset = [lon_col, lat_col]
+    if time_col is not None and time_col in centers.columns:
+        dedup_subset = [time_col] + dedup_subset
+
+    centers = centers.drop_duplicates(subset=dedup_subset).reset_index(drop=True)
+    return centers
+
+
+def build_release_grid_from_summary(
+    summary_df: pd.DataFrame,
+    *,
+    lon_col: str = "lon0",
+    lat_col: str = "lat0",
+    time_col: str | None = "time0",
+    primary_group_member: int | None = 1,
+    round_decimals: int = 6,
+) -> RegularGrid:
+    """
+    Build the release grid from particle summary initial positions.
+
+    The initial positions are interpreted as grid-cell centers.
+    For grouped releases, only member 1 is used to recover the native center grid.
+    """
+    centers = _select_release_centers(
+        summary_df,
+        lon_col=lon_col,
+        lat_col=lat_col,
+        time_col=time_col,
+        primary_group_member=primary_group_member,
+    )
+
     dlon = infer_regular_spacing_from_centers(
-        summary_df[lon_col].to_numpy(),
+        centers[lon_col].to_numpy(),
         round_decimals=round_decimals,
     )
     dlat = infer_regular_spacing_from_centers(
-        summary_df[lat_col].to_numpy(),
+        centers[lat_col].to_numpy(),
         round_decimals=round_decimals,
     )
 
     return RegularGrid.from_point_centers(
-        summary_df[lon_col].to_numpy(),
-        summary_df[lat_col].to_numpy(),
+        centers[lon_col].to_numpy(),
+        centers[lat_col].to_numpy(),
         dlon=dlon,
         dlat=dlat,
     )
+
+
+def build_grid_from_config(
+    cfg,
+    df: pd.DataFrame,
+    *,
+    lon_col: str,
+    lat_col: str,
+    time_col: str | None = None,
+    round_decimals: int = 6,
+) -> RegularGrid:
+    """
+    Build a RegularGrid from the postprocessing config and an input table.
+
+    If a grid section is provided, that configuration is respected. For
+    from_initial_centers mode, only the first deployment time and the reference
+    group member are used to align the grid phase safely.
+    """
+    g = getattr(cfg, "grid", None)
+
+    if g is None:
+        return build_release_grid_from_summary(
+            df,
+            lon_col=lon_col,
+            lat_col=lat_col,
+            time_col=time_col,
+            primary_group_member=1,
+            round_decimals=round_decimals,
+        )
+
+    if g.mode == "explicit_edges":
+        return RegularGrid(
+            lon_min=g.lon_min,
+            lon_max=g.lon_max,
+            lat_min=g.lat_min,
+            lat_max=g.lat_max,
+            dlon=g.dlon,
+            dlat=g.dlat,
+        )
+
+    if g.mode == "from_initial_centers":
+        if time_col is not None and time_col in df.columns:
+            t0 = df[time_col].min()
+            df0 = df.loc[df[time_col] == t0].copy()
+        else:
+            df0 = df.copy()
+
+        if "group_member" in df0.columns:
+            df0_primary = df0.loc[df0["group_member"] == 1].copy()
+            if not df0_primary.empty:
+                df0 = df0_primary
+
+        if df0.empty:
+            raise ValueError("Cannot build grid from initial centers: no valid release points found.")
+
+        df0 = df0.drop_duplicates(subset=[lon_col, lat_col]).reset_index(drop=True)
+
+        return RegularGrid.from_aligned_initial_centers(
+            df0[lon_col],
+            df0[lat_col],
+            lon_min=g.lon_min,
+            lon_max=g.lon_max,
+            lat_min=g.lat_min,
+            lat_max=g.lat_max,
+            dlon=g.dlon,
+            dlat=g.dlat,
+        )
+
+    raise ValueError(f"Unsupported grid mode: {g.mode}")

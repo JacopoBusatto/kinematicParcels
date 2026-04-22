@@ -4,7 +4,8 @@ from pathlib import Path
 
 from ..config.models import PostprocessConfig
 from ..core import build_particle_summary
-from ..io import load_trajectory_table, save_particle_summary, save_trajectory_table
+from ..io import save_particle_summary, save_trajectory_table
+from .base_products import get_trajectory_table
 
 
 def run_summary(cfg: PostprocessConfig, context: dict) -> None:
@@ -17,13 +18,7 @@ def run_summary(cfg: PostprocessConfig, context: dict) -> None:
     """
     print("Building trajectory table")
 
-    trajectory_table = load_trajectory_table(
-        cfg.dataset.input_path,
-        truncate_stagnant=cfg.cleaning.truncate_stagnant,
-        stagnant_tol=cfg.cleaning.stagnant_tol,
-        stagnant_min_consecutive=cfg.cleaning.stagnant_min_consecutive,
-    )
-    context["trajectory_table"] = trajectory_table
+    trajectory_table = get_trajectory_table(cfg, context)
 
     print("Building particle summary")
     particle_summary = build_particle_summary(trajectory_table)

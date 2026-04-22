@@ -10,7 +10,7 @@ from .io import (
     resolve_parcels_schema,
     sanitize_trajectories,
 )
-from .plotting import plot_trajectories_map
+from .plotting import plot_connectivity_map, plot_trajectories_map
 
 __all__ = [
     "open_parcels_dataset",
@@ -20,4 +20,5 @@ __all__ = [
     "load_trajectory_table",
     "build_particle_summary",
     "plot_trajectories_map",
+    "plot_connectivity_map",
 ]

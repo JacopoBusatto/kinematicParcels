@@ -8,10 +8,13 @@ from ..core import RegularGrid
 from kinematicparcels.utilities.geographicalRegions import ALL_REGIONS, RegionManager
 
 
-def _normalize_region_result(result) -> tuple[str | None, float]:
+_PRIORITY_BY_LABEL = {r.label: float(r.priority) for r in ALL_REGIONS}
+
+
+def _normalize_region_result(result) -> tuple[str | None, float, float]:
     """
     Normalize RegionManager.find_regions output to:
-    (label, numeric_label)
+    (label, numeric_label, priority)
 
     Supported outputs:
     - None
@@ -20,22 +23,32 @@ def _normalize_region_result(result) -> tuple[str | None, float]:
     - object-like result with .label and .numericLabel
     """
     if result is None:
-        return None, np.nan
+        return None, np.nan, np.nan
 
     if isinstance(result, list):
         if len(result) == 0:
-            return None, np.nan
+            return None, np.nan, np.nan
         result = result[0]
 
     if isinstance(result, dict):
         label = result.get("label", None)
         numeric_label = result.get("numericLabel", np.nan)
-        return label, float(numeric_label) if numeric_label is not None else np.nan
+        priority = result.get("priority", _PRIORITY_BY_LABEL.get(label, np.nan))
+        return (
+            label,
+            float(numeric_label) if numeric_label is not None else np.nan,
+            float(priority) if priority is not None else np.nan,
+        )
 
     label = getattr(result, "label", None)
     numeric_label = getattr(result, "numericLabel", np.nan)
+    priority = getattr(result, "priority", _PRIORITY_BY_LABEL.get(label, np.nan))
 
-    return label, float(numeric_label) if numeric_label is not None else np.nan
+    return (
+        label,
+        float(numeric_label) if numeric_label is not None else np.nan,
+        float(priority) if priority is not None else np.nan,
+    )
 
 
 def build_region_manager(
@@ -88,8 +101,10 @@ def classify_start_end_regions(
 
     start_regions: list[str | None] = []
     start_numeric: list[float] = []
+    start_priority: list[float] = []
     end_regions: list[str | None] = []
     end_numeric: list[float] = []
+    end_priority: list[float] = []
 
     for row in out.itertuples(index=False):
         start_result = region_manager.find_regions(
@@ -109,20 +124,70 @@ def classify_start_end_regions(
             input_lon_mode=input_lon_mode,
         )
 
-        s_label, s_num = _normalize_region_result(start_result)
-        e_label, e_num = _normalize_region_result(end_result)
+        s_label, s_num, s_priority = _normalize_region_result(start_result)
+        e_label, e_num, e_priority = _normalize_region_result(end_result)
 
         start_regions.append(s_label)
         start_numeric.append(s_num)
+        start_priority.append(s_priority)
         end_regions.append(e_label)
         end_numeric.append(e_num)
+        end_priority.append(e_priority)
 
     out["start_region"] = start_regions
     out["start_numericLabel"] = start_numeric
+    out["start_priority"] = start_priority
     out["end_region"] = end_regions
     out["end_numericLabel"] = end_numeric
+    out["end_priority"] = end_priority
 
     return out
+
+
+def _aggregate_region_grid(
+    classified_summary_df: pd.DataFrame,
+    *,
+    grid: RegularGrid,
+    value_col: str,
+    priority_col: str,
+    lon_col: str,
+    lat_col: str,
+    output_col: str,
+) -> pd.DataFrame:
+    binned = grid.assign_bins(
+        classified_summary_df,
+        lon_col=lon_col,
+        lat_col=lat_col,
+        drop_outside=True,
+    )
+
+    if binned.empty:
+        return pd.DataFrame(
+            columns=["lon_bin", "lat_bin", "lon_center", "lat_center", output_col]
+        )
+
+    group_cols = ["lon_bin", "lat_bin", "lon_center", "lat_center"]
+
+    if priority_col in binned.columns:
+        chosen = (
+            binned.sort_values(
+                group_cols + [priority_col, value_col],
+                ascending=[True, True, True, True, False, True],
+                na_position="last",
+            )
+            .drop_duplicates(subset=group_cols, keep="first")
+            .reset_index(drop=True)
+        )
+        return chosen[group_cols + [value_col]].rename(columns={value_col: output_col})
+
+    return grid.aggregate(
+        classified_summary_df,
+        value_col=value_col,
+        agg="min",
+        lon_col=lon_col,
+        lat_col=lat_col,
+        output_col=output_col,
+    )
 
 
 def compute_start_end_region_maps(
@@ -146,10 +211,11 @@ def compute_start_end_region_maps(
     if missing:
         raise KeyError(f"Input classified summary missing required columns: {missing}")
 
-    start_grid_table = grid.aggregate(
+    start_grid_table = _aggregate_region_grid(
         classified_summary_df,
+        grid=grid,
         value_col="start_numericLabel",
-        agg="min",
+        priority_col="start_priority",
         lon_col=lon_col,
         lat_col=lat_col,
         output_col="start_numericLabel",
@@ -160,10 +226,11 @@ def compute_start_end_region_maps(
         dataset_name="start_numericLabel",
     )
 
-    end_grid_table = grid.aggregate(
+    end_grid_table = _aggregate_region_grid(
         classified_summary_df,
+        grid=grid,
         value_col="end_numericLabel",
-        agg="min",
+        priority_col="end_priority",
         lon_col=lon_col,
         lat_col=lat_col,
         output_col="end_numericLabel",
