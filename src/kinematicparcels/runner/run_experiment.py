@@ -399,21 +399,69 @@ def _build_circle_release(
 ):
     circle_cfg = rel_cfg.get("circle", {})
 
+    # Detect radius_km key (support legacy aliases)
+    _radius_key = next(
+        (k for k in ("radius_km", "radius", "radious_km", "radious") if k in circle_cfg),
+        None,
+    )
+
     for key in ("lat", "lon", "dimension", "release_interval", "release_period"):
         if key not in circle_cfg:
             raise ValueError(f"release.circle.{key} is required for mode='circle'")
-
-    radius_km = circle_cfg.get("radius_km", circle_cfg.get("radius"))
-    if radius_km is None:
-        radius_km = circle_cfg.get("radious_km", circle_cfg.get("radious"))
-    if radius_km is None:
+    if _radius_key is None:
         raise ValueError("release.circle.radius_km (or radius) is required")
-    radius_km = float(radius_km)
 
-    count_per_timestep = int(circle_cfg.get("count_per_timestep", 0))
-    if count_per_timestep <= 0:
-        raise ValueError("release.circle.count_per_timestep must be > 0")
+    # --- Detect multi-circle mode ---
+    # The 6 list-able fields must be either ALL scalars or ALL lists of the same length.
+    _LIST_ABLE = ("lat", "lon", _radius_key, "count_per_timestep", "release_interval", "release_period")
+    _is_list = {k: isinstance(circle_cfg.get(k), list) for k in _LIST_ABLE}
 
+    if any(_is_list.values()) and not all(_is_list.values()):
+        scalar_keys = [k for k, v in _is_list.items() if not v]
+        list_keys = [k for k, v in _is_list.items() if v]
+        raise ValueError(
+            "release.circle: in multi-circle mode all of lat, lon, radius_km, "
+            "count_per_timestep, release_interval, and release_period must be lists. "
+            f"Got lists for {list_keys} but scalars for {scalar_keys}."
+        )
+
+    multi_circle = any(_is_list.values())
+
+    if multi_circle:
+        lengths = {k: len(circle_cfg[k]) for k in _LIST_ABLE}
+        if len(set(lengths.values())) > 1:
+            raise ValueError(
+                "release.circle: all list fields must have the same length. "
+                f"Got lengths: {dict(lengths)}"
+            )
+        n_circles = next(iter(lengths.values()))
+        per_circle = [
+            {
+                "lat": float(circle_cfg["lat"][i]),
+                "lon": float(circle_cfg["lon"][i]),
+                "radius_km": float(circle_cfg[_radius_key][i]),
+                "count_per_timestep": int(circle_cfg["count_per_timestep"][i]),
+                "release_interval": circle_cfg["release_interval"][i],
+                "release_period": circle_cfg["release_period"][i],
+            }
+            for i in range(n_circles)
+        ]
+    else:
+        count_per_timestep = int(circle_cfg.get("count_per_timestep", 0))
+        if count_per_timestep <= 0:
+            raise ValueError("release.circle.count_per_timestep must be > 0")
+        per_circle = [
+            {
+                "lat": float(circle_cfg["lat"]),
+                "lon": float(circle_cfg["lon"]),
+                "radius_km": float(circle_cfg[_radius_key]),
+                "count_per_timestep": count_per_timestep,
+                "release_interval": circle_cfg["release_interval"],
+                "release_period": circle_cfg["release_period"],
+            }
+        ]
+
+    # --- Shared params (scalar only) ---
     dimension = str(circle_cfg["dimension"]).strip().lower()
     if dimension not in {"2d", "3d"}:
         raise ValueError("release.circle.dimension must be '2D' or '3D'")
@@ -438,22 +486,6 @@ def _build_circle_release(
         )
 
     t0 = parse_datetime_like(sim_cfg["start_time"])
-    dt_release = parse_timedelta_like(circle_cfg["release_interval"])
-    release_period = parse_timedelta_like(circle_cfg["release_period"])
-    if dt_release.total_seconds() <= 0:
-        raise ValueError("release.circle.release_interval must be > 0")
-    if release_period.total_seconds() < 0:
-        raise ValueError("release.circle.release_period must be >= 0")
-
-    release_times_dt = []
-    t = t0
-    t_end = t0 + release_period
-    while t <= t_end:
-        release_times_dt.append(t)
-        t += dt_release
-
-    center_lon = float(circle_cfg["lon"])
-    center_lat = float(circle_cfg["lat"])
     seed = circle_cfg.get("seed", None)
     rng = np.random.default_rng(None if seed is None else int(seed))
 
@@ -461,6 +493,7 @@ def _build_circle_release(
     depth_max_pd = depth_axis_max_positive_down(fieldset)
 
     center_depth_pd = None
+    depth_radius_m = None
     if dimension == "3d":
         if depth_max_pd is None:
             raise ValueError(
@@ -468,72 +501,58 @@ def _build_circle_release(
             )
         if "depth" not in circle_cfg:
             raise ValueError("release.circle.depth is required in 3D mode")
+        if "depth_radius" not in circle_cfg:
+            raise ValueError("release.circle.depth_radius is required in 3D mode")
         center_depth_raw = float(circle_cfg["depth"])
         center_depth_pd = float(to_positive_down(center_depth_raw, depth_convention))
         if center_depth_pd < 0:
             raise ValueError(
                 "release.circle.depth must be below the surface in inferred depth convention"
             )
+        depth_radius_m = float(circle_cfg["depth_radius"])
+        if depth_radius_m <= 0:
+            raise ValueError("release.circle.depth_radius must be > 0")
 
     lons_all = []
     lats_all = []
     depths_pd_all = []
     times_all = []
+    total_steps = 0
 
-    for t_step in release_times_dt:
-        if out_policy in {"drop", "error"}:
-            candidate_lons, candidate_lats, candidate_depths_pd = sample_circle_or_sphere(
-                center_lon=center_lon,
-                center_lat=center_lat,
-                center_depth_pd=center_depth_pd,
-                radius_km=radius_km,
-                count=count_per_timestep,
-                dimension=dimension,
-                sampling=sampling,
-                rng=rng,
-            )
+    for circle_idx, cp in enumerate(per_circle):
+        label = f"circle[{circle_idx}]" if multi_circle else "circle"
 
-            mask_domain = mask_inside_domain(candidate_lons, candidate_lats, fieldset)
-            mask_depth = np.ones(len(candidate_lons), dtype=bool)
+        dt_release = parse_timedelta_like(cp["release_interval"])
+        rp = parse_timedelta_like(cp["release_period"])
+        if dt_release.total_seconds() <= 0:
+            raise ValueError(f"release.{label}.release_interval must be > 0")
+        if rp.total_seconds() < 0:
+            raise ValueError(f"release.{label}.release_period must be >= 0")
+        if cp["count_per_timestep"] <= 0:
+            raise ValueError(f"release.{label}.count_per_timestep must be > 0")
 
-            if dimension == "3d":
-                mask_depth &= candidate_depths_pd >= 0.0
-                if bath_policy == "clip_to_depth_axis" and depth_max_pd is not None:
-                    candidate_depths_pd = np.clip(candidate_depths_pd, 0.0, depth_max_pd)
-                elif bath_policy == "drop" and depth_max_pd is not None:
-                    mask_depth &= candidate_depths_pd <= depth_max_pd
+        release_times_dt = []
+        t = t0
+        t_end = t0 + rp
+        while t <= t_end:
+            release_times_dt.append(t)
+            t += dt_release
 
-            mask_ok = mask_domain & mask_depth
+        total_steps += len(release_times_dt)
+        center_lon = cp["lon"]
+        center_lat = cp["lat"]
+        radius_km = cp["radius_km"]
+        count_per_timestep = cp["count_per_timestep"]
 
-            if out_policy == "error" and not np.all(mask_ok):
-                raise ValueError(
-                    "circle release produced out-of-domain or invalid-depth points "
-                    "with out_of_domain_policy='error'"
-                )
-
-            keep_lons = candidate_lons[mask_ok]
-            keep_lats = candidate_lats[mask_ok]
-            if dimension == "3d":
-                keep_depths_pd = candidate_depths_pd[mask_ok]
-            else:
-                keep_depths_pd = None
-
-        else:  # retry
-            keep_lons = []
-            keep_lats = []
-            keep_depths_pd = []
-            attempts = 0
-            max_attempts = 100
-
-            while len(keep_lons) < count_per_timestep and attempts < max_attempts:
-                attempts += 1
-                batch_count = count_per_timestep - len(keep_lons)
+        for t_step in release_times_dt:
+            if out_policy in {"drop", "error"}:
                 candidate_lons, candidate_lats, candidate_depths_pd = sample_circle_or_sphere(
                     center_lon=center_lon,
                     center_lat=center_lat,
                     center_depth_pd=center_depth_pd,
                     radius_km=radius_km,
-                    count=batch_count,
+                    depth_radius_m=depth_radius_m,
+                    count=count_per_timestep,
                     dimension=dimension,
                     sampling=sampling,
                     rng=rng,
@@ -551,34 +570,81 @@ def _build_circle_release(
 
                 mask_ok = mask_domain & mask_depth
 
-                keep_lons.extend(candidate_lons[mask_ok].tolist())
-                keep_lats.extend(candidate_lats[mask_ok].tolist())
+                if out_policy == "error" and not np.all(mask_ok):
+                    raise ValueError(
+                        f"{label} release produced out-of-domain or invalid-depth points "
+                        "with out_of_domain_policy='error'"
+                    )
+
+                keep_lons = candidate_lons[mask_ok]
+                keep_lats = candidate_lats[mask_ok]
                 if dimension == "3d":
-                    keep_depths_pd.extend(candidate_depths_pd[mask_ok].tolist())
+                    keep_depths_pd = candidate_depths_pd[mask_ok]
+                else:
+                    keep_depths_pd = None
 
-            if len(keep_lons) < count_per_timestep:
-                raise ValueError(
-                    "circle release could not collect enough valid points with "
-                    "out_of_domain_policy='retry'. Increase radius, reduce count, "
-                    "or switch policy."
-                )
+            else:  # retry
+                keep_lons = []
+                keep_lats = []
+                keep_depths_pd = []
+                attempts = 0
+                max_attempts = 100
 
-            keep_lons = np.asarray(keep_lons[:count_per_timestep], dtype=float)
-            keep_lats = np.asarray(keep_lats[:count_per_timestep], dtype=float)
+                while len(keep_lons) < count_per_timestep and attempts < max_attempts:
+                    attempts += 1
+                    batch_count = count_per_timestep - len(keep_lons)
+                    candidate_lons, candidate_lats, candidate_depths_pd = sample_circle_or_sphere(
+                        center_lon=center_lon,
+                        center_lat=center_lat,
+                        center_depth_pd=center_depth_pd,
+                        radius_km=radius_km,
+                        depth_radius_m=depth_radius_m,
+                        count=batch_count,
+                        dimension=dimension,
+                        sampling=sampling,
+                        rng=rng,
+                    )
+
+                    mask_domain = mask_inside_domain(candidate_lons, candidate_lats, fieldset)
+                    mask_depth = np.ones(len(candidate_lons), dtype=bool)
+
+                    if dimension == "3d":
+                        mask_depth &= candidate_depths_pd >= 0.0
+                        if bath_policy == "clip_to_depth_axis" and depth_max_pd is not None:
+                            candidate_depths_pd = np.clip(candidate_depths_pd, 0.0, depth_max_pd)
+                        elif bath_policy == "drop" and depth_max_pd is not None:
+                            mask_depth &= candidate_depths_pd <= depth_max_pd
+
+                    mask_ok = mask_domain & mask_depth
+
+                    keep_lons.extend(candidate_lons[mask_ok].tolist())
+                    keep_lats.extend(candidate_lats[mask_ok].tolist())
+                    if dimension == "3d":
+                        keep_depths_pd.extend(candidate_depths_pd[mask_ok].tolist())
+
+                if len(keep_lons) < count_per_timestep:
+                    raise ValueError(
+                        f"{label} release could not collect enough valid points with "
+                        "out_of_domain_policy='retry'. Increase radius, reduce count, "
+                        "or switch policy."
+                    )
+
+                keep_lons = np.asarray(keep_lons[:count_per_timestep], dtype=float)
+                keep_lats = np.asarray(keep_lats[:count_per_timestep], dtype=float)
+                if dimension == "3d":
+                    keep_depths_pd = np.asarray(keep_depths_pd[:count_per_timestep], dtype=float)
+                else:
+                    keep_depths_pd = None
+
+            keep_n = len(keep_lons)
+            if keep_n == 0:
+                continue
+
+            lons_all.append(np.asarray(keep_lons, dtype=float))
+            lats_all.append(np.asarray(keep_lats, dtype=float))
+            times_all.append(np.full(keep_n, np.datetime64(t_step), dtype="datetime64[ns]"))
             if dimension == "3d":
-                keep_depths_pd = np.asarray(keep_depths_pd[:count_per_timestep], dtype=float)
-            else:
-                keep_depths_pd = None
-
-        keep_n = len(keep_lons)
-        if keep_n == 0:
-            continue
-
-        lons_all.append(np.asarray(keep_lons, dtype=float))
-        lats_all.append(np.asarray(keep_lats, dtype=float))
-        times_all.append(np.full(keep_n, np.datetime64(t_step), dtype="datetime64[ns]"))
-        if dimension == "3d":
-            depths_pd_all.append(np.asarray(keep_depths_pd, dtype=float))
+                depths_pd_all.append(np.asarray(keep_depths_pd, dtype=float))
 
     if len(lons_all) == 0:
         raise ValueError("circle release generated zero valid points")
@@ -593,8 +659,9 @@ def _build_circle_release(
     else:
         depths = None
 
+    circle_label = f"{len(per_circle)} circles" if multi_circle else "circle"
     print(
-        f"Circle release: steps={len(release_times_dt)}, generated={len(lons)} points, "
+        f"Circle release: {circle_label}, steps={total_steps}, generated={len(lons)} points, "
         f"dimension={dimension.upper()}, sampling={sampling}, policy={out_policy}"
     )
 
@@ -903,7 +970,7 @@ def run_simulation(cfg: dict, pset: ParticleSet, fieldset: FieldSet, lkm_modes=N
         kernels = pset.Kernel(kernel_func)
         print(f"LKM enabled: {lkm_modes.n_modes} modes, update every {update_freq} steps")
 
-        total_steps = int(runtime_days * 24 / dt_sync_hours)
+        total_steps = int(abs(runtime_days * 24 / dt_sync_hours))
         for _ in range(total_steps):
             update_group_centers_and_relative_coords(
                 pset=pset,
@@ -911,7 +978,7 @@ def run_simulation(cfg: dict, pset: ParticleSet, fieldset: FieldSet, lkm_modes=N
             )
             pset.execute(
                 kernels,
-                runtime=timedelta(hours=dt_sync_hours),
+                runtime=timedelta(hours=abs(dt_sync_hours)),
                 dt=timedelta(hours=dt_integration_hours),
                 output_file=output_file,
             )

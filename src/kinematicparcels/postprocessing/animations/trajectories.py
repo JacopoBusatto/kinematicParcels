@@ -170,6 +170,12 @@ def animate_trajectories(
 
     grouped = {tid: g.copy() for tid, g in df.groupby(group_cols, sort=False)}
 
+    # Detect backward simulation: obs increases while time decreases
+    is_backward = False
+    _sample = next(iter(grouped.values())).sort_values("obs")
+    if len(_sample) >= 2:
+        is_backward = bool(_sample["time"].iloc[0] > _sample["time"].iloc[1])
+
     with tempfile.TemporaryDirectory() as tmpdir:
         tmpdir = Path(tmpdir)
         frame_paths: list[Path] = []
@@ -231,7 +237,10 @@ def animate_trajectories(
                 cs.append(color_code)
 
                 if trail:
-                    g_past = g.loc[g["time"] <= time_value]
+                    if is_backward:
+                        g_past = g.loc[g["time"] >= time_value]
+                    else:
+                        g_past = g.loc[g["time"] <= time_value]
                     if trail_steps is not None:
                         g_past = g_past.tail(trail_steps)
 

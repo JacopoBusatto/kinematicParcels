@@ -74,15 +74,20 @@ def _uniform_disk_offsets(rng: np.random.Generator, n: int, radius_m: float):
     return rr * np.cos(theta), rr * np.sin(theta)
 
 
-def _uniform_sphere_offsets(rng: np.random.Generator, n: int, radius_m: float):
+def _uniform_sphere_offsets(
+    rng: np.random.Generator, n: int, radius_m: float, depth_radius_m: float
+):
+    """Uniform distribution inside an ellipsoid with horizontal semi-axis radius_m
+    and vertical semi-axis depth_radius_m."""
     theta = rng.uniform(0.0, 2.0 * np.pi, size=n)
     cos_phi = rng.uniform(-1.0, 1.0, size=n)
     sin_phi = np.sqrt(1.0 - cos_phi * cos_phi)
-    rr = radius_m * np.cbrt(rng.random(size=n))
+    # rr is the unit-sphere radius; axes are scaled independently after
+    rr = np.cbrt(rng.random(size=n))
 
-    dx = rr * sin_phi * np.cos(theta)
-    dy = rr * sin_phi * np.sin(theta)
-    dz = rr * cos_phi
+    dx = radius_m * rr * sin_phi * np.cos(theta)
+    dy = radius_m * rr * sin_phi * np.sin(theta)
+    dz = depth_radius_m * rr * cos_phi
     return dx, dy, dz
 
 
@@ -91,22 +96,32 @@ def _gaussian_inside_radius(
     n: int,
     radius_m: float,
     dim3: bool,
+    depth_radius_m: float = 0.0,
 ):
-    sigma = radius_m / 3.0
     out = []
     collected = 0
 
     while collected < n:
         batch = max(32, int((n - collected) * 2.5))
         if dim3:
-            xyz = rng.normal(0.0, sigma, size=(batch, 3))
-            r2 = np.sum(xyz * xyz, axis=1)
-            keep = xyz[r2 <= radius_m * radius_m]
+            sigma_h = radius_m / 3.0
+            sigma_v = depth_radius_m / 3.0
+            xy = rng.normal(0.0, sigma_h, size=(batch, 2))
+            z = rng.normal(0.0, sigma_v, size=(batch, 1))
+            xyz = np.hstack([xy, z])
+            # clip to ellipsoid: (x/r_h)^2 + (y/r_h)^2 + (z/r_v)^2 <= 1
+            ellipsoid_r2 = (
+                (xyz[:, 0] / radius_m) ** 2
+                + (xyz[:, 1] / radius_m) ** 2
+                + (xyz[:, 2] / depth_radius_m) ** 2
+            )
+            keep = xyz[ellipsoid_r2 <= 1.0]
             if keep.size == 0:
                 continue
             out.append(keep)
             collected += keep.shape[0]
         else:
+            sigma = radius_m / 3.0
             xy = rng.normal(0.0, sigma, size=(batch, 2))
             r2 = np.sum(xy * xy, axis=1)
             keep = xy[r2 <= radius_m * radius_m]
@@ -127,6 +142,7 @@ def sample_circle_or_sphere(
     center_lat: float,
     center_depth_pd: float | None,
     radius_km: float,
+    depth_radius_m: float | None,
     count: int,
     dimension: str,
     sampling: str,
@@ -149,13 +165,15 @@ def sample_circle_or_sphere(
             dx, dy = _uniform_disk_offsets(rng, count, radius_m)
             dz = None
         else:
-            dx, dy, dz = _uniform_sphere_offsets(rng, count, radius_m)
+            dx, dy, dz = _uniform_sphere_offsets(rng, count, radius_m, float(depth_radius_m))
     else:
         if dim == "2d":
             dx, dy = _gaussian_inside_radius(rng, count, radius_m, dim3=False)
             dz = None
         else:
-            dx, dy, dz = _gaussian_inside_radius(rng, count, radius_m, dim3=True)
+            dx, dy, dz = _gaussian_inside_radius(
+                rng, count, radius_m, dim3=True, depth_radius_m=float(depth_radius_m)
+            )
 
     lat0_rad = np.radians(center_lat)
     meters_per_deg_lon = EARTH_METERS_PER_DEG_LAT * np.cos(lat0_rad)
