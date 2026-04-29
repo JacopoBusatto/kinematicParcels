@@ -11,6 +11,7 @@ This folder contains self-contained YAML examples for the main experiment config
 - 05_circle_uniform_2d.yml
 - 06_circle_gaussian_2d.yml
 - 07_lkm_grouped_2d.yml
+- 08_circle_multistart_2d.yml
 
 ## Notes
 

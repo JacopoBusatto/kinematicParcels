@@ -51,7 +51,8 @@ from kinematicparcels.utilities.group_expansion import expand_groups
 from kinematicparcels.utilities.lkm import build_lkm_modes
 from kinematicparcels.utilities.group_dynamics import update_group_centers_and_relative_coords
 from kinematicparcels.runner.kernels_lkm_inline import make_AdvectionRK4_with_LKM
-from kinematicparcels.runner.grouped_kernels import make_grouped_rk4_lkm_kernel
+from kinematicparcels.runner.kernels import BoundaryHaloKill
+from kinematicparcels.runner.grouped_kernels import make_grouped_rk4_lkm_kernel, BoundaryHaloKill_GroupedEntity
 
 
 # ============================================================================
@@ -62,6 +63,7 @@ class ScipyParticleGrouped(ScipyParticle):
     group_id = Variable('group_id', dtype=np.int32, initial=0)
     group_member = Variable('group_member', dtype=np.int32, initial=1)
     group_size = Variable('group_size', dtype=np.int32, initial=1)
+    circle_id = Variable('circle_id', dtype=np.int32, initial=1)
 
     # LKM-related variables: relative coordinates (kernel computes velocities)
     x_rel_m = Variable('x_rel_m', dtype=np.float32, initial=0.0)
@@ -75,6 +77,7 @@ class JITParticleGrouped(JITParticle):
     group_id = Variable('group_id', dtype=np.int32, initial=0)
     group_member = Variable('group_member', dtype=np.int32, initial=1)
     group_size = Variable('group_size', dtype=np.int32, initial=1)
+    circle_id = Variable('circle_id', dtype=np.int32, initial=1)
 
     # LKM-related variables: relative coordinates (kernel computes velocities)
     x_rel_m = Variable('x_rel_m', dtype=np.float32, initial=0.0)
@@ -87,6 +90,7 @@ class ScipyGroupEntityParticle(ScipyParticle):
     """One Parcels particle that stores all members of one fixed-size group."""
     group_id = Variable('group_id', dtype=np.int32, initial=0)
     group_size = Variable('group_size', dtype=np.int32, initial=1)
+    circle_id = Variable('circle_id', dtype=np.int32, initial=1)
     center_lon = Variable('center_lon', dtype=np.float32, initial=0.0)
     center_lat = Variable('center_lat', dtype=np.float32, initial=0.0)
 
@@ -138,6 +142,7 @@ def _build_group_entity_release(
     lats_base: np.ndarray,
     fieldset: FieldSet,
     group_cfg: dict,
+    circle_ids_base: np.ndarray | None = None,
     filter_land: bool = False,
 ):
     group_size = int(group_cfg.get("size", 1))
@@ -196,6 +201,8 @@ def _build_group_entity_release(
         "lon_4": lon_members[:, 3],
         "lat_4": lat_members[:, 3],
     }
+    if circle_ids_base is not None:
+        metadata["circle_id"] = np.asarray(circle_ids_base, dtype=int)[unique_group_ids]
 
     print(f"Grouped-entity mode: {n_groups} groups, size={group_size}")
     return center_lons, center_lats, metadata
@@ -310,8 +317,56 @@ def build_fieldset(cfg: dict) -> FieldSet:
     fieldset._kp_variables = variables.copy()
     fieldset._kp_dimensions = dims_cfg.copy()
 
+    _attach_boundary_halo_constants(fieldset, cfg)
+
     print(fieldset)
     return fieldset
+
+
+def _attach_boundary_halo_constants(fieldset: FieldSet, cfg: dict) -> None:
+    """Attach boundary halo guard-zone constants to the fieldset.
+
+    Reads simulation.boundary_halo from cfg (default: enabled, n_cells=1).
+    Constants are always attached so that BoundaryHaloKill / BoundaryHaloKill_GroupedEntity
+    can reference them regardless of whether the guard is active; when disabled,
+    the bounds are set to the hard field edges so no particle can ever trigger them.
+    """
+    fs_cfg = cfg["fieldset"]
+    bh_cfg = cfg.get("simulation", {}).get("boundary_halo", {})
+    enabled = bh_cfg.get("enabled", True)
+    n_cells = int(bh_cfg.get("n_cells", 1))
+
+    periodic = bool(fs_cfg.get("periodic_halo", False))
+
+    lon_axis = np.asarray(fieldset.U.grid.lon)
+    lat_axis = np.asarray(fieldset.U.grid.lat)
+
+    dlon = float(np.mean(np.diff(lon_axis))) if len(lon_axis) > 1 else 0.0
+    dlat = float(np.mean(np.diff(lat_axis))) if len(lat_axis) > 1 else 0.0
+
+    if enabled and n_cells > 0:
+        lat_min = float(lat_axis[0])  + n_cells * abs(dlat)
+        lat_max = float(lat_axis[-1]) - n_cells * abs(dlat)
+        lon_min = float(lon_axis[0])  + n_cells * abs(dlon)
+        lon_max = float(lon_axis[-1]) - n_cells * abs(dlon)
+        print(
+            f"Boundary halo guard: n_cells={n_cells}, "
+            f"lat=[{lat_min:.4f}, {lat_max:.4f}], "
+            f"lon=[{lon_min:.4f}, {lon_max:.4f}]"
+            + (" (lon check skipped – periodic)" if periodic else "")
+        )
+    else:
+        # Disabled: set bounds to the actual field edges so the check never fires.
+        lat_min = float(lat_axis[0])
+        lat_max = float(lat_axis[-1])
+        lon_min = float(lon_axis[0])
+        lon_max = float(lon_axis[-1])
+
+    fieldset.add_constant("bh_lat_min", lat_min)
+    fieldset.add_constant("bh_lat_max", lat_max)
+    fieldset.add_constant("bh_lon_min", lon_min)
+    fieldset.add_constant("bh_lon_max", lon_max)
+    fieldset.add_constant("bh_periodic", 1.0 if periodic else 0.0)
 
 
 def _build_release_points_from_region(rel_cfg: dict):
@@ -360,6 +415,38 @@ def _tile_metadata(metadata: dict, repeat_factor: int) -> dict:
     return out
 
 
+def _is_backward_simulation(sim_cfg: dict) -> bool:
+    return float(sim_cfg["dt_hours"]) < 0.0
+
+
+def _build_release_schedule(
+    *,
+    start_time: datetime,
+    release_interval: timedelta,
+    release_period: timedelta,
+    backward: bool,
+) -> np.ndarray:
+    if release_interval.total_seconds() <= 0:
+        raise ValueError("release interval must be > 0")
+    if release_period.total_seconds() < 0:
+        raise ValueError("release period must be >= 0")
+
+    release_times_dt = []
+    t = start_time
+    t_end = start_time - release_period if backward else start_time + release_period
+
+    if backward:
+        while t >= t_end:
+            release_times_dt.append(t)
+            t -= release_interval
+    else:
+        while t <= t_end:
+            release_times_dt.append(t)
+            t += release_interval
+
+    return np.asarray(release_times_dt, dtype="datetime64[ns]")
+
+
 def _build_continuous_release_schedule(sim_cfg: dict, continuous_cfg: dict) -> np.ndarray:
     if not continuous_cfg.get("enabled", False):
         return None
@@ -376,20 +463,12 @@ def _build_continuous_release_schedule(sim_cfg: dict, continuous_cfg: dict) -> n
     t0 = parse_datetime_like(sim_cfg["start_time"])
     dt_release = parse_timedelta_like(continuous_cfg["release_interval"])
     release_period = parse_timedelta_like(continuous_cfg["release_period"])
-
-    if dt_release.total_seconds() <= 0:
-        raise ValueError("release.continuous.release_interval must be > 0")
-    if release_period.total_seconds() < 0:
-        raise ValueError("release.continuous.release_period must be >= 0")
-
-    release_times_dt = []
-    t = t0
-    t_end = t0 + release_period
-    while t <= t_end:
-        release_times_dt.append(t)
-        t += dt_release
-
-    return np.asarray(release_times_dt, dtype="datetime64[ns]")
+    return _build_release_schedule(
+        start_time=t0,
+        release_interval=dt_release,
+        release_period=release_period,
+        backward=_is_backward_simulation(sim_cfg),
+    )
 
 
 def _build_circle_release(
@@ -428,7 +507,13 @@ def _build_circle_release(
     multi_circle = any(_is_list.values())
 
     if multi_circle:
+        if "start_time" in circle_cfg and not isinstance(circle_cfg["start_time"], list):
+            raise ValueError(
+                "release.circle.start_time must be a list in multi-circle mode"
+            )
         lengths = {k: len(circle_cfg[k]) for k in _LIST_ABLE}
+        if "start_time" in circle_cfg:
+            lengths["start_time"] = len(circle_cfg["start_time"])
         if len(set(lengths.values())) > 1:
             raise ValueError(
                 "release.circle: all list fields must have the same length. "
@@ -443,10 +528,15 @@ def _build_circle_release(
                 "count_per_timestep": int(circle_cfg["count_per_timestep"][i]),
                 "release_interval": circle_cfg["release_interval"][i],
                 "release_period": circle_cfg["release_period"][i],
+                "start_time": circle_cfg.get("start_time", [None] * n_circles)[i],
             }
             for i in range(n_circles)
         ]
     else:
+        if isinstance(circle_cfg.get("start_time"), list):
+            raise ValueError(
+                "release.circle.start_time must be a scalar in single-circle mode"
+            )
         count_per_timestep = int(circle_cfg.get("count_per_timestep", 0))
         if count_per_timestep <= 0:
             raise ValueError("release.circle.count_per_timestep must be > 0")
@@ -458,6 +548,7 @@ def _build_circle_release(
                 "count_per_timestep": count_per_timestep,
                 "release_interval": circle_cfg["release_interval"],
                 "release_period": circle_cfg["release_period"],
+                "start_time": circle_cfg.get("start_time"),
             }
         ]
 
@@ -480,14 +571,14 @@ def _build_circle_release(
             "release.circle.bathymetry_policy must be drop, clip_to_depth_axis, or ignore"
         )
 
-    if "start_time" not in sim_cfg:
+    if "start_time" not in sim_cfg and "start_time" not in circle_cfg:
         raise ValueError(
-            "simulation.start_time is required for time-dependent circle release"
+            "simulation.start_time is required for time-dependent circle release "
+            "unless release.circle.start_time is provided"
         )
-
-    t0 = parse_datetime_like(sim_cfg["start_time"])
     seed = circle_cfg.get("seed", None)
     rng = np.random.default_rng(None if seed is None else int(seed))
+    backward = _is_backward_simulation(sim_cfg)
 
     depth_convention = infer_depth_convention(fieldset)
     depth_max_pd = depth_axis_max_positive_down(fieldset)
@@ -513,30 +604,49 @@ def _build_circle_release(
         if depth_radius_m <= 0:
             raise ValueError("release.circle.depth_radius must be > 0")
 
+    # Per-circle fixed depths for 2D mode
+    center_depths_pd_2d: list[float] = []
+    if dimension == "2d" and "depth" in circle_cfg:
+        raw = circle_cfg["depth"]
+        vals = raw if isinstance(raw, list) else [raw] * len(per_circle)
+        if len(vals) != len(per_circle):
+            raise ValueError(
+                f"release.circle.depth must have {len(per_circle)} values in multi-circle mode"
+            )
+        center_depths_pd_2d = [float(v) for v in vals]
+
     lons_all = []
     lats_all = []
     depths_pd_all = []
     times_all = []
+    circle_ids_all = []
     total_steps = 0
 
     for circle_idx, cp in enumerate(per_circle):
-        label = f"circle[{circle_idx}]" if multi_circle else "circle"
+        circle_id = circle_idx + 1
+        label = f"circle[{circle_id}]" if multi_circle else "circle"
 
+        start_time_value = cp["start_time"]
+        if start_time_value is None:
+            if "start_time" not in sim_cfg:
+                raise ValueError(f"release.{label}.start_time is required")
+            start_time_value = sim_cfg["start_time"]
+
+        circle_start_time = parse_datetime_like(start_time_value)
         dt_release = parse_timedelta_like(cp["release_interval"])
         rp = parse_timedelta_like(cp["release_period"])
-        if dt_release.total_seconds() <= 0:
-            raise ValueError(f"release.{label}.release_interval must be > 0")
-        if rp.total_seconds() < 0:
-            raise ValueError(f"release.{label}.release_period must be >= 0")
         if cp["count_per_timestep"] <= 0:
             raise ValueError(f"release.{label}.count_per_timestep must be > 0")
 
-        release_times_dt = []
-        t = t0
-        t_end = t0 + rp
-        while t <= t_end:
-            release_times_dt.append(t)
-            t += dt_release
+        try:
+            release_times_dt = _build_release_schedule(
+                start_time=circle_start_time,
+                release_interval=dt_release,
+                release_period=rp,
+                backward=backward,
+            )
+        except ValueError as exc:
+            raise ValueError(f"release.{label}.{str(exc)}") from exc
 
         total_steps += len(release_times_dt)
         center_lon = cp["lon"]
@@ -643,8 +753,11 @@ def _build_circle_release(
             lons_all.append(np.asarray(keep_lons, dtype=float))
             lats_all.append(np.asarray(keep_lats, dtype=float))
             times_all.append(np.full(keep_n, np.datetime64(t_step), dtype="datetime64[ns]"))
+            circle_ids_all.append(np.full(keep_n, circle_id, dtype=int))
             if dimension == "3d":
                 depths_pd_all.append(np.asarray(keep_depths_pd, dtype=float))
+            elif center_depths_pd_2d:
+                depths_pd_all.append(np.full(keep_n, center_depths_pd_2d[circle_idx], dtype=float))
 
     if len(lons_all) == 0:
         raise ValueError("circle release generated zero valid points")
@@ -652,8 +765,9 @@ def _build_circle_release(
     lons = np.concatenate(lons_all)
     lats = np.concatenate(lats_all)
     release_times = np.concatenate(times_all)
+    circle_ids = np.concatenate(circle_ids_all)
 
-    if dimension == "3d":
+    if dimension == "3d" or center_depths_pd_2d:
         depths_pd = np.concatenate(depths_pd_all)
         depths = from_positive_down(depths_pd, depth_convention)
     else:
@@ -665,7 +779,7 @@ def _build_circle_release(
         f"dimension={dimension.upper()}, sampling={sampling}, policy={out_policy}"
     )
 
-    return lons, lats, depths, release_times, dimension
+    return lons, lats, depths, release_times, dimension, circle_ids
 
 
 def parse_lkm_config(cfg: dict) -> dict | None:
@@ -726,6 +840,7 @@ def build_release(cfg: dict, fieldset: FieldSet):
     release_times = None
     release_dimension = "2d"
     depths_from_circle_3d = None
+    circle_ids_raw = None
 
     if release_mode == "region_grid":
         lons_raw, lats_raw = _build_release_points_from_region(rel_cfg)
@@ -734,7 +849,7 @@ def build_release(cfg: dict, fieldset: FieldSet):
         lons_raw, lats_raw = _build_release_points_from_list(rel_cfg)
 
     elif release_mode == "circle":
-        lons_raw, lats_raw, depths_from_circle_3d, release_times, release_dimension = _build_circle_release(
+        lons_raw, lats_raw, depths_from_circle_3d, release_times, release_dimension, circle_ids_raw = _build_circle_release(
             rel_cfg=rel_cfg,
             sim_cfg=sim_cfg,
             fieldset=fieldset,
@@ -798,11 +913,13 @@ def build_release(cfg: dict, fieldset: FieldSet):
             lats_base=lats_raw,
             fieldset=fieldset,
             group_cfg=group_cfg,
+            circle_ids_base=circle_ids_raw,
             filter_land=rel_cfg.get("filter_land", False),
         )
         if release_times is not None:
             release_times = np.asarray(release_times)[metadata["group_id"]]
-        return center_lons, center_lats, None, metadata, release_times
+        depths = np.asarray(depths_from_circle_3d)[metadata["group_id"]] if depths_from_circle_3d is not None else None
+        return center_lons, center_lats, depths, metadata, release_times
 
     if group_size > 1:
         lons_raw, lats_raw, group_id, group_member, group_size_arr = expand_groups(
@@ -821,6 +938,8 @@ def build_release(cfg: dict, fieldset: FieldSet):
             "group_member": group_member,
             "group_size": group_size_arr,
         }
+        if circle_ids_raw is not None:
+            metadata["circle_id"] = np.asarray(circle_ids_raw, dtype=int)[group_id]
 
         if release_times is not None:
             release_times = np.repeat(release_times, group_size)
@@ -831,6 +950,8 @@ def build_release(cfg: dict, fieldset: FieldSet):
             "group_member": np.ones(len(lons_raw), dtype=int),
             "group_size": np.ones(len(lons_raw), dtype=int),
         }
+        if circle_ids_raw is not None:
+            metadata["circle_id"] = np.asarray(circle_ids_raw, dtype=int)
 
     # =========================================================================
     # DEPTH EXPANSION (singleton/member-based mode)
@@ -863,7 +984,7 @@ def build_release(cfg: dict, fieldset: FieldSet):
 
         return lons, lats, depths, metadata, release_times
 
-    return lons_raw, lats_raw, None, metadata, release_times
+    return lons_raw, lats_raw, depths_from_circle_3d, metadata, release_times
 
 
 def build_particleset(
@@ -950,7 +1071,10 @@ def run_simulation(cfg: dict, pset: ParticleSet, fieldset: FieldSet, lkm_modes=N
             print("LKM disabled in grouped-entity mode")
 
         grouped_kernel = make_grouped_rk4_lkm_kernel(group_size)
-        kernels = pset.Kernel(grouped_kernel)
+        kernels = (
+            pset.Kernel(BoundaryHaloKill_GroupedEntity)
+            + pset.Kernel(grouped_kernel)
+        )
 
         pset.execute(
             kernels,
@@ -967,7 +1091,10 @@ def run_simulation(cfg: dict, pset: ParticleSet, fieldset: FieldSet, lkm_modes=N
 
         # Member-based custom kernel with synchronized group updates
         kernel_func = make_AdvectionRK4_with_LKM(lkm_modes)
-        kernels = pset.Kernel(kernel_func)
+        kernels = (
+            pset.Kernel(BoundaryHaloKill)
+            + pset.Kernel(kernel_func)
+        )
         print(f"LKM enabled: {lkm_modes.n_modes} modes, update every {update_freq} steps")
 
         total_steps = int(abs(runtime_days * 24 / dt_sync_hours))
@@ -983,7 +1110,10 @@ def run_simulation(cfg: dict, pset: ParticleSet, fieldset: FieldSet, lkm_modes=N
                 output_file=output_file,
             )
     else:
-        kernels = pset.Kernel(AdvectionRK4)
+        kernels = (
+            pset.Kernel(BoundaryHaloKill)
+            + pset.Kernel(AdvectionRK4)
+        )
         print("LKM disabled: using standard advection")
         pset.execute(
             kernels,
@@ -991,8 +1121,6 @@ def run_simulation(cfg: dict, pset: ParticleSet, fieldset: FieldSet, lkm_modes=N
             dt=timedelta(hours=dt_integration_hours),
             output_file=output_file,
         )
-
-    print(f"Run completed: {zarr_path}")
 
 
 def main():

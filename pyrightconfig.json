@@ -1,0 +1,11 @@
+{
+    "include": ["src", "experiments", "testing"],
+    "reportMissingModuleSource": "none",
+    "reportAttributeAccessIssue": "none",
+    "reportArgumentType": "none",
+    "reportReturnType": "none",
+    "reportOperatorIssue": "none",
+    "reportIndexIssue": "none",
+    "reportCallIssue": "none",
+    "reportAssignmentType": "none"
+}

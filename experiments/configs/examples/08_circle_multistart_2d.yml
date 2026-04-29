@@ -1,5 +1,5 @@
 experiment:
-  name: ex05_circle_uniform_2d
+  name: ex08_circle_multistart_2d
   output_dir: ./test_output/examples
 
 fieldset:
@@ -19,14 +19,14 @@ release:
   mode: circle
 
   circle:
-    lat: 36.8
-    lon: 15.4
+    lat: [36.8, 36.5]
+    lon: [15.4, 15.1]
+    radius_km: [3.0, 2.0]
+    start_time: ["2026-04-03 00:00", "2026-04-02 12:00"]
+    count_per_timestep: [10, 10]
+    release_interval: [6H, 6H]
+    release_period: [1D, 2D]
     dimension: 2D
-    radius_km: 3.0
-    start_time: "2026-04-01 00:00"
-    count_per_timestep: 20
-    release_interval: 6H
-    release_period: 2D
     sampling: uniform
     seed: 42
     out_of_domain_policy: retry
@@ -40,9 +40,8 @@ release:
     values: [0]
 
 simulation:
-  start_time: "2026-04-01 00:00"
   runtime_days: 3.0
-  dt_hours: 0.1
+  dt_hours: -0.1
   outputdt_hours: 1.0
   particle_type: scipy
 
@@ -50,4 +49,4 @@ lkm:
   enabled: false
 
 output:
-  zarr_name: ex05_circle_uniform_2d.zarr
+  zarr_name: ex08_circle_multistart_2d.zarr

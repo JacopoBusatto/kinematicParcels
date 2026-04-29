@@ -69,6 +69,7 @@ def build_particle_summary(
     has_group_member = "group_member" in df.columns
     if has_group_member:
         group_cols.append("group_member")
+    metadata_cols = [col for col in ("circle_id", "group_id", "group_size") if col in df.columns]
 
     for group_key, g in df.groupby(group_cols, sort=False):
 
@@ -98,6 +99,9 @@ def build_particle_summary(
 
         if has_group_member:
             row["group_member"] = _scalarize_identifier(group_member)
+
+        for col in metadata_cols:
+            row[col] = first[col]
 
         if has_z:
             row["z0"] = first["z"]

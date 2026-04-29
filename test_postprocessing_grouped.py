@@ -44,6 +44,31 @@ def test_build_particle_summary_separates_group_members() -> None:
     assert set(summary["lat0"]) == {37.0, 37.2}
 
 
+def test_build_particle_summary_preserves_circle_id() -> None:
+    df = pd.DataFrame(
+        {
+            "trajectory": [10, 10, 11, 11],
+            "obs": [0, 1, 0, 1],
+            "time": pd.to_datetime(
+                [
+                    "2026-04-15T00:00:00",
+                    "2026-04-15T06:00:00",
+                    "2026-04-15T00:00:00",
+                    "2026-04-15T06:00:00",
+                ]
+            ),
+            "lon": [12.00, 12.10, 12.20, 12.30],
+            "lat": [37.00, 37.05, 37.20, 37.25],
+            "circle_id": [1, 1, 2, 2],
+        }
+    )
+
+    summary = build_particle_summary(df)
+
+    assert "circle_id" in summary.columns
+    assert summary["circle_id"].tolist() == [1, 2]
+
+
 def test_resolve_trail_color_depends_on_tracer_visibility() -> None:
     import matplotlib.colors as mcolors
     import matplotlib.pyplot as plt

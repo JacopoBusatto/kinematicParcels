@@ -23,7 +23,7 @@ release:
     lon: 15.4
     dimension: 2D
     radius_km: 3.0
-
+    start_time: "2026-04-01 00:00"
     count_per_timestep: 25
     release_interval: 6H
     release_period: 2D

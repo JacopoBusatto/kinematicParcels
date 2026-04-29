@@ -163,3 +163,22 @@ def AdvectionRK4_LKM(particle, fieldset, time):
 
     particle.lon += (particle.dt / 6.0) * (u1 + 2 * u2 + 2 * u3 + u4)
     particle.lat += (particle.dt / 6.0) * (v1 + 2 * v2 + 2 * v3 + v4)
+
+
+def BoundaryHaloKill(particle, fieldset, time):
+    """Delete particle when it enters the boundary halo guard zone.
+
+    Must run BEFORE any advection kernel so no out-of-bound field sampling occurs.
+    The halo is defined by fieldset constants set at build time:
+        bh_lat_min, bh_lat_max  – inner latitude bounds of the halo
+        bh_lon_min, bh_lon_max  – inner longitude bounds (ignored when periodic)
+        bh_periodic             – 1.0 if the zonal boundary is periodic, else 0.0
+
+    Compatible with both Scipy and JIT particle execution.
+    """
+    if particle.lat < fieldset.bh_lat_min or particle.lat > fieldset.bh_lat_max:
+        particle.delete()
+        return
+    if fieldset.bh_periodic < 0.5:
+        if particle.lon < fieldset.bh_lon_min or particle.lon > fieldset.bh_lon_max:
+            particle.delete()

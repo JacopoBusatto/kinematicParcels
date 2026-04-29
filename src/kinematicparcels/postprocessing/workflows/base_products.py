@@ -11,6 +11,7 @@ from ..io import load_trajectory_table, open_parcels_dataset
 
 def _candidate_extra_vars(available_vars: set[str]) -> list[str]:
     candidate_extra_vars = [
+        "circle_id",
         "group_id",
         "group_member",
         "group_size",
@@ -104,7 +105,7 @@ def get_trajectory_table(
 
     ds = open_parcels_dataset(cfg.dataset.input_path)
     try:
-        available_vars = set(ds.variables)
+        available_vars = set(str(v) for v in ds.variables)
     finally:
         ds.close()
 

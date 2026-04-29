@@ -182,6 +182,7 @@ When simulation release uses grouped-particle mode (see README.md), the output c
 - `group_id`: Shared index across all members of a group
 - `group_member`: Member index within the group (1, 2, 3, ...)
 - `group_size`: Total particles per group
+- `circle_id`: Source circle index when the release mode is `circle`
 
 The postprocessing framework provides visualization and filtering support for grouped trajectories.
 
@@ -255,6 +256,7 @@ lat0
 lonf
 latf
 lifetime_seconds
+circle_id
 ```
 
 Meaning:
@@ -274,6 +276,9 @@ This dataset is typically used for:
 - release diagnostics
 - exit statistics
 - connectivity analyses
+
+When present in the trajectory dataset, release metadata such as `circle_id`,
+`group_id`, `group_member`, and `group_size` is preserved in the particle summary.
 
 
 ------------------------------------------------------------
@@ -686,6 +691,7 @@ trajectories:
 - `show_start` and `show_end` mark start and end point
 - `animation_fps`
 - `animation_color_by` and `animation_label` variable to plot as color and colorbar label
+- `animation_color_by` can use summary metadata such as `circle_id`, `group_member`, or `group_id` when available
 - `animation_vmin` and `animation_vmax` 
 - `show_time_bar`
 - `trail` and `trail_steps` plot a trail behind trajectories and its lenght

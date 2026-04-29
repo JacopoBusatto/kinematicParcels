@@ -461,6 +461,7 @@ release:
     dimension: 3D                # 2D or 3D
     radius_km: 5.0
 
+    start_time: "2026-04-01 00:00"   # optional; defaults to simulation.start_time
     count_per_timestep: 50
     release_interval: 6H         # e.g. 30min, 1H, 1D
     release_period: 3D
@@ -489,8 +490,18 @@ Disk/sphere radius in kilometers.
 **count_per_timestep**
 Number of base release points generated at each release time.
 
+**start_time**
+Absolute release start time for this circle.
+
+- Single-circle mode: scalar string
+- Multi-circle mode: list of strings with one entry per circle
+- If omitted, `simulation.start_time` is used
+
 **release_interval / release_period**
 Time cadence and total release window length.
+
+In backward simulations (`simulation.dt_hours < 0`), the schedule runs backward from
+`start_time` to `start_time - release_period`.
 
 **sampling**
 Sampling law inside the geometry:
@@ -511,6 +522,36 @@ How deep samples are constrained against the field depth axis:
 - `drop`: remove points deeper than axis max depth
 - `clip_to_depth_axis`: clip depths to valid range
 - `ignore`: skip this check
+
+## Multi-Circle Scheduling Example
+
+```yaml
+release:
+  mode: circle
+
+  circle:
+    lat: [36.8, 36.5]
+    lon: [15.4, 15.1]
+    radius_km: [3.0, 3.0]
+    start_time: ["2026-04-03 00:00", "2026-04-02 12:00"]
+    count_per_timestep: [20, 20]
+    release_interval: [6H, 6H]
+    release_period: [2D, 1D]
+    dimension: 2D
+    sampling: uniform
+```
+
+Each circle gets its own `circle_id`, starting at `1`. If grouped release is enabled,
+all members of the same group inherit the same `circle_id`.
+
+## Backward Simulations
+
+Backward behavior is global.
+
+- If `simulation.dt_hours > 0`, `simulation.start_time` is the trajectory start time.
+- If `simulation.dt_hours < 0`, `simulation.start_time` is the trajectory end time.
+- The covered window is `[start_time - runtime_days, start_time]` for backward runs.
+- Continuous release and circle release schedules follow the same direction rule.
 
 ---
 
@@ -565,7 +606,7 @@ Distance (kilometers) from the base point to circle perimeter. Uses Cartesian ap
 Two storage layouts are currently supported:
 
 - **Member-based layout** (legacy grouped release): one Parcels particle per member.
-- **Grouped-entity layout** (current default for `group.size > 1`): one Parcels particle per group, with member coordinates stored as `lon_1..lon_4`, `lat_1..lat_4` and group diagnostics (`group_id`, `group_size`, `center_lon`, `center_lat`).
+- **Grouped-entity layout** (current default for `group.size > 1`): one Parcels particle per group, with member coordinates stored as `lon_1..lon_4`, `lat_1..lat_4` and group diagnostics (`group_id`, `group_size`, `circle_id`, `center_lon`, `center_lat`).
 
 In postprocessing, grouped-entity outputs are expanded to member-wise rows so filtering with `max_group_member` and member-based plotting work as expected.
 
@@ -706,9 +747,13 @@ simulation:
   start_time: "2026-01-01 00:00"
 ```
 
-This defines the release time of all particles.
+Interpretation depends on integration direction:
 
-If not provided, the simulation behaves as before.
+- `dt_hours > 0`: `start_time` is the trajectory start time
+- `dt_hours < 0`: `start_time` is the trajectory end time
+
+For `release.mode: circle`, this can be overridden per circle with
+`release.circle.start_time`.
 
 ---
 

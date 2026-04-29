@@ -102,13 +102,14 @@ This ensures physical consistency: paired particles stay together.
 
 ### ParticleSet Variables
 
-Each particle receives three custom metadata variables:
+Each particle receives custom metadata variables:
 
 | Variable | Type | Description |
 |----------|------|-------------|
 | `group_id` | int32 | Base release center index (0, 1, 2, ...) |
 | `group_member` | int32 | Position within group (1=center, 2=first circle, ..., n=last circle) |
 | `group_size` | int32 | Total particles in group (constant for all members) |
+| `circle_id` | int32 | Source circle index (1, 2, 3, ...) when `release.mode: circle`; inherited by all members of the same group |
 
 ### Zarr Output
 
@@ -212,7 +213,7 @@ Domain filtering (existing)
          ↓
 Depth expansion (existing, applied uniformly to all group members)
          ↓
-ParticleSet creation (with group_id, group_member, group_size Variables)
+ParticleSet creation (with group_id, group_member, group_size, and optional circle_id Variables)
 ```
 
 **3. Custom Particle Classes**
@@ -339,7 +340,7 @@ trajectories:
 
 ### Zarr Metadata Output
 
-[**TO BE VERIFIED**]: Custom particle fields (`group_id`, `group_member`, `group_size`) are passed to `ParticleSet.from_list()` but their preservation in Zarr output depends on:
+[**TO BE VERIFIED**]: Custom particle fields (`group_id`, `group_member`, `group_size`, `circle_id`) are passed to `ParticleSet.from_list()` but their preservation in Zarr output depends on:
 - Parcels version
 - Zarr/NetCDF conversion settings
 - Custom output handlers

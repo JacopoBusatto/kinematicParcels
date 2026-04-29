@@ -202,6 +202,35 @@ def AdvectionRK4_Grouped(particle, fieldset, time):
     particle.lat = end_center_lat
 
 
+def BoundaryHaloKill_GroupedEntity(particle, fieldset, time):
+    """Delete a grouped-entity particle when any member enters the boundary halo.
+
+    Must run BEFORE AdvectionRK4_Grouped so no out-of-bound field sampling occurs.
+    All members share one Parcels particle, so particle.delete() kills the whole
+    group atomically.
+
+    Reads the same fieldset constants as BoundaryHaloKill:
+        bh_lat_min, bh_lat_max, bh_lon_min, bh_lon_max, bh_periodic
+    """
+    group_size_local = int(particle.group_size)
+
+    lons = [particle.lon_1, particle.lon_2, particle.lon_3, particle.lon_4]
+    lats = [particle.lat_1, particle.lat_2, particle.lat_3, particle.lat_4]
+
+    check_lon = fieldset.bh_periodic < 0.5
+
+    for i in range(group_size_local):
+        lat_i = lats[i]
+        lon_i = lons[i]
+        if lat_i < fieldset.bh_lat_min or lat_i > fieldset.bh_lat_max:
+            particle.delete()
+            return
+        if check_lon:
+            if lon_i < fieldset.bh_lon_min or lon_i > fieldset.bh_lon_max:
+                particle.delete()
+                return
+
+
 def make_grouped_rk4_lkm_kernel(group_size: int):
     """Return grouped kernel for group size 2..4."""
     if group_size < 2 or group_size > 4:
