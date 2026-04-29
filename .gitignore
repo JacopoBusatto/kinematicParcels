@@ -44,7 +44,7 @@ logs/*
 *.pdf
 
 # Local data download scripts (operator-specific)
-download_mfs_forecast.py
+download_*.py
 copernicus_env.yml
 
 # Legacy local-only sources

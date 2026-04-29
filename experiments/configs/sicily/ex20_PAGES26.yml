@@ -48,7 +48,7 @@ release:
 
 simulation:
   start_time: "2026-04-01 00:00"
-  runtime_days: 30.0
+  runtime_days: 20.0
   dt_hours: 0.2
   outputdt_hours: 1.0
   particle_type: scipy
