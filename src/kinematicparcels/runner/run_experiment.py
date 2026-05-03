@@ -9,6 +9,7 @@ import warnings
 import numpy as np
 import xarray as xr
 import yaml
+import zarr
 
 warnings.filterwarnings(
     "ignore",
@@ -1037,6 +1038,64 @@ def build_particleset(
 
     return pset
 
+def _nullify_off_grid_zarr_records(zarr_path: Path, *, outputdt_s: float) -> None:
+    """
+    Nullify zarr records whose timestamps are not aligned to the outputdt grid.
+
+    When Parcels deletes a particle (beaching, boundary kill) it writes the final
+    state at the deletion time, which is a dt-multiple but not necessarily an
+    outputdt-multiple.  This produces isolated off-grid records.
+
+    This function sets lon, lat, time (and z / member-position variables if present)
+    to NaN at those cells.  The standard `truncate_at_first_invalid` step in the
+    postprocessing pipeline then drops them, so the particle's last recorded
+    position is always the last on-grid outputdt snapshot before deletion.
+    """
+    z = zarr.open(str(zarr_path), mode="r+")
+    if "time" not in z:
+        return
+
+    t = z["time"][:]           # float64 (n_traj, n_obs) — seconds since Parcels epoch
+    valid = ~np.isnan(t)
+    if not valid.any():
+        return
+
+    # A record is off-grid if its time value is not within 1 s of an outputdt multiple.
+    # Use a fixed 1-second tolerance (outputdt is at least several minutes).
+    remainder = t[valid] % outputdt_s
+    off_grid_flat = (remainder > 1.0) & (remainder < outputdt_s - 1.0)
+
+    off_grid_2d = np.zeros(t.shape, dtype=bool)
+    off_grid_2d[valid] = off_grid_flat
+
+    if not off_grid_2d.any():
+        return
+
+    n_off = int(off_grid_2d.sum())
+
+    # Variables to nullify: all 2D float arrays (skip 1D index arrays trajectory/obs
+    # and integer metadata that cannot hold NaN).
+    _FLOAT_VARS = ["time", "lon", "lat", "z",
+                   "center_lon", "center_lat",
+                   "lon_1", "lat_1", "lon_2", "lat_2",
+                   "lon_3", "lat_3", "lon_4", "lat_4"]
+    vars_to_nullify = [
+        v for v in _FLOAT_VARS
+        if v in z and z[v].ndim == 2 and np.issubdtype(z[v].dtype, np.floating)
+    ]
+
+    for var in vars_to_nullify:
+        arr = z[var][:]
+        arr[off_grid_2d] = np.nan
+        z[var][:] = arr
+
+    print(
+        f"[zarr repair] Nullified {n_off} off-grid record(s) in {len(vars_to_nullify)} "
+        f"variable(s) (outputdt = {outputdt_s:.0f} s = {outputdt_s / 3600:.4g} h). "
+        "Their last on-grid snapshot is preserved."
+    )
+
+
 def run_simulation(cfg: dict, pset: ParticleSet, fieldset: FieldSet, lkm_modes=None):
     """Run simulation in singleton/member mode or grouped-entity mode."""
     sim_cfg = cfg["simulation"]
@@ -1121,6 +1180,13 @@ def run_simulation(cfg: dict, pset: ParticleSet, fieldset: FieldSet, lkm_modes=N
             dt=timedelta(hours=dt_integration_hours),
             output_file=output_file,
         )
+
+    # Parcels appends ".zarr" to the output name if the path has no suffix.
+    actual_zarr_path = zarr_path if zarr_path.exists() else zarr_path.parent / (zarr_path.name + ".zarr")
+    _nullify_off_grid_zarr_records(
+        actual_zarr_path,
+        outputdt_s=timedelta(hours=dt_output_hours).total_seconds(),
+    )
 
 
 def main():

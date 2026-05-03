@@ -29,6 +29,50 @@ def _resolve_trail_color(*, show_tracer: bool, color_code, cmap, norm):
     return cmap(norm(color_code))
 
 
+def _snap_times_to_grid(df: pd.DataFrame, *, time_col: str = "time") -> pd.DataFrame:
+    """
+    Snap off-grid timestamps to the nearest detected regular time grid.
+
+    Auto-detects the outputdt as the most common gap between consecutive unique
+    timestamps. Timestamps that deviate from the regular grid (particle-deletion
+    events written by Parcels at sub-outputdt precision) are rounded to the nearest
+    grid point. Timestamps already on the grid are unchanged.
+    """
+    ts = pd.to_datetime(df[time_col].dropna().unique())
+    if len(ts) < 2:
+        return df
+
+    sorted_ts = np.sort(ts)
+    gaps_ns = np.diff(sorted_ts.astype(np.int64))
+    gaps_ns = gaps_ns[gaps_ns > 0]
+    if len(gaps_ns) == 0:
+        return df
+
+    # Use the most common gap as the outputdt (majority of obs are on-grid)
+    unique_gaps, counts = np.unique(gaps_ns, return_counts=True)
+    outputdt_ns = int(unique_gaps[np.argmax(counts)])
+    if outputdt_ns <= 0:
+        return df
+
+    # Use the most frequent timestamp as the phase origin of the regular grid
+    counts_by_ts = df[time_col].dropna().value_counts()
+    origin_ns = int(pd.Timestamp(counts_by_ts.index[0]).value)
+
+    not_null = df[time_col].notna()
+    t_ns = df.loc[not_null, time_col].values.astype(np.int64)
+
+    offset_ns = t_ns - origin_ns
+    rounded_offset_ns = (np.round(offset_ns / outputdt_ns) * outputdt_ns).astype(np.int64)
+
+    n_changed = int(np.sum(offset_ns != rounded_offset_ns))
+    if n_changed == 0:
+        return df
+
+    df = df.copy()
+    df.loc[not_null, time_col] = pd.to_datetime(origin_ns + rounded_offset_ns)
+    return df
+
+
 def animate_trajectories(
     trajectory_df: pd.DataFrame,
     *,
@@ -43,6 +87,7 @@ def animate_trajectories(
     show_time_bar: bool = True,
     trail: bool = True,
     trail_steps: int | None = None,
+    every_n: int = 1,
     show_tracer: bool = True,
     figsize: tuple[float, float] = (12, 8),
     add_land: bool = True,
@@ -70,6 +115,7 @@ def animate_trajectories(
 
     df = trajectory_df.copy()
     df["time"] = pd.to_datetime(df["time"])
+    df = _snap_times_to_grid(df)  # snap sub-outputdt deletion timestamps to nearest grid point
 
     has_group_member = "group_member" in df.columns
     group_cols = ["trajectory"] + (["group_member"] if has_group_member else [])
@@ -82,7 +128,9 @@ def animate_trajectories(
                 f"No trajectories found with group_member <= {max_group_member}"
             )
 
-    times = np.sort(df["time"].dropna().unique())
+    if every_n < 1:
+        raise ValueError("every_n must be >= 1.")
+    times = np.sort(df["time"].dropna().unique())[::every_n]
     if len(times) == 0:
         raise ValueError("No time steps available for trajectory animation.")
 

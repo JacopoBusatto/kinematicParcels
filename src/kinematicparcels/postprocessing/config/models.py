@@ -87,6 +87,7 @@ class DensityConfig:
     animation_var: str = "particle_count"
     animation_label: str = "particle_count"
     animation_fps: int = 8
+    animation_every_n: int = 1
     animation_vmin: float | None = None
     animation_vmax: float | None = None
     show_time_bar: bool = True
@@ -111,6 +112,7 @@ class TrajectoriesConfig:
 
     animate: bool = False
     animation_fps: int = 8
+    animation_every_n: int = 1
     animation_color_by: str = "lat0"
     animation_vmin: float | None = None
     animation_vmax: float | None = None

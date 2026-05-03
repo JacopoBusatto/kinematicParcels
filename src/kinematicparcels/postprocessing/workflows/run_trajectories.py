@@ -47,6 +47,7 @@ def run_trajectories(cfg: PostprocessConfig, context: dict) -> None:
             outpath=gif_path,
             projection=cfg.plotting.projection,
             fps=cfg.trajectories.animation_fps,
+            every_n=cfg.trajectories.animation_every_n,
             title=cfg.trajectories.title,
             color_by=cfg.trajectories.animation_color_by,
             colorbar_label=cfg.trajectories.animation_label,

@@ -285,6 +285,11 @@ def _parse_density(section: dict[str, Any] | None) -> DensityConfig:
         raise ValueError("'density.animation_fps' must be an integer > 0.")
     animation_fps = animation_fps_raw
 
+    animation_every_n_raw = section.get("animation_every_n", 1)
+    if not isinstance(animation_every_n_raw, int) or animation_every_n_raw < 1:
+        raise ValueError("'density.animation_every_n' must be an integer >= 1.")
+    animation_every_n_density = animation_every_n_raw
+
     animation_vmin_raw = section.get("animation_vmin", None)
     if animation_vmin_raw is None:
         animation_vmin = None
@@ -309,6 +314,7 @@ def _parse_density(section: dict[str, Any] | None) -> DensityConfig:
         animation_var=animation_var,
         animation_label=animation_label,
         animation_fps=animation_fps,
+        animation_every_n=animation_every_n_density,
         animation_vmin=animation_vmin,
         animation_vmax=animation_vmax,
         show_time_bar=show_time_bar,
@@ -380,6 +386,11 @@ def _parse_trajectories(section: dict[str, Any] | None) -> TrajectoriesConfig:
         raise ValueError("'trajectories.animation_fps' must be an integer > 0.")
     animation_fps = animation_fps_raw
 
+    animation_every_n_raw = section.get("animation_every_n", 1)
+    if not isinstance(animation_every_n_raw, int) or animation_every_n_raw < 1:
+        raise ValueError("'trajectories.animation_every_n' must be an integer >= 1.")
+    animation_every_n_traj = animation_every_n_raw
+
     animation_color_by = _require_nonempty_string(
         section.get("animation_color_by", "lat0"),
         "trajectories.animation_color_by",
@@ -427,6 +438,7 @@ def _parse_trajectories(section: dict[str, Any] | None) -> TrajectoriesConfig:
         alpha=alpha,
         animate=animate,
         animation_fps=animation_fps,
+        animation_every_n=animation_every_n_traj,
         animation_color_by=animation_color_by,
         animation_vmin=animation_vmin,
         animation_vmax=animation_vmax,

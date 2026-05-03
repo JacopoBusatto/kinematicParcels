@@ -25,6 +25,7 @@ def animate_density(
     outpath: str | Path,
     projection: str = "PlateCarree",
     fps: int = 8,
+    every_n: int = 1,
     title: str = "",
     colorbar_label: str | None = None,
     vmin: float | None = None,
@@ -72,11 +73,15 @@ def animate_density(
 
     if fps <= 0:
         raise ValueError("fps must be > 0.")
+    if every_n < 1:
+        raise ValueError("every_n must be >= 1.")
 
     outpath = Path(outpath)
     outpath.parent.mkdir(parents=True, exist_ok=True)
 
-    times = ds["time"].values
+    all_times = ds["time"].values
+    time_indices = list(range(0, len(all_times), every_n))
+    times = all_times[time_indices]
     if len(times) == 0:
         raise ValueError("Dataset contains no time steps to animate.")
 
@@ -102,7 +107,7 @@ def animate_density(
         tmpdir = Path(tmpdir)
         frame_paths: list[Path] = []
 
-        for it, time_value in enumerate(times):
+        for it, (ds_idx, time_value) in enumerate(zip(time_indices, times)):
             fig = plt.figure(figsize=figsize)
             ax = plt.axes(projection=proj)
 
@@ -124,7 +129,7 @@ def animate_density(
                 gl.top_labels = False
                 gl.right_labels = False
 
-            frame = da.isel(time=it)
+            frame = da.isel(time=ds_idx)
 
             mesh = ax.pcolormesh(
                 ds["lon"].values,

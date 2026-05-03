@@ -72,6 +72,7 @@ def run_density(cfg: PostprocessConfig, context: dict) -> None:
             outpath=gif_path,
             projection=cfg.plotting.projection,
             fps=cfg.density.animation_fps,
+            every_n=cfg.density.animation_every_n,
             title=cfg.density.animation_var,
             colorbar_label=cfg.density.animation_label,
             vmin=cfg.density.animation_vmin,
