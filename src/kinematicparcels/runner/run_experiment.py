@@ -673,6 +673,7 @@ def _build_circle_release(
                 mask_depth = np.ones(len(candidate_lons), dtype=bool)
 
                 if dimension == "3d":
+                    assert candidate_depths_pd is not None
                     mask_depth &= candidate_depths_pd >= 0.0
                     if bath_policy == "clip_to_depth_axis" and depth_max_pd is not None:
                         candidate_depths_pd = np.clip(candidate_depths_pd, 0.0, depth_max_pd)
@@ -690,6 +691,7 @@ def _build_circle_release(
                 keep_lons = candidate_lons[mask_ok]
                 keep_lats = candidate_lats[mask_ok]
                 if dimension == "3d":
+                    assert candidate_depths_pd is not None
                     keep_depths_pd = candidate_depths_pd[mask_ok]
                 else:
                     keep_depths_pd = None
@@ -720,6 +722,7 @@ def _build_circle_release(
                     mask_depth = np.ones(len(candidate_lons), dtype=bool)
 
                     if dimension == "3d":
+                        assert candidate_depths_pd is not None
                         mask_depth &= candidate_depths_pd >= 0.0
                         if bath_policy == "clip_to_depth_axis" and depth_max_pd is not None:
                             candidate_depths_pd = np.clip(candidate_depths_pd, 0.0, depth_max_pd)
@@ -731,6 +734,7 @@ def _build_circle_release(
                     keep_lons.extend(candidate_lons[mask_ok].tolist())
                     keep_lats.extend(candidate_lats[mask_ok].tolist())
                     if dimension == "3d":
+                        assert candidate_depths_pd is not None
                         keep_depths_pd.extend(candidate_depths_pd[mask_ok].tolist())
 
                 if len(keep_lons) < count_per_timestep:

@@ -88,14 +88,14 @@ def _build_colorizer(values: pd.Series) -> dict:
         cmap = plt.cm.get_cmap("viridis")
         norm = mcolors.Normalize(vmin=vmin, vmax=vmax)
 
-        def to_color(value):
+        def _to_color_numeric(value):
             if pd.isna(value):
                 return (0.5, 0.5, 0.5, 1.0)
             return cmap(norm(float(value)))
 
         return {
             "kind": "numeric",
-            "to_color": to_color,
+            "to_color": _to_color_numeric,
             "cmap": cmap,
             "norm": norm,
         }
@@ -111,14 +111,14 @@ def _build_colorizer(values: pd.Series) -> dict:
         palette = [cmap((i / denom) if len(categories) > 1 else 0) for i in range(len(categories))]
     category_colors = {cat: palette[i] for i, cat in enumerate(categories)}
 
-    def to_color(value):
+    def _to_color_categorical(value):
         if pd.isna(value):
             return (0.5, 0.5, 0.5, 1.0)
         return category_colors.get(str(value), (0.5, 0.5, 0.5, 1.0))
 
     return {
         "kind": "categorical",
-        "to_color": to_color,
+        "to_color": _to_color_categorical,
         "categories": category_colors,
     }
 
