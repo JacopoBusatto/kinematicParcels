@@ -246,6 +246,7 @@ def plot_trajectories_map(
 
     for _, g in df.groupby(group_cols, sort=False):
         if colorizer is not None:
+            assert color_lookup is not None
             lookup_key = tuple(_normalize_key_value(g[col].iloc[0]) for col in lookup_cols)
             if len(lookup_cols) == 1:
                 lookup_key = lookup_key[0]
