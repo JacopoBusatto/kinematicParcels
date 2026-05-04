@@ -1,0 +1,72 @@
+experiment:
+  name: ex21_PAGES26_depth
+  output_dir: ./outputs/sicily
+output:
+  zarr_name: ex21_PAGES26_depth
+
+fieldset:
+  file_pattern: C:/Users/Jacopo/Documents/DATI/MFS_FORECAST/3D/SICILY/HOURLY/med_currents_3d_20260*.nc
+  periodic_halo: false
+  periodic_halo_size: 5
+  variables:
+    U: uo
+    V: vo
+  dimensions:
+    lon: longitude
+    lat: latitude
+    time: time
+    depth: depth
+  mesh: spherical
+
+release:
+  mode: circle
+  circle:
+    lat:                [37.70, 37.53, 37.08, 37.11, 36.70, 36.51, 36.63, 36.15, 35.50, 37.44, 37.29, 37.09, 36.88, 35.86, 36.09, 36.88, 36.61, 36.60, 36.69]
+    lon:                [12.22, 12.67, 13.83, 13.49, 14.70, 14.51, 15.19, 15.24, 12.46, 12.47, 13.36, 13.18, 13.63, 15.07, 15.44, 14.38, 14.37, 15.11, 15.22]
+    radius_km:          [ 5.00,  5.00,  5.00,  5.00,  5.00,  5.00,  5.00,  5.00,  5.00,  5.00,  5.00,  5.00,  5.00,  5.00,  5.00,  5.00,  5.00,  5.00,  5.00]
+    depth:              [45.00, 45.00, 45.00, 45.00, 45.00, 45.00, 45.00, 45.00, 45.00, 45.00, 45.00, 45.00, 45.00, 45.00, 45.00, 45.00, 45.00, 45.00, 45.00]
+    depth_radius_m:     [ 2.50,  2.50,  2.50,  2.50,  2.50,  2.50,  2.50,  2.50,  2.50,  2.50,  2.50,  2.50,  2.50,  2.50,  2.50,  2.50,  2.50,  2.50,  2.50]
+    count_per_timestep: [10   , 10   , 10   , 10   , 10   , 10   , 10   , 10   , 10   , 10   , 10   , 10   , 10   , 10   , 10   , 10   , 10   , 10   , 10   ]
+    release_interval:   [ 3H  ,  3H  ,  3H  ,  3H  ,  3H  ,  3H  ,  3H  ,  3H  ,  3H  ,  3H  ,  3H  ,  3H  ,  3H  ,  3H  ,  3H  ,  3H  ,  3H  ,  3H  ,  3H  ]
+    release_period:     [12H  , 12H  , 12H  , 12H  , 12H  , 12H  , 12H  , 12H  , 12H  , 12H  , 12H  , 12H  , 12H  , 12H  , 12H  , 12H  , 12H  , 12H  , 12H  ]
+    # REAL TIMES: start_time:         [2026-04-11 13:00, 2026-04-15 14:00, 2026-04-16 06:00, 2026-04-16 12:00, 2026-04-17 06:00, 2026-04-17 10:00, 2026-04-18 06:00, 2026-04-18 17:00, 2026-04-19 11:00, 2026-04-20 13:00, 2026-04-21 04:00, 2026-04-21 08:00, 2026-04-21 15:00, 2026-04-22 06:00, 2026-04-22 14:00, 2026-04-23 06:00, 2026-04-23 17:00, 2026-04-24 05:00, 2026-04-24 08:00]
+    # TIMES - 6H
+    start_time:         [2026-04-11 01:00, 2026-04-15 02:00, 2026-04-16 00:00, 2026-04-16 06:00, 2026-04-17 00:00, 2026-04-17 04:00, 2026-04-18 00:00, 2026-04-18 11:00, 2026-04-19 05:00, 2026-04-20 07:00, 2026-04-20 22:00, 2026-04-21 02:00, 2026-04-21 09:00, 2026-04-22 00:00, 2026-04-22 08:00, 2026-04-23 00:00, 2026-04-23 11:00, 2026-04-23 23:00, 2026-04-24 02:00]
+    dimension: 2D
+    sampling: uniform
+    seed: 42
+    out_of_domain_policy: retry
+    bathymetry_policy: drop
+
+  group:
+    size: 2
+    radius_km: 0.5
+    placement: random
+
+  depth:
+    enabled: false
+    values: [5]
+
+simulation:
+  start_time: "2026-04-01 00:00"
+  runtime_days: 20.0
+  dt_hours: 0.2
+  outputdt_hours: 1.0
+  particle_type: scipy
+  boundary_halo:
+    enabled: true
+    n_cells: 1
+
+lkm:
+  enabled: true
+  mode: group_center_of_mass
+  L_min_km: 40
+  L_max_km: 100.0
+  increment_factor: 1.414
+  epsilon_tke: 2.5e-9
+  c0: 1.0
+  phi_mode: constant
+  phi_value: 0.78539816339
+  update_every_steps: 1
+  apply_to_group_size_min: 2
+  debug_output: false

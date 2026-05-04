@@ -36,6 +36,9 @@ def run_trajectories(cfg: PostprocessConfig, context: dict) -> None:
             show_start=cfg.trajectories.show_start,
             show_end=cfg.trajectories.show_end,
             alpha=cfg.trajectories.alpha,
+            color_by=cfg.trajectories.plot_color_by,
+            cmap_name=cfg.trajectories.plot_cmap,
+            cmap_mode=cfg.trajectories.plot_cmap_mode,
             max_group_member=cfg.trajectories.max_group_member,
         )
 
@@ -53,6 +56,8 @@ def run_trajectories(cfg: PostprocessConfig, context: dict) -> None:
             colorbar_label=cfg.trajectories.animation_label,
             vmin=cfg.trajectories.animation_vmin,
             vmax=cfg.trajectories.animation_vmax,
+            cmap_name=cfg.trajectories.animation_cmap,
+            cmap_mode=cfg.trajectories.animation_cmap_mode,
             show_time_bar=cfg.trajectories.show_time_bar,
             trail=cfg.trajectories.trail,
             trail_steps=cfg.trajectories.trail_steps,

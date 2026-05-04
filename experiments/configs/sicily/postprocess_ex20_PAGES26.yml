@@ -5,7 +5,7 @@ analysis:
   types:
     - summary
     - trajectories
-    - density
+    # - density
     # - start_end_regions
 
 output:
@@ -56,15 +56,20 @@ trajectories:
   title: "PAGES26 - trajectories"
   show_start: true
   show_end: true
+  plot_color_by: circle_id
+  plot_cmap: tab20
+  plot_cmap_mode: categorical
 
   animation_fps: 10
   animation_every_n: 1
   animation_color_by: circle_id
+  animation_cmap: tab20
+  animation_cmap_mode: categorical
   animation_label: "PG26 stations"
   show_time_bar: true
   trail: true
   trail_steps: 12
-  max_group_member: 2
+  max_group_member: 1
 
 plotting:
   projection: PlateCarree

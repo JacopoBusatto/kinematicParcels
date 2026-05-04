@@ -109,11 +109,16 @@ class TrajectoriesConfig:
     show_start: bool = True
     show_end: bool = True
     alpha: float = 0.7
+    plot_color_by: str | None = None  # None = auto (group_member if present)
+    plot_cmap: str | None = None  # None = auto (viridis for numeric, tab10/20/hsv for categorical)
+    plot_cmap_mode: str = "auto"  # "auto" | "categorical" | "numeric"
 
     animate: bool = False
     animation_fps: int = 8
     animation_every_n: int = 1
     animation_color_by: str = "lat0"
+    animation_cmap: str | None = None  # None = auto (viridis for numeric, tab10/20/hsv for categorical)
+    animation_cmap_mode: str = "auto"  # "auto" | "categorical" | "numeric"
     animation_vmin: float | None = None
     animation_vmax: float | None = None
     animation_label: str = "value"

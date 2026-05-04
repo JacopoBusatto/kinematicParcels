@@ -374,6 +374,24 @@ def _parse_trajectories(section: dict[str, Any] | None) -> TrajectoriesConfig:
     show_start = bool(section.get("show_start", True))
     show_end = bool(section.get("show_end", True))
 
+    plot_color_by_raw = section.get("plot_color_by", None)
+    if plot_color_by_raw is None:
+        plot_color_by = None
+    else:
+        plot_color_by = _require_nonempty_string(plot_color_by_raw, "trajectories.plot_color_by")
+
+    plot_cmap_raw = section.get("plot_cmap", None)
+    if plot_cmap_raw is None:
+        plot_cmap = None
+    else:
+        plot_cmap = _require_nonempty_string(plot_cmap_raw, "trajectories.plot_cmap")
+
+    plot_cmap_mode = str(section.get("plot_cmap_mode", "auto"))
+    if plot_cmap_mode not in ("auto", "categorical", "numeric"):
+        raise ValueError(
+            "'trajectories.plot_cmap_mode' must be 'auto', 'categorical', or 'numeric'."
+        )
+
     alpha_raw = section.get("alpha", 0.7)
     alpha = _require_number(alpha_raw, "trajectories.alpha")
     if not (0.0 <= alpha <= 1.0):
@@ -395,6 +413,18 @@ def _parse_trajectories(section: dict[str, Any] | None) -> TrajectoriesConfig:
         section.get("animation_color_by", "lat0"),
         "trajectories.animation_color_by",
     )
+
+    animation_cmap_raw = section.get("animation_cmap", None)
+    if animation_cmap_raw is None:
+        animation_cmap = None
+    else:
+        animation_cmap = _require_nonempty_string(animation_cmap_raw, "trajectories.animation_cmap")
+
+    animation_cmap_mode = str(section.get("animation_cmap_mode", "auto"))
+    if animation_cmap_mode not in ("auto", "categorical", "numeric"):
+        raise ValueError(
+            "'trajectories.animation_cmap_mode' must be 'auto', 'categorical', or 'numeric'."
+        )
 
     animation_vmin_raw = section.get("animation_vmin", None)
     if animation_vmin_raw is None:
@@ -430,22 +460,36 @@ def _parse_trajectories(section: dict[str, Any] | None) -> TrajectoriesConfig:
             raise ValueError("'trajectories.trail_steps' must be an integer > 0 or null.")
         trail_steps = trail_steps_raw
 
+    max_group_member_raw = section.get("max_group_member", None)
+    if max_group_member_raw is None:
+        max_group_member = None
+    else:
+        if not isinstance(max_group_member_raw, int) or max_group_member_raw <= 0:
+            raise ValueError("'trajectories.max_group_member' must be an integer > 0 or null.")
+        max_group_member = max_group_member_raw
+
     return TrajectoriesConfig(
         plot=plot,
         title=title,
         show_start=show_start,
         show_end=show_end,
         alpha=alpha,
+        plot_color_by=plot_color_by,
+        plot_cmap=plot_cmap,
+        plot_cmap_mode=plot_cmap_mode,
         animate=animate,
         animation_fps=animation_fps,
         animation_every_n=animation_every_n_traj,
         animation_color_by=animation_color_by,
+        animation_cmap=animation_cmap,
+        animation_cmap_mode=animation_cmap_mode,
         animation_vmin=animation_vmin,
         animation_vmax=animation_vmax,
         animation_label=animation_label,
         show_time_bar=show_time_bar,
         trail=trail,
         trail_steps=trail_steps,
+        max_group_member=max_group_member,
     )
 
 

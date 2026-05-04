@@ -73,19 +73,28 @@ def _resolve_color_lookup(
     raise KeyError(f"color_by='{color_by}' not found in summary_df or trajectory_df.")
 
 
-def _build_colorizer(values: pd.Series) -> dict:
+def _build_colorizer(values: pd.Series, *, cmap_name: str | None = None, cmap_mode: str = "auto") -> dict:
     non_null = values.dropna()
     if non_null.empty:
         raise ValueError("No valid values found for requested coloring variable.")
 
     numeric = pd.to_numeric(non_null, errors="coerce")
-    if numeric.notna().all():
+    auto_categorical = not numeric.notna().all()
+
+    if cmap_mode == "categorical":
+        categorical = True
+    elif cmap_mode == "numeric":
+        categorical = False
+    else:
+        categorical = auto_categorical
+
+    if not categorical:
         full_numeric = pd.to_numeric(values, errors="coerce")
         vmin = float(full_numeric.min())
         vmax = float(full_numeric.max())
         if np.isclose(vmin, vmax):
             vmax = vmin + 1.0
-        cmap = plt.cm.get_cmap("viridis")
+        cmap = plt.cm.get_cmap(cmap_name if cmap_name is not None else "viridis")
         norm = mcolors.Normalize(vmin=vmin, vmax=vmax)
 
         def _to_color_numeric(value):
@@ -101,15 +110,21 @@ def _build_colorizer(values: pd.Series) -> dict:
         }
 
     categories = [str(v) for v in pd.unique(non_null.astype(str))]
-    cmap = plt.cm.get_cmap(
-        "tab10" if len(categories) <= 10 else "tab20" if len(categories) <= 20 else "hsv"
-    )
-    if hasattr(cmap, "colors") and len(getattr(cmap, "colors", [])) >= len(categories):
-        palette = [cmap.colors[i] for i in range(len(categories))]
+    if cmap_name is not None:
+        base_cmap = plt.cm.get_cmap(cmap_name)
+    else:
+        base_cmap = plt.cm.get_cmap(
+            "tab10" if len(categories) <= 10 else "tab20" if len(categories) <= 20 else "hsv"
+        )
+    if hasattr(base_cmap, "colors") and len(getattr(base_cmap, "colors", [])) >= len(categories):
+        palette = [base_cmap.colors[i] for i in range(len(categories))]
     else:
         denom = max(len(categories) - 1, 1)
-        palette = [cmap((i / denom) if len(categories) > 1 else 0) for i in range(len(categories))]
+        palette = [base_cmap((i / denom) if len(categories) > 1 else 0) for i in range(len(categories))]
     category_colors = {cat: palette[i] for i, cat in enumerate(categories)}
+    listed_cmap = mcolors.ListedColormap(palette, name="plot_categories")
+    cat_norm = mcolors.BoundaryNorm(np.arange(len(categories) + 1) - 0.5, len(categories))
+    category_to_code = {cat: i for i, cat in enumerate(categories)}
 
     def _to_color_categorical(value):
         if pd.isna(value):
@@ -120,6 +135,9 @@ def _build_colorizer(values: pd.Series) -> dict:
         "kind": "categorical",
         "to_color": _to_color_categorical,
         "categories": category_colors,
+        "cmap": listed_cmap,
+        "norm": cat_norm,
+        "category_to_code": category_to_code,
     }
 
 
@@ -140,6 +158,8 @@ def plot_trajectories_map(
     summary_df: pd.DataFrame | None = None,
     color_by: str | None = None,
     colorbar_label: str | None = None,
+    cmap_name: str | None = None,
+    cmap_mode: str = "auto",
     max_group_member: int | None = None,
 ) -> None:
     """
@@ -209,7 +229,7 @@ def plot_trajectories_map(
         summary_df=summary_df,
         key_cols=group_cols,
     )
-    colorizer = _build_colorizer(color_lookup) if color_lookup is not None else None
+    colorizer = _build_colorizer(color_lookup, cmap_name=cmap_name, cmap_mode=cmap_mode) if color_lookup is not None else None
 
     fig = plt.figure(figsize=figsize)
     proj = get_projection(projection)
@@ -312,11 +332,16 @@ def plot_trajectories_map(
             )
             cbar.set_label(colorbar_label or color_by or "value")
         else:
-            handles = [
-                Line2D([0], [0], color=color, lw=2, marker="o", markersize=6, label=label)
-                for label, color in colorizer["categories"].items()
-            ]
-            ax.legend(handles=handles, title=colorbar_label or color_by or "category", loc="best")
+            cbar = plt.colorbar(
+                ScalarMappable(norm=colorizer["norm"], cmap=colorizer["cmap"]),
+                ax=ax,
+                shrink=0.9,
+                pad=0.03,
+            )
+            cbar.set_label(colorbar_label or color_by or "category")
+            categories = list(colorizer["categories"].keys())
+            cbar.set_ticks(np.arange(len(categories)))
+            cbar.set_ticklabels(categories)
 
     lon_min = df["lon"].min()
     lon_max = df["lon"].max()

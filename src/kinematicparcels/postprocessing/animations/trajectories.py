@@ -84,6 +84,8 @@ def animate_trajectories(
     colorbar_label: str | None = None,
     vmin: float | None = None,
     vmax: float | None = None,
+    cmap_name: str | None = None,
+    cmap_mode: str = "auto",  # "auto" | "categorical" | "numeric"
     show_time_bar: bool = True,
     trail: bool = True,
     trail_steps: int | None = None,
@@ -166,11 +168,22 @@ def animate_trajectories(
     numeric = pd.to_numeric(non_null, errors="coerce")
     categorical_mode = not numeric.notna().all()
 
+    # Allow the caller to override the auto-detected mode
+    if cmap_mode == "categorical":
+        categorical_mode = True
+    elif cmap_mode == "numeric":
+        categorical_mode = False
+
+    colorbar_extend = "neither"  # overridden in numeric branch
+
     if categorical_mode:
         categories = [str(v) for v in pd.unique(non_null.astype(str))]
-        base_cmap = plt.cm.get_cmap(
-            "tab10" if len(categories) <= 10 else "tab20" if len(categories) <= 20 else "hsv"
-        )
+        if cmap_name is not None:
+            base_cmap = plt.cm.get_cmap(cmap_name)
+        else:
+            base_cmap = plt.cm.get_cmap(
+                "tab10" if len(categories) <= 10 else "tab20" if len(categories) <= 20 else "hsv"
+            )
         if hasattr(base_cmap, "colors") and len(getattr(base_cmap, "colors", [])) >= len(categories):
             colors = [base_cmap.colors[i] for i in range(len(categories))]
         else:
@@ -187,17 +200,37 @@ def animate_trajectories(
         if not finite.any():
             raise ValueError(f"No finite values found for color variable '{color_by}'.")
 
+        data_min = float(np.nanmin(all_values[finite]))
+        data_max = float(np.nanmax(all_values[finite]))
+
+        # Save user intent before filling defaults (needed for smart extend)
+        user_vmin = vmin
+        user_vmax = vmax
+
         if vmin is None:
-            vmin = float(np.nanmin(all_values))
+            vmin = data_min
         if vmax is None:
-            vmax = float(np.nanmax(all_values))
+            vmax = data_max
         if vmax < vmin:
             raise ValueError("vmax must be greater than or equal to vmin.")
         if np.isclose(vmin, vmax):
             vmax = vmin + 1.0
 
+        # Extend the colorbar only where the user-supplied bound clips real data
+        extend_lower = (user_vmin is not None) and (user_vmin > data_min)
+        extend_upper = (user_vmax is not None) and (user_vmax < data_max)
+        if extend_lower and extend_upper:
+            colorbar_extend = "both"
+        elif extend_lower:
+            colorbar_extend = "min"
+        elif extend_upper:
+            colorbar_extend = "max"
+        else:
+            colorbar_extend = "neither"
+
+        actual_cmap_name = cmap_name if cmap_name is not None else "viridis"
         cmap, norm = build_animation_colormap(
-            cmap_name="viridis",
+            cmap_name=actual_cmap_name,
             under_color="magenta",
             over_color="red",
             vmin=vmin,
@@ -326,7 +359,7 @@ def animate_trajectories(
                     ax=ax,
                     shrink=0.9,
                     pad=0.03,
-                    extend="both" if not categorical_mode else "neither",
+                    extend=colorbar_extend if not categorical_mode else "neither",
                 )
                 cbar.set_label(colorbar_label)
                 if categorical_mode and categories is not None:

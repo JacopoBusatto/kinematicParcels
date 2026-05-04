@@ -302,6 +302,8 @@ def run_start_end_regions(cfg: PostprocessConfig, context: dict) -> None:
                 colorbar_label=cfg.start_end_regions.connectivity_label,
                 vmin=cfg.trajectories.animation_vmin,
                 vmax=cfg.trajectories.animation_vmax,
+                cmap_name=cfg.trajectories.animation_cmap,
+                cmap_mode=cfg.trajectories.animation_cmap_mode,
                 show_time_bar=cfg.trajectories.show_time_bar,
                 trail=trail,
                 trail_steps=trail_steps,
