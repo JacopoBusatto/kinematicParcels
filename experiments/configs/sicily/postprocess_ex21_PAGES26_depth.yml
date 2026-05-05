@@ -1,15 +1,15 @@
 dataset:
-  input_path: ./outputs/sicily/ex20_PAGES26_LKM.zarr
+  input_path: ./outputs/sicily/ex21_PAGES26_depth.zarr
 
 analysis:
   types:
     - summary
     - trajectories
-    # - density
+    - density
     # - start_end_regions
 
 output:
-  output_dir: ./outputs/sicily/postprocessing/ex20_PAGES26_LKM
+  output_dir: ./outputs/sicily/postprocessing/ex21_PAGES26_depth
 
 exports:
   save_trajectory_table: true

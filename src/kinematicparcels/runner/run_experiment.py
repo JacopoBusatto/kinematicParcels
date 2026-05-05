@@ -584,8 +584,10 @@ def _build_circle_release(
     depth_convention = infer_depth_convention(fieldset)
     depth_max_pd = depth_axis_max_positive_down(fieldset)
 
-    center_depth_pd = None
-    depth_radius_m = None
+    # --- Per-circle depth and depth_radius (supports scalar or list) ---
+    center_depths_pd: list[float | None] = [None] * len(per_circle)
+    depth_radii_m: list[float | None] = [None] * len(per_circle)
+
     if dimension == "3d":
         if depth_max_pd is None:
             raise ValueError(
@@ -595,26 +597,43 @@ def _build_circle_release(
             raise ValueError("release.circle.depth is required in 3D mode")
         if "depth_radius" not in circle_cfg:
             raise ValueError("release.circle.depth_radius is required in 3D mode")
-        center_depth_raw = float(circle_cfg["depth"])
-        center_depth_pd = float(to_positive_down(center_depth_raw, depth_convention))
-        if center_depth_pd < 0:
-            raise ValueError(
-                "release.circle.depth must be below the surface in inferred depth convention"
-            )
-        depth_radius_m = float(circle_cfg["depth_radius"])
-        if depth_radius_m <= 0:
-            raise ValueError("release.circle.depth_radius must be > 0")
 
-    # Per-circle fixed depths for 2D mode
-    center_depths_pd_2d: list[float] = []
-    if dimension == "2d" and "depth" in circle_cfg:
-        raw = circle_cfg["depth"]
-        vals = raw if isinstance(raw, list) else [raw] * len(per_circle)
-        if len(vals) != len(per_circle):
+        raw_depth = circle_cfg["depth"]
+        raw_radius = circle_cfg["depth_radius"]
+        depth_vals = raw_depth if isinstance(raw_depth, list) else [raw_depth] * len(per_circle)
+        radius_vals = raw_radius if isinstance(raw_radius, list) else [raw_radius] * len(per_circle)
+
+        if len(depth_vals) != len(per_circle):
             raise ValueError(
                 f"release.circle.depth must have {len(per_circle)} values in multi-circle mode"
             )
-        center_depths_pd_2d = [float(v) for v in vals]
+        if len(radius_vals) != len(per_circle):
+            raise ValueError(
+                f"release.circle.depth_radius must have {len(per_circle)} values in multi-circle mode"
+            )
+
+        for i, (d, r) in enumerate(zip(depth_vals, radius_vals)):
+            label_i = f"circle[{i + 1}]" if multi_circle else "circle"
+            cdp = float(to_positive_down(float(d), depth_convention))
+            if cdp < 0:
+                raise ValueError(
+                    f"release.{label_i}.depth must be below the surface in inferred depth convention"
+                )
+            dr = float(r)
+            if dr <= 0:
+                raise ValueError(f"release.{label_i}.depth_radius must be > 0")
+            center_depths_pd[i] = cdp
+            depth_radii_m[i] = dr
+
+    elif dimension == "2d" and "depth" in circle_cfg:
+        raw_depth = circle_cfg["depth"]
+        depth_vals = raw_depth if isinstance(raw_depth, list) else [raw_depth] * len(per_circle)
+        if len(depth_vals) != len(per_circle):
+            raise ValueError(
+                f"release.circle.depth must have {len(per_circle)} values in multi-circle mode"
+            )
+        for i, d in enumerate(depth_vals):
+            center_depths_pd[i] = float(to_positive_down(float(d), depth_convention))
 
     lons_all = []
     lats_all = []
@@ -655,14 +674,17 @@ def _build_circle_release(
         radius_km = cp["radius_km"]
         count_per_timestep = cp["count_per_timestep"]
 
+        circle_center_depth_pd = center_depths_pd[circle_idx]
+        circle_depth_radius_m = depth_radii_m[circle_idx]
+
         for t_step in release_times_dt:
             if out_policy in {"drop", "error"}:
                 candidate_lons, candidate_lats, candidate_depths_pd = sample_circle_or_sphere(
                     center_lon=center_lon,
                     center_lat=center_lat,
-                    center_depth_pd=center_depth_pd,
+                    center_depth_pd=circle_center_depth_pd,
                     radius_km=radius_km,
-                    depth_radius_m=depth_radius_m,
+                    depth_radius_m=circle_depth_radius_m,
                     count=count_per_timestep,
                     dimension=dimension,
                     sampling=sampling,
@@ -709,9 +731,9 @@ def _build_circle_release(
                     candidate_lons, candidate_lats, candidate_depths_pd = sample_circle_or_sphere(
                         center_lon=center_lon,
                         center_lat=center_lat,
-                        center_depth_pd=center_depth_pd,
+                        center_depth_pd=circle_center_depth_pd,
                         radius_km=radius_km,
-                        depth_radius_m=depth_radius_m,
+                        depth_radius_m=circle_depth_radius_m,
                         count=batch_count,
                         dimension=dimension,
                         sampling=sampling,
@@ -761,8 +783,8 @@ def _build_circle_release(
             circle_ids_all.append(np.full(keep_n, circle_id, dtype=int))
             if dimension == "3d":
                 depths_pd_all.append(np.asarray(keep_depths_pd, dtype=float))
-            elif center_depths_pd_2d:
-                depths_pd_all.append(np.full(keep_n, center_depths_pd_2d[circle_idx], dtype=float))
+            elif center_depths_pd[circle_idx] is not None:
+                depths_pd_all.append(np.full(keep_n, center_depths_pd[circle_idx], dtype=float))
 
     if len(lons_all) == 0:
         raise ValueError("circle release generated zero valid points")
@@ -772,7 +794,7 @@ def _build_circle_release(
     release_times = np.concatenate(times_all)
     circle_ids = np.concatenate(circle_ids_all)
 
-    if dimension == "3d" or center_depths_pd_2d:
+    if dimension == "3d" or any(d is not None for d in center_depths_pd):
         depths_pd = np.concatenate(depths_pd_all)
         depths = from_positive_down(depths_pd, depth_convention)
     else:
