@@ -36,6 +36,10 @@ def _run_single_analysis(
         from ..workflows.run_beaching_times import run_beaching_times
         run_beaching_times(cfg, context)
 
+    elif analysis_name == "fsle":
+        from ..workflows.run_fsle import run_fsle
+        run_fsle(cfg, context)
+
     elif analysis_name == "trajectories":
         from ..workflows.run_trajectories import run_trajectories
         run_trajectories(cfg, context)

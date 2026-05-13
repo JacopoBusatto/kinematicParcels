@@ -3,9 +3,10 @@ dataset:
 
 analysis:
   types:
-    - summary
-    - trajectories
-    - density
+    # - summary
+    - fsle
+    # - trajectories
+    # - density
     # - start_end_regions
 
 output:
@@ -49,6 +50,24 @@ density:
   animation_vmin: 0
   animation_vmax: 1.0
   show_time_bar: true
+
+fsle:
+  pair_mode: center_pairs
+  min_scale: 1.0
+  max_scale: 1000.0
+  rho_increment: 1.4142135623730951
+  save_crossing_events: false
+  plot: true
+  reference_slopes:
+    - delta^-1
+    - delta^-2
+  reference_slope_anchor_scales:
+    delta^-1: 15.0
+    delta^-2: 30.0
+  x_min: 0.9
+  x_max: 500.0
+  y_min: 8.0e-2
+  y_max: 2.0
 
 trajectories:
   plot: true

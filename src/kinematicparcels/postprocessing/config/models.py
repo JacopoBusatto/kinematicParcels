@@ -103,6 +103,58 @@ class BeachingTimesConfig:
 
 
 @dataclass(frozen=True)
+class FSLEConfig:
+    pair_mode: str = "center_pairs"
+    min_scale: float = 5.0e-3
+    max_scale: float = 1.0e4
+    rho_increment: float = 2 ** 0.5
+    save_crossing_events: bool = False
+    plot: bool = True
+    reference_slopes: tuple[str, ...] = ("delta^-2/3", "delta^-1", "delta^-2")
+    reference_slope_anchor_scales: dict[str, float] = field(default_factory=dict)
+    x_min: float | None = 1.0
+    x_max: float | None = 2500.0
+    y_min: float | None = 1.0e-2
+    y_max: float | None = 1.0
+
+    def __post_init__(self) -> None:
+        if self.pair_mode not in {"center_pairs", "all_pairs"}:
+            raise ValueError("fsle.pair_mode must be 'center_pairs' or 'all_pairs'.")
+
+        if self.min_scale <= 0 or self.max_scale <= 0:
+            raise ValueError("fsle.min_scale and fsle.max_scale must be positive.")
+
+        if self.max_scale <= self.min_scale:
+            raise ValueError("fsle.max_scale must be greater than fsle.min_scale.")
+
+        if self.rho_increment <= 1.0:
+            raise ValueError("fsle.rho_increment must be greater than 1.")
+
+        valid_reference_slopes = {"delta^-2/3", "delta^-1", "delta^-2"}
+        invalid_reference_slopes = [s for s in self.reference_slopes if s not in valid_reference_slopes]
+        if invalid_reference_slopes:
+            raise ValueError(
+                "fsle.reference_slopes contains unsupported values: "
+                f"{invalid_reference_slopes}. Supported: {sorted(valid_reference_slopes)}"
+            )
+
+        invalid_anchor_slopes = [
+            slope for slope in self.reference_slope_anchor_scales if slope not in valid_reference_slopes
+        ]
+        if invalid_anchor_slopes:
+            raise ValueError(
+                "fsle.reference_slope_anchor_scales contains unsupported slope keys: "
+                f"{invalid_anchor_slopes}. Supported: {sorted(valid_reference_slopes)}"
+            )
+
+        invalid_anchor_values = [
+            value for value in self.reference_slope_anchor_scales.values() if value <= 0
+        ]
+        if invalid_anchor_values:
+            raise ValueError("fsle.reference_slope_anchor_scales values must be positive.")
+
+
+@dataclass(frozen=True)
 class TrajectoriesConfig:
     plot: bool = True
     title: str = "Trajectories"
@@ -197,6 +249,7 @@ class PostprocessConfig:
     density: DensityConfig = field(default_factory=DensityConfig)
     cleaning: CleaningConfig = field(default_factory=CleaningConfig)
     beaching_times: BeachingTimesConfig = field(default_factory=BeachingTimesConfig)
+    fsle: FSLEConfig = field(default_factory=FSLEConfig)
     trajectories: TrajectoriesConfig = field(default_factory=TrajectoriesConfig)
     plotting: PlottingConfig = field(default_factory=PlottingConfig)
     start_end_regions: StartEndRegionsConfig = field(default_factory=StartEndRegionsConfig)

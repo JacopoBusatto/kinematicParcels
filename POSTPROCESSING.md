@@ -14,13 +14,13 @@ Typical diagnostics produced include:
 - beaching time maps
 - start/end region classification
 - trajectory visualisation
+- FSLE spectra
 
 Future extensions may include:
 
 - connectivity matrices
 - residence time statistics
 - particle encounter metrics
-- FSLE diagnostics
 
 
 ------------------------------------------------------------
@@ -473,6 +473,7 @@ workflows/
     - run_summary
     - run_density
     - run_beaching_times
+  - run_fsle
     - run_start_end_regions
     - run_trajectories
     - base_products
@@ -487,6 +488,7 @@ The currently supported analysis types are:
 - summary
 - density
 - beaching_times
+- fsle
 - start_end_regions
 - trajectories
 
@@ -498,6 +500,7 @@ analysis:
     - summary
     - density
     - beaching_times
+    - fsle
     - start_end_regions
     - trajectories
 ```
@@ -606,6 +609,67 @@ beaching_times:
 - `plot` draw a plot
 
 ------------------------------------------------------------
+FSLE
+------------------------------------------------------------
+
+Computes the first-kind finite-size Lyapunov exponent from grouped trajectories.
+
+Input:
+- trajectory_table
+
+Requirements:
+- grouped outputs only (`group_size > 1`)
+- pair construction from grouped metadata
+
+Estimator:
+- overshoot-aware discrete estimator
+- $\lambda(\delta) = \langle \ln(d / d_{old}) \rangle / \langle \tau \rangle$
+
+Outputs:
+- FSLE spectrum table
+- optional crossing-event table
+- optional FSLE spectrum plot
+
+Pair modes:
+- `center_pairs`: member 1 paired with each other member in the group
+- `all_pairs`: all $N(N-1)/2$ pairs in the group
+
+The error bars use the shell-spacing factor $\ln(\rho_{increment})$ and remain configurable through `rho_increment`.
+
+Options:
+```yaml
+fsle:
+  pair_mode: center_pairs
+  min_scale: 0.01
+  max_scale: 5.0
+  rho_increment: 1.4142135623730951
+  save_crossing_events: false
+  plot: true
+  reference_slopes:
+    - delta^-2/3
+    - delta^-1
+  reference_slope_anchor_scales:
+    delta^-2/3: 0.5
+    delta^-1: 2.0
+  x_min: 0.01
+  x_max: 5.0
+  y_min: 1.0e-3
+  y_max: 10.0
+```
+
+- `pair_mode` pair construction rule for grouped releases. Available: `center_pairs`, `all_pairs`
+- `min_scale` and `max_scale` lower and upper separation thresholds in km
+- `rho_increment` geometric factor between consecutive scales. Must be greater than 1
+- `save_crossing_events` save the raw threshold-crossing events table in addition to the spectrum table
+- `plot` save the FSLE spectrum plot
+- `reference_slopes` choose which reference slopes to draw. Available: `delta^-2/3`, `delta^-1`, `delta^-2`
+- `reference_slope_anchor_scales` choose where each reference slope should intersect the spectrum. For each selected slope, provide a target $\delta$ in km; the line is anchored to the nearest spectrum point at that scale
+- `x_min`, `x_max`, `y_min`, `y_max` optional plot bounds for the log-log spectrum
+
+Example config:
+- `experiments/configs/postprocessing/postprocess_pairs_fsle.yml`
+
+------------------------------------------------------------
 START / END REGIONS
 ------------------------------------------------------------
 
@@ -709,6 +773,7 @@ analysis:
     - summary
     - density
     - beaching_times
+    - fsle
     - start_end_regions
     - trajectories
 
@@ -744,6 +809,14 @@ beaching_times:
   lat_col: lat0
   value_col: lifetime_seconds
   statistic: min
+  plot: true
+
+fsle:
+  pair_mode: center_pairs
+  min_scale: 0.01
+  max_scale: 10.0
+  rho_increment: 1.4142135623730951
+  save_crossing_events: false
   plot: true
 
 start_end_regions:

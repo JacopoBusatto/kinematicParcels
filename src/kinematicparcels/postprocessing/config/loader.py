@@ -12,6 +12,7 @@ from .models import (
     DatasetCoordinatesConfig,
     DensityConfig,
     ExportsConfig,
+    FSLEConfig,
     GridConfig,
     OutputConfig,
     PostprocessConfig,
@@ -357,6 +358,79 @@ def _parse_beaching_times(section: dict[str, Any] | None) -> BeachingTimesConfig
     )
 
 
+def _parse_fsle(section: dict[str, Any] | None) -> FSLEConfig:
+    """
+    Parse the optional fsle section.
+    """
+    if section is None:
+        return FSLEConfig()
+
+    section = _require_dict(section, "fsle")
+
+    pair_mode = _require_nonempty_string(
+        section.get("pair_mode", "center_pairs"),
+        "fsle.pair_mode",
+    )
+    min_scale = _require_number(section.get("min_scale", 5.0e-3), "fsle.min_scale")
+    max_scale = _require_number(section.get("max_scale", 1.0e4), "fsle.max_scale")
+    rho_increment = _require_number(
+        section.get("rho_increment", 2 ** 0.5),
+        "fsle.rho_increment",
+    )
+    save_crossing_events = bool(section.get("save_crossing_events", False))
+    plot = bool(section.get("plot", True))
+
+    reference_slopes_raw = section.get(
+        "reference_slopes",
+        ["delta^-2/3", "delta^-1", "delta^-2"],
+    )
+    if not isinstance(reference_slopes_raw, list):
+        raise ValueError("'fsle.reference_slopes' must be a list.")
+    reference_slopes: list[str] = []
+    for i, item in enumerate(reference_slopes_raw):
+        reference_slopes.append(
+            _require_nonempty_string(item, f"fsle.reference_slopes[{i}]")
+        )
+
+    reference_anchor_scales_raw = section.get("reference_slope_anchor_scales", {})
+    if not isinstance(reference_anchor_scales_raw, dict):
+        raise ValueError("'fsle.reference_slope_anchor_scales' must be a mapping/dictionary.")
+    reference_slope_anchor_scales: dict[str, float] = {}
+    for raw_key, raw_value in reference_anchor_scales_raw.items():
+        key = _require_nonempty_string(raw_key, "fsle.reference_slope_anchor_scales key")
+        reference_slope_anchor_scales[key] = _require_number(
+            raw_value,
+            f"fsle.reference_slope_anchor_scales[{key}]",
+        )
+
+    x_min_raw = section.get("x_min", 1.0)
+    x_min = None if x_min_raw is None else _require_number(x_min_raw, "fsle.x_min")
+
+    x_max_raw = section.get("x_max", 2500.0)
+    x_max = None if x_max_raw is None else _require_number(x_max_raw, "fsle.x_max")
+
+    y_min_raw = section.get("y_min", 1.0e-2)
+    y_min = None if y_min_raw is None else _require_number(y_min_raw, "fsle.y_min")
+
+    y_max_raw = section.get("y_max", 1.0)
+    y_max = None if y_max_raw is None else _require_number(y_max_raw, "fsle.y_max")
+
+    return FSLEConfig(
+        pair_mode=pair_mode,
+        min_scale=min_scale,
+        max_scale=max_scale,
+        rho_increment=rho_increment,
+        save_crossing_events=save_crossing_events,
+        plot=plot,
+        reference_slopes=tuple(reference_slopes),
+        reference_slope_anchor_scales=reference_slope_anchor_scales,
+        x_min=x_min,
+        x_max=x_max,
+        y_min=y_min,
+        y_max=y_max,
+    )
+
+
 def _parse_trajectories(section: dict[str, Any] | None) -> TrajectoriesConfig:
     """
     Parse the optional trajectories section.
@@ -684,6 +758,7 @@ def load_postprocess_config(path: str | Path) -> PostprocessConfig:
     density = _parse_density(raw.get("density"))
     cleaning = _parse_cleaning(raw.get("cleaning"))
     beaching_times = _parse_beaching_times(raw.get("beaching_times"))
+    fsle = _parse_fsle(raw.get("fsle"))
     trajectories = _parse_trajectories(raw.get("trajectories"))
     plotting = _parse_plotting(raw.get("plotting"))
     start_end_regions = _parse_start_end_regions(raw.get("start_end_regions"))
@@ -698,6 +773,7 @@ def load_postprocess_config(path: str | Path) -> PostprocessConfig:
         density=density,
         cleaning=cleaning,
         beaching_times=beaching_times,
+        fsle=fsle,
         trajectories=trajectories,
         plotting=plotting,
         start_end_regions=start_end_regions
