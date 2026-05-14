@@ -22,7 +22,6 @@ def _base_cfg(field_pattern: str) -> dict:
         "fieldset": {
             "file_pattern": field_pattern,
             "periodic_halo": False,
-            "periodic_halo_size": 5,
             "variables": {
                 "U": "x_sea_water_velocity",
                 "V": "y_sea_water_velocity",

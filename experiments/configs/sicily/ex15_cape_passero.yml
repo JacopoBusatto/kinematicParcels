@@ -7,7 +7,6 @@ output:
 fieldset:
   file_pattern: ./fields/mfs/hourly/sicily/med_currents_20260*.nc
   periodic_halo: false
-  periodic_halo_size: 5
   variables:
     U: uo
     V: vo
@@ -19,10 +18,6 @@ fieldset:
 
 release:
   mode: circle
-
-
-
-
   circle:
     lat: [36.11, 36.55, 37.00, 36.71]
     lon: [15.43, 15.24, 15.44, 14.42]

@@ -1,16 +1,14 @@
 dataset:
-  input_path: ./outputs/sicily/ex20_PAGES26_LKM.zarr
+  input_path: ./outputs/sicily/ex13_sesc.zarr
 
 analysis:
   types:
     - summary
-    - fsle
-    # - trajectories
-    # - density
-    # - start_end_regions
+    - density
+    - start_end_regions
 
 output:
-  output_dir: ./outputs/sicily/postprocessing/ex20_PAGES26_LKM
+  output_dir: ./outputs/sicily/postprocessing/ex13_sesc
 
 exports:
   save_trajectory_table: true
@@ -18,21 +16,21 @@ exports:
   table_format: parquet
 
 cleaning:
-  truncate_stagnant: true
+  truncate_stagnant: false
   stagnant_tol: 1.0e-6
-  stagnant_min_consecutive: 3
+  stagnant_min_consecutive: 2
 
 grid:
   mode: from_initial_centers
-  lon_min: 10.0
-  lon_max: 18.0
+  lon_min: 14.0
+  lon_max: 16.0
   lat_min: 35.0
-  lat_max: 38.5
-  dlon: 0.04
-  dlat: 0.04
+  lat_max: 37.6
+  dlon: 0.1
+  dlat: 0.1
 
 release:
-  mode: circle
+  mode: region_grid
   continuous: true
 
 density:
@@ -45,49 +43,24 @@ density:
   animate: true
   animation_var: particle_fraction_active
   animation_label: "density [%]"
-  animation_fps: 10
-  animation_every_n: 1
+  animation_fps: 6
   animation_vmin: 0
-  animation_vmax: 1.0
+  animation_vmax: 1.5
   show_time_bar: true
-
-fsle:
-  pair_mode: center_pairs
-  min_scale: 1.0
-  max_scale: 1000.0
-  rho_increment: 1.4142135623730951
-  save_crossing_events: false
-  plot: true
-  reference_slopes:
-    - delta^-2/3
-    - delta^-1
-  reference_slope_anchor_scales:
-    delta^-2/3: 45.0
-    delta^-1: 25.0
-  x_min: 0.9
-  x_max: 500.0
-  y_min: 8.0e-2
-  y_max: 2.0
 
 trajectories:
-  plot: true
-  animate: true
-  title: "PAGES26 - trajectories"
+  plot: false
+  animate: false
+  title: "Ex12 LKM SESC - trajectories"
   show_start: true
-  show_end: true
-  plot_color_by: circle_id
-  plot_cmap: tab20
-  plot_cmap_mode: categorical
+  show_end: false
 
-  animation_fps: 10
-  animation_every_n: 1
-  animation_color_by: circle_id
-  animation_cmap: tab20
-  animation_cmap_mode: categorical
-  animation_label: "PG26 stations"
+  animation_fps: 6
+  animation_color_by: lon0
+  animation_label: "initial longitude"
   show_time_bar: true
   trail: true
-  trail_steps: 12
+  trail_steps: 20
   max_group_member: 2
 
 plotting:
@@ -110,7 +83,7 @@ start_end_regions:
   connectivity_segments: true
   connectivity_color_by: start_region
   connectivity_label: "start region"
-  connectivity_title: "PAGES26 - Sicily LKM"
+  connectivity_title: "South Eastern Sicilian Coast"
   connectivity_show_start: false
   connectivity_show_end: true
   connectivity_alpha: 0.3

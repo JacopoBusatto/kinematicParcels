@@ -198,7 +198,6 @@ experiment:
 fieldset:
   file_pattern: C:/Users/Jacopo/Documents/DATI/PATAGONIA/ocean_uv_opendrift_final_V2.nc
   periodic_halo: false
-  periodic_halo_size: 5
   variables:
     U: x_sea_water_velocity
     V: y_sea_water_velocity
@@ -230,6 +229,9 @@ simulation:
   dt_hours: 0.1
   outputdt_hours: 1
   particle_type: scipy
+  boundary_halo:
+    enabled: true
+    n_cells: 1
 
 output:
   zarr_name: one_trajectory_test.zarr
@@ -331,21 +333,28 @@ No configuration parameter is required.
 
 # Periodic Halo
 
-For global simulations where particles may cross the dateline, the fieldset can
-be extended with a periodic halo.
+For global simulations where particles may cross the dateline, set the fieldset
+to periodic in longitude.
 
 Example configuration:
 
 ```yaml
 fieldset:
   periodic_halo: true
-  periodic_halo_size: 5
+
+simulation:
+  boundary_halo:
+    enabled: true
+    n_cells: 5
 ```
 
-When enabled the runner executes:
+In the current runner this does not call `fieldset.add_periodic_halo(...)`.
+Instead:
 
 ```
-fieldset.add_periodic_halo(zonal=True, halosize=5)
+- fieldset.periodic_halo: true marks longitude as periodic for boundary checks
+- simulation.boundary_halo.n_cells controls the latitude guard width and,
+  for non-periodic domains, the longitude guard width
 ```
 
 This is recommended for global ocean fields.
