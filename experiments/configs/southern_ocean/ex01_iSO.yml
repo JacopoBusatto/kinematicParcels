@@ -5,6 +5,7 @@ experiment:
 fieldset:
   file_pattern: C:\Users\Jacopo\Documents\DATI\GLO_FORECASTS\6HOURLY\glo_currents_forecast_*.nc
   periodic_halo: true
+  periodic_halo_size: 5
   variables:
     U: uo
     V: vo
@@ -18,14 +19,14 @@ fieldset:
 release:
   mode: region_grid
   region_label: iSO
-  dlon: 2.5
-  dlat: 2.5
+  dlon: 10.
+  dlat: 10.
   filter_domain: true
   filter_land: true
   continuous:
     enabled: true
     release_interval: 30D
-    release_period: 181D
+    release_period: 61D
   group:
     size: 1
   depth:
@@ -34,13 +35,13 @@ release:
 
 simulation:
   start_time: "2023-01-01 00:00"
-  runtime_days: 370.0
+  runtime_days: 380.0
   dt_hours: 0.5
   outputdt_hours: 12.0
   particle_type: scipy
   boundary_halo:
     enabled: true
-    n_cells: 5
+    n_cells: 1
 
 lkm:
   enabled: false

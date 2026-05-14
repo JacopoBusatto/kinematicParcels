@@ -1,15 +1,19 @@
 from __future__ import annotations
 
 from pathlib import Path
+from types import SimpleNamespace
+from unittest.mock import patch
 
 import numpy as np
 import xarray as xr
+from parcels import FieldSet
 
 from kinematicparcels.runner.run_experiment import (
     _build_release_points_from_region,
     build_fieldset,
     build_release,
 )
+from kinematicparcels.runner.kernels import WrapLongitudePeriodic
 from kinematicparcels.utilities.init_checks import filter_inside_domain
 
 
@@ -22,6 +26,7 @@ def _base_cfg(field_pattern: str) -> dict:
         "fieldset": {
             "file_pattern": field_pattern,
             "periodic_halo": False,
+            "periodic_halo_size": 5,
             "variables": {
                 "U": "x_sea_water_velocity",
                 "V": "y_sea_water_velocity",
@@ -60,6 +65,36 @@ def _base_cfg(field_pattern: str) -> dict:
             "zarr_name": "test_continuous.zarr",
         },
     }
+
+
+def test_build_fieldset_applies_configured_periodic_halo_size():
+    cfg = _base_cfg(str(ROOT / "test_fields" / "zero_velocity_april_2026.nc"))
+    cfg["fieldset"]["periodic_halo"] = True
+    cfg["fieldset"]["periodic_halo_size"] = 7
+
+    with patch.object(FieldSet, "add_periodic_halo", autospec=True) as add_periodic_halo:
+        fieldset = build_fieldset(cfg)
+
+    args, kwargs = add_periodic_halo.call_args
+    assert args[0] is fieldset
+    assert kwargs == {"zonal": True, "halosize": 7}
+    assert fieldset.bh_periodic == 1.0
+
+
+def test_wrap_longitude_periodic_maps_particle_back_into_domain():
+    particle = SimpleNamespace(lon=181.2)
+    fieldset = SimpleNamespace(
+        bh_periodic=1.0,
+        periodic_lon_west=-180.0,
+        periodic_lon_span=360.0,
+    )
+
+    WrapLongitudePeriodic(particle, fieldset, 0.0)
+    assert np.isclose(particle.lon, -178.8)
+
+    particle.lon = -181.2
+    WrapLongitudePeriodic(particle, fieldset, 0.0)
+    assert np.isclose(particle.lon, 178.8)
 
 
 def test_region_grid_continuous_grouped_release_has_unique_group_ids():

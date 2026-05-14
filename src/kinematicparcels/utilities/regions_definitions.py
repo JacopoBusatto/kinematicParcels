@@ -1451,8 +1451,8 @@ REGIONS_DATA = [
     ),
 
     dict(
-        name="Inner Southern Ocean",
-        label="iSO",
+        name="Polar Southern Ocean",
+        label="pSO",
         numericLabel=1,
         polygons=[
             [
@@ -1501,7 +1501,7 @@ REGIONS_DATA = [
                 (-180.00, -67.78),
             ]
         ],
-        priority=2,
+        priority=3,
     ),
 
     dict(
@@ -1561,6 +1561,8 @@ REGIONS_DATA = [
                 ( 168.37, -63.21),
                 ( 175.79, -65.12),
                 ( 178.74, -65.50),
+                ( 180.00, -65.50),
+                ( 180.00, -48.81),
                 ( 178.68, -48.81),
                 ( 174.65, -48.62),
                 ( 167.81, -54.24),
@@ -1618,6 +1620,140 @@ REGIONS_DATA = [
         ],
         priority=2,
     ),
+
+    dict(
+        name="Inner Southern Ocean",
+        label="iSO",
+        numericLabel=1,
+        polygons=[
+           [
+                (-180.00, -80.00),
+                (-180.00, -65.59),
+                (-170.80, -65.48),
+                (-159.56, -63.75),
+                (-150.01, -61.49),
+                (-144.39, -58.92),
+                (-138.58, -59.83),
+                (-133.35, -59.75),
+                (-125.57, -60.15),
+                (-119.51, -59.31),
+                (-110.49, -60.20),
+                (-102.68, -62.03),
+                (- 93.93, -62.48),
+                (- 82.63, -63.90),
+                (- 75.94, -64.04),
+                (- 67.54, -64.47),
+                (- 59.59, -62.03),
+                (- 50.99, -60.19),
+                (- 45.24, -60.32),
+                (- 37.42, -59.34),
+                (- 33.53, -57.93),
+                (- 28.86, -56.03),
+                (- 21.83, -54.81),
+                (- 16.55, -53.77),
+                (- 10.74, -51.98),
+                (-  3.59, -52.08),
+                (   1.97, -53.87),
+                (   8.50, -54.28),
+                (  15.74, -54.00),
+                (  21.40, -55.17),
+                (  27.37, -53.56),
+                (  33.31, -52.03),
+                (  41.90, -51.09),
+                (  49.15, -51.36),
+                (  56.02, -52.56),
+                (  64.49, -53.42),
+                (  70.78, -55.74),
+                (  77.06, -56.67),
+                (  87.85, -55.30),
+                (  95.13, -56.48),
+                ( 103.13, -56.39),
+                ( 110.30, -55.56),
+                ( 119.86, -56.24),
+                ( 126.48, -56.63),
+                ( 134.25, -56.93),
+                ( 142.65, -57.60),
+                ( 148.59, -58.14),
+                ( 155.99, -59.76),
+                ( 162.35, -61.38),
+                ( 168.37, -63.21),
+                ( 175.79, -65.12),
+                ( 178.74, -65.50),
+                ( 178.68, -48.81),
+                ( 180.00, -48.81),
+                ( 180.00, -80.00),
+            ]
+        ],
+        priority=2,
+    ),
+
+    dict(
+        name="Outer Southern Ocean",
+        label="oSO",
+        numericLabel=3,
+        polygons=[
+           [
+                ( 180.00, -30.00),
+                ( 180.00, -48.81),
+                ( 178.68, -48.81),
+                ( 174.65, -48.62),
+                ( 167.81, -54.24),
+                ( 161.36, -51.69),
+                ( 156.75, -49.08),
+                ( 148.98, -48.03),
+                ( 138.20, -47.64),
+                ( 128.93, -47.73),
+                ( 119.48, -45.72),
+                ( 111.37, -45.86),
+                ( 102.82, -45.02),
+                (  96.51, -43.45),
+                (  87.70, -43.37),
+                (  78.53, -44.91),
+                (  70.23, -42.71),
+                (  64.82, -42.35),
+                (  59.86, -41.89),
+                (  56.53, -40.17),
+                (  51.76, -39.51),
+                (  46.84, -38.79),
+                (  42.97, -39.81),
+                (  40.19, -40.19),
+                (  35.86, -41.78),
+                (  30.96, -44.74),
+                (  23.70, -43.24),
+                (  17.37, -43.89),
+                (  12.28, -42.84),
+                (   8.89, -42.93),
+                (   4.42, -43.44),
+                (  -3.58, -42.73),
+                (  -8.54, -43.51),
+                ( -13.98, -41.90),
+                ( -18.84, -43.41),
+                ( -31.27, -48.12),
+                ( -38.55, -49.70),
+                ( -40.78, -52.80),
+                ( -46.07, -53.72),
+                ( -50.81, -55.40),
+                ( -56.79, -57.47),
+                ( -66.24, -59.22),
+                ( -71.93, -58.60),
+                ( -84.39, -55.82),
+                ( -98.26, -54.42),
+                (-106.79, -53.37),
+                (-112.94, -53.00),
+                (-124.95, -51.94),
+                (-134.86, -51.41),
+                (-142.80, -51.54),
+                (-154.97, -51.19),
+                (-159.35, -50.93),
+                (-166.66, -49.35),
+                (-173.12, -48.00),
+                (-180.00, -48.71),
+                (-180.00, -30.00),
+            ]
+        ],
+        priority=2,
+    ),
+
 ]
 
 
@@ -1646,566 +1782,4 @@ REGIONS_DATA = [
 # -----------------------------------
 # OLD RECTANGULAR DEFINITIONS
 # -----------------------------------
-REGIONS_DATA_RECTANGLES = [
-    ## MEDITERRANEAN SEA
-    dict(
-        name="Adriatic Sea 1",
-        label="adr1",
-        numericLabel=7,
-        bounds=[
-            dict(
-                lon_min=[12.00], 
-                lon_max=[18.50], 
-                lat_min=[42.58], 
-                lat_max=[46.00]
-            )
-        ],
-        priority=3,
-    ),
-    dict(
-        name="Adriatic Sea 2",
-        label="adr2",
-        numericLabel=8,
-        bounds=[
-            dict(
-                lon_min=[18,16.3,13],
-                lon_max=[21.88,18,16.3], 
-                lat_min=[40.1,40.51,41.31], 
-                lat_max=[42.58,42.58,42.58]
-            )
-        ],
-        priority=3,
-    ),
-    dict(
-        name="Adriatic Sea",
-        label="adr",
-        numericLabel=8,
-        bounds=[
-            dict(
-                lon_min=[12,18,16.3,13], 
-                lon_max=[20,21.88,18,16.3], 
-                lat_min=[42.58,40.1,40.51,41.31], 
-                lat_max=[46,42.58,42.58,42.58]
-            )
-        ],
-        priority=2,
-    ),
-
-    dict(
-        name="Aegean Sea 1",
-        label="aeg",
-        numericLabel=9,
-        bounds=[
-            dict(
-                lon_min=[21.88,27.78], 
-                lon_max=[27.78,30.15], 
-                lat_min=[35.3,40.15], 
-                lat_max=[41.5,41.15]
-            )
-        ],
-        priority=3,
-    ),
-
-    dict(
-        name="Alboral Sea",
-        label="alb",
-        numericLabel=1,
-        bounds=[
-            dict(
-                lon_min=[-6.00], 
-                lon_max=[-1.00], 
-                lat_min=[34.00], 
-                lat_max=[39.00]
-            )
-        ],
-        priority=3,
-    ),
-
-    dict(
-        name="Ionian Sea 1",
-        label="ion1",
-        numericLabel=10,
-        bounds=[
-            dict(
-                lon_min=[9.20], 
-                lon_max=[15.00], 
-                lat_min=[32.30], 
-                lat_max=[36.72]
-            )
-        ],
-    priority=3,
-    ),
-
-    dict(
-        name="Ionian Sea 2",
-        label="ion2",
-        numericLabel=11,
-        bounds=[
-            dict(
-                lon_min=[15.00], 
-                lon_max=[21.88], 
-                lat_min=[30.00], 
-                lat_max=[36.72]
-            )
-        ],
-        priority=3,
-    ),
-
-    dict(
-        name="Ionian Sea 3",
-        label="ion3",
-        numericLabel=12,
-        bounds=[
-            dict(
-                lon_min=[15.00,16.14,16.3,16.3], 
-                lon_max=[21.88,21.88,21.88,18.4], 
-                lat_min=[36.72,38.1,38.7,40.1], 
-                lat_max=[38.1,38.7,40.1,40.51]
-            )
-        ],
-        priority=3,
-    ),
-
-    dict(
-        name="Sicily Channel",
-        label="sic",
-        numericLabel=17,
-        bounds=[
-            dict(
-                lon_min=[11.15,11.43,11.71,11.99,12.27,12.55,12.82,13.1,13.38,13.66,13.94,14.22],
-                lon_max=[11.43,11.71,11.99,12.27,12.55,12.82,13.1,13.38,13.66,13.94,14.22,14.5],
-                lat_min=[36.69,36.54,36.38,36.23,36.07,35.91,35.9,36.04,36.19,36.34,36.5,36.65],
-                lat_max=[37.01,37.16,37.32,37.47,37.63,37.79,37.8,37.65,37.48,37.31,37.14,36.97]
-            )
-        ],
-        priority=4,
-    ),
-
-    dict(
-        name="Levantine Sea 1",
-        label="lev1",
-        numericLabel=13,
-        bounds=[
-            dict(
-                lon_min=[21.88], 
-                lon_max=[26.20], 
-                lat_min=[30.00], 
-                lat_max=[35.30]
-            )
-        ],
-        priority=3,
-    ),
-
-    dict(
-        name="Levantine Sea 2",
-        label="lev2",
-        numericLabel=14,
-        bounds=[
-            dict(
-                lon_min=[26.2,27.78], 
-                lon_max=[33,33], 
-                lat_min=[33.5,35.3], 
-                lat_max=[35.3,38]
-            )
-        ],
-        priority=3,
-    ),
-
-    dict(
-        name="Levantine Sea 3",
-        label="lev3",
-        numericLabel=15,
-        bounds=[
-            dict(
-                lon_min=[26.20], 
-                lon_max=[33.00], 
-                lat_min=[30.00], 
-                lat_max=[33.50]
-                )
-            ],
-        priority=3,
-    ),
-
-    dict(
-        name="Levantine Sea 4",
-        label="lev4",
-        numericLabel=16,
-        bounds=[
-            dict(
-                lon_min=[33.00], 
-                lon_max=[37.00], 
-                lat_min=[31.00], 
-                lat_max=[38.00]
-            )
-        ],
-        priority=3,
-    ),
-
-    dict(
-        name="Levantine Sea",
-        label="lev",
-        numericLabel=16,
-        bounds=[
-            dict(
-                lon_min=[21.88,27.78], 
-                lon_max=[37.00,37.00], 
-                lat_min=[30.00,35.30], 
-                lat_max=[35.30,38.00]
-            )
-        ],
-        priority=2,
-    ),
-
-    dict(
-        name="North West Mediterranean",
-        label="nwm",
-        numericLabel=4,
-        bounds=[
-            dict(
-                lon_min=[-1.00], 
-                lon_max=[9.20], 
-                lat_min=[39.50], 
-                lat_max=[45.00]
-            )
-        ],
-        priority=3,
-    ),
-
-    dict(
-        name="South West Mediterranean 1",
-        label="swm1",
-        numericLabel=2,
-        bounds=[
-            dict(
-                lon_min=[-1.00], 
-                lon_max=[3.00], 
-                lat_min=[35.50], 
-                lat_max=[39.50]
-            )
-        ],
-        priority=3,
-    ),
-
-    dict(
-        name="South West Mediterranean 2",
-        label="swm2",
-        numericLabel=3,
-        bounds=[
-            dict(
-                lon_min=[3.00], 
-                lon_max=[9.20], 
-                lat_min=[35.50], 
-                lat_max=[39.50]
-            )
-        ],
-        priority=3,
-    ),
-
-    dict(
-        name="Tyrrhenian Sea 1",
-        label="tyr1",
-        numericLabel=5,
-        bounds=[
-            dict(
-                lon_min=[9.2,9.2], 
-                lon_max=[13,10.4], 
-                lat_min=[41.31,43.7], 
-                lat_max=[43.7,44.4]
-                )
-            ],
-        priority=3,
-    ),
-
-    dict(
-        name="Tyrrhenian Sea 2",
-        label="tyr2",
-        numericLabel=6,
-        bounds=[
-            dict(
-                lon_min=[9.2,9.2,9.2], 
-                lon_max=[15.,16.14,16.3], 
-                lat_min=[36.72,38.1,38.7], 
-                lat_max=[38.1,38.7,41.31]
-            )
-        ],
-        priority=3,
-    ),
-
-    dict(
-        name="Mediterranean Sea",
-        label="med",
-        numericLabel=3,
-        bounds=[
-            dict(
-                lon_min=[-6,27,2], 
-                lon_max=[27,39,20], 
-                lat_min=[29,29,43], 
-                lat_max=[43,41.1,46]
-            )
-        ],
-        priority=1,
-    ),
-
-
-    ## BLACK SEA
-    dict(
-        name="Black Sea",
-        label="bs",
-        numericLabel=17,
-        bounds=[
-            dict(
-                lon_min=[27.30], 
-                lon_max=[42.50], 
-                lat_min=[41.10], 
-                lat_max=[47.50]
-            )
-        ],
-        priority=1,
-    ),
-
-
-    ## ATLANTIC OCEAN
-    dict(
-        name="Atlantic Ocean",
-        label="AO",
-        numericLabel=1,
-        bounds=[
-            dict(
-                lon_min=[-70,-70,-70,-1,-98,-90,-84,-78.3,-82.5],
-                lon_max=[25,-6,2,25,-70,-70,-70,-75.5,-79.7],
-                lat_min=[-80,29,43,48.5,18,14,9.5,8.2,8.8],
-                lat_max=[29,43,48.5,90,48.5,18,14,9.5,9.5]
-            )
-        ],
-        priority=1,
-    ),
-
-    dict(
-        name="North Atlantic sub-tropical gyre",
-        label="NAstg",
-        numericLabel=2,
-        bounds=[
-            dict(
-                lon_min=[-70,-70,-70,-98],
-                lon_max=[25,-6,2,-70],
-                lat_min=[20,29,43,20],
-                lat_max=[29,43,48.5,48.5]
-            )
-        ],
-        priority=2,
-    ),
-
-    dict(
-        name="Equatorial Atlantic current system",
-        label="EAcs",
-        numericLabel=3,
-        bounds=[
-            dict(
-                lon_min=[-70,-98,-90,-84,-78.3,-82.5],
-                lon_max=[25,-70,-70,-70,-75.5,-79.7],
-                lat_min=[-20,18,14,9.5,8.2,8.8],
-                lat_max=[20,20,18,14,9.5,9.5]
-            )
-        ],
-        priority=2,
-    ),
-
-    dict(
-        name="Southern Atlantic sub-tropical gyre",
-        label="SAstg",
-        numericLabel=4,
-        bounds=[
-            dict(
-                lon_min=[-70.00], 
-                lon_max=[25.00], 
-                lat_min=[-47.00], 
-                lat_max=[-20.00]
-            )
-        ],
-        priority=2,
-    ),
-
-    dict(
-        name="Amazon River basin",
-        label="ARb",
-        numericLabel=5,
-        bounds=[
-            dict(
-                lon_min=[-70.00], 
-                lon_max=[-40.00], 
-                lat_min=[-1.00], 
-                lat_max=[20.00]
-            )
-        ],
-        priority=3,
-    ),
-
-    dict(
-        name="Amazon River estuary",
-        label="ARest",
-        numericLabel=5,
-        bounds=[
-            dict(
-                lon_min=[-50.00], 
-                lon_max=[-45.00], 
-                lat_min=[-2.00], 
-                lat_max=[6.00]
-            )
-        ],
-        priority=3,
-    ),
-
-    dict(
-        name="Nordic Sea",
-        label="NS",
-        numericLabel=1,
-        bounds=[
-            dict(
-                lon_min=[-98,-180,25,134],
-                lon_max=[25,-98,134,180],
-                lat_min=[48.5,65.9,55,65.9],
-                lat_max=[90,90,90,90]
-            )
-        ],
-        priority=2,
-    ),
-
-
-    ## INDIAN OCEAN
-    dict(
-        name="Indian Ocean",
-        label="IO",
-        numericLabel=2,
-        bounds= [
-            dict(
-                lon_min=[25,25,25,25,25,25],
-                lon_max=[147,142,103,100.5,99.8,99],
-                lat_min=[-80,-20,-3,5.3,6.8,9.1],
-                lat_max=[-20,-3,5.3,6.8,9.1,30]
-            )
-        ],
-        priority=1,
-    ),
-
-    dict(
-        name="Southern Indian sub-tropical gyre",
-        label="SIstg",
-        numericLabel=3,
-        bounds=[
-            dict(
-                lon_min=[25], 
-                lon_max=[147], 
-                lat_min=[-50], 
-                lat_max=[-20]
-            )
-        ],
-        priority=2,
-    ),
-
-    dict(
-        name="Equatorial Indian current system",
-        label="EIcs",
-        numericLabel=4,
-        bounds=[
-            dict(
-                lon_min=[25,25,25,25,25],
-                lon_max=[142,103,100.5,99.8,99],
-                lat_min=[-20,-3,5.3,6.8,9.1],
-                lat_max=[-3,5.3,6.8,9.1,30]
-            )
-        ],
-        priority=2,
-    ),
-
-    ## PACIFIC OCEAN
-    dict(
-        name="Pacific Ocean",
-        label="PO",
-        numericLabel=3,
-        bounds=[
-            dict(
-                lon_min=[147,142,103,100.5,99,-180,-180,-80,-180,-180,-180,-180],
-                lon_max=[180,147,142,103,100.5,-70,-77.5,-78,-83,-84,-90,-98],
-                lat_min=[-80,-20,-3,5.3,7.5,-80,8,8.7,8.7,10,14,18],
-                lat_max=[65.9,65.9,65.9,15,15,8,8.7,9.2,10,14,18,65.9]
-            )
-        ],
-        priority=1,
-    ),
-
-    dict(
-        name="Southern Pacific sub-tropical gyre",
-        label="SPstg",
-        numericLabel=4,
-        bounds=[
-            dict(
-                lon_min=[147,-180], 
-                lon_max=[180,-70], 
-                lat_min=[-55,-55], 
-                lat_max=[-20,-20]
-            )
-        ],
-        priority=2,
-    ),
-
-    dict(
-        name="Equatorial Pacific current system",
-        label="EPcs",
-        numericLabel=5,
-        bounds=[
-            dict(
-                lon_min=[147,142,103,100.5,99,-180,-180,-80,-180,-180,-180,-180],
-                lon_max=[180,147,142,103,100.5,-70,-77.5,-78,-83,-84,-90,-98],
-                lat_min=[-20,-20,-3,5.3,7.5,-20,8,8.7,8.7,10,14,18],
-                lat_max=[20,20,20,15,15,8,8.7,9.2,10,14,18,20]
-            )
-        ],
-        priority=2,
-    ),
-
-    dict(
-        name="North Pacific sub-tropical gyre",
-        label="NPstg",
-        numericLabel=6,
-        bounds=[
-            dict(
-                lon_min=[147,142,103,-180], 
-                lon_max=[180,147,142,-98], 
-                lat_min=[20,20,20,20], 
-                lat_max=[45,45,45,45]
-            )
-        ],
-        priority=2,
-    ),
-
-    dict(
-        name="North Pacific sub-polar gyre",
-        label="NPspg",
-        numericLabel=7,
-        bounds=[
-            dict(
-                lon_min=[147,142,103,-180], 
-                lon_max=[180,147,142,-98], 
-                lat_min=[45,45,45,45], 
-                lat_max=[65.9,65.9,65.9,65.9]
-            )
-        ],
-        priority=2,
-    ),
-
-    ## SOUTHER OCEAN
-    dict(
-        name="Southern Ocean",
-        label="SO",
-        numericLabel=5,
-        bounds=[
-            dict(
-                lon_min=[-180.00], 
-                lon_max=[180.00], 
-                lat_min=[-80.00], 
-                lat_max=[-47.00]
-            )
-        ],
-        priority=2,
-    ),
-]
+REGIONS_DATA_RECTANGLES = []

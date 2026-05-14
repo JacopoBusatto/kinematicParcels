@@ -5,6 +5,7 @@ experiment:
 fieldset:
   file_pattern: C:/Users/Jacopo/Documents/DATI/PATAGONIA/ocean_uv_opendrift_final_V2.nc
   periodic_halo: false
+  periodic_halo_size: 5
   variables:
     U: x_sea_water_velocity
     V: y_sea_water_velocity

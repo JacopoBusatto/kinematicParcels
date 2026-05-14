@@ -14,7 +14,11 @@ from matplotlib.cm import ScalarMappable
 import xarray as xr  # not required but harmless if already in env
 
 from ..plotting.projections import get_projection
-from ..plotting.trajectories import _normalize_key_columns, _normalize_key_value
+from ..plotting.trajectories import (
+    _normalize_key_columns,
+    _normalize_key_value,
+    _split_longitude_wrapped_path,
+)
 from .utils import (
     add_time_progress_bar,
     build_animation_colormap,
@@ -326,20 +330,27 @@ def animate_trajectories(
                         g_past = g_past.tail(trail_steps)
 
                     if len(g_past) >= 2:
-                        ax.plot(
+                        plot_segments = _split_longitude_wrapped_path(
                             g_past["lon"].to_numpy(),
                             g_past["lat"].to_numpy(),
-                            transform=ccrs.PlateCarree(),
-                            linewidth=0.8,
-                            alpha=0.35,
-                            color=_resolve_trail_color(
-                                show_tracer=show_tracer,
-                                color_code=color_code,
-                                cmap=cmap,
-                                norm=norm,
-                            ),
-                            zorder=2,
                         )
+                        for plot_lon, plot_lat in plot_segments:
+                            if len(plot_lon) < 2:
+                                continue
+                            ax.plot(
+                                plot_lon,
+                                plot_lat,
+                                transform=ccrs.PlateCarree(),
+                                linewidth=0.8,
+                                alpha=0.35,
+                                color=_resolve_trail_color(
+                                    show_tracer=show_tracer,
+                                    color_code=color_code,
+                                    cmap=cmap,
+                                    norm=norm,
+                                ),
+                                zorder=2,
+                            )
 
             if len(xs) > 0:
                 if show_tracer:

@@ -198,6 +198,7 @@ experiment:
 fieldset:
   file_pattern: C:/Users/Jacopo/Documents/DATI/PATAGONIA/ocean_uv_opendrift_final_V2.nc
   periodic_halo: false
+  periodic_halo_size: 5
   variables:
     U: x_sea_water_velocity
     V: y_sea_water_velocity
@@ -341,6 +342,7 @@ Example configuration:
 ```yaml
 fieldset:
   periodic_halo: true
+  periodic_halo_size: 5
 
 simulation:
   boundary_halo:
@@ -348,14 +350,16 @@ simulation:
     n_cells: 5
 ```
 
-In the current runner this does not call `fieldset.add_periodic_halo(...)`.
-Instead:
+When enabled the runner executes:
 
 ```
-- fieldset.periodic_halo: true marks longitude as periodic for boundary checks
-- simulation.boundary_halo.n_cells controls the latitude guard width and,
-  for non-periodic domains, the longitude guard width
+fieldset.add_periodic_halo(zonal=True, halosize=5)
 ```
+
+`fieldset.periodic_halo_size` controls the copied zonal halo width.
+`simulation.boundary_halo.n_cells` remains a separate kill guard near the domain
+edges. In periodic domains the boundary-halo longitude check is skipped, while
+the latitude guard remains active.
 
 This is recommended for global ocean fields.
 

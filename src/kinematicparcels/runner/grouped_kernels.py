@@ -231,6 +231,31 @@ def BoundaryHaloKill_GroupedEntity(particle, fieldset, time):
                 return
 
 
+def WrapLongitudePeriodic_GroupedEntity(particle, fieldset, time):
+    """Wrap grouped-member longitudes back into the original zonal domain when periodic."""
+    if fieldset.bh_periodic < 0.5:
+        return
+
+    west = fieldset.periodic_lon_west
+    span = fieldset.periodic_lon_span
+    if span <= 0.0:
+        return
+
+    while particle.lon < west:
+        particle.lon += span
+    while particle.lon >= west + span:
+        particle.lon -= span
+
+    for i in range(int(particle.group_size)):
+        lon_name = f"lon_{i + 1}"
+        lon_i = getattr(particle, lon_name)
+        while lon_i < west:
+            lon_i += span
+        while lon_i >= west + span:
+            lon_i -= span
+        setattr(particle, lon_name, lon_i)
+
+
 def make_grouped_rk4_lkm_kernel(group_size: int):
     """Return grouped kernel for group size 2..4."""
     if group_size < 2 or group_size > 4:

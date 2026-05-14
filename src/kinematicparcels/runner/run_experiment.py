@@ -52,8 +52,12 @@ from kinematicparcels.utilities.group_expansion import expand_groups
 from kinematicparcels.utilities.lkm import build_lkm_modes
 from kinematicparcels.utilities.group_dynamics import update_group_centers_and_relative_coords
 from kinematicparcels.runner.kernels_lkm_inline import make_AdvectionRK4_with_LKM
-from kinematicparcels.runner.kernels import BoundaryHaloKill
-from kinematicparcels.runner.grouped_kernels import make_grouped_rk4_lkm_kernel, BoundaryHaloKill_GroupedEntity
+from kinematicparcels.runner.kernels import BoundaryHaloKill, WrapLongitudePeriodic
+from kinematicparcels.runner.grouped_kernels import (
+    make_grouped_rk4_lkm_kernel,
+    BoundaryHaloKill_GroupedEntity,
+    WrapLongitudePeriodic_GroupedEntity,
+)
 
 
 # ============================================================================
@@ -263,6 +267,30 @@ def _build_fieldset_via_xarray(files: list[str], variables: dict, dims_cfg: dict
     return fieldset
 
 
+def _apply_periodic_halo(fieldset: FieldSet, cfg: dict) -> None:
+    """Apply a zonal periodic halo when requested in the fieldset config."""
+    fs_cfg = cfg["fieldset"]
+    if not bool(fs_cfg.get("periodic_halo", False)):
+        return
+
+    lon_axis = np.asarray(fieldset.U.grid.lon)
+    if len(lon_axis) < 2:
+        raise ValueError("fieldset.periodic_halo requires at least two longitude grid points")
+
+    halo_size = int(fs_cfg.get("periodic_halo_size", 5))
+    if halo_size <= 0:
+        raise ValueError("fieldset.periodic_halo_size must be > 0 when periodic_halo=true")
+
+    dlon = float(np.mean(np.diff(lon_axis)))
+    wrap_west = float(lon_axis[0])
+    wrap_span = float(lon_axis[-1] - lon_axis[0] + abs(dlon))
+    fieldset.add_constant("periodic_lon_west", wrap_west)
+    fieldset.add_constant("periodic_lon_span", wrap_span)
+
+    fieldset.add_periodic_halo(zonal=True, halosize=halo_size)
+    print(f"Applied periodic halo: zonal=True, halosize={halo_size}")
+
+
 def build_fieldset(cfg: dict) -> FieldSet:
     fs_cfg = cfg["fieldset"]
 
@@ -312,6 +340,8 @@ def build_fieldset(cfg: dict) -> FieldSet:
             dimensions=dimensions,
             mesh=mesh,
         )
+
+    _apply_periodic_halo(fieldset, cfg)
 
     # Cache source metadata for release-time ocean/land filtering.
     fieldset._kp_source_files = files
@@ -1157,7 +1187,8 @@ def run_simulation(cfg: dict, pset: ParticleSet, fieldset: FieldSet, lkm_modes=N
 
         grouped_kernel = make_grouped_rk4_lkm_kernel(group_size)
         kernels = (
-            pset.Kernel(BoundaryHaloKill_GroupedEntity)
+            pset.Kernel(WrapLongitudePeriodic_GroupedEntity)
+            + pset.Kernel(BoundaryHaloKill_GroupedEntity)
             + pset.Kernel(grouped_kernel)
         )
 
@@ -1177,7 +1208,8 @@ def run_simulation(cfg: dict, pset: ParticleSet, fieldset: FieldSet, lkm_modes=N
         # Member-based custom kernel with synchronized group updates
         kernel_func = make_AdvectionRK4_with_LKM(lkm_modes)
         kernels = (
-            pset.Kernel(BoundaryHaloKill)
+            pset.Kernel(WrapLongitudePeriodic)
+            + pset.Kernel(BoundaryHaloKill)
             + pset.Kernel(kernel_func)
         )
         print(f"LKM enabled: {lkm_modes.n_modes} modes, update every {update_freq} steps")
@@ -1196,7 +1228,8 @@ def run_simulation(cfg: dict, pset: ParticleSet, fieldset: FieldSet, lkm_modes=N
             )
     else:
         kernels = (
-            pset.Kernel(BoundaryHaloKill)
+            pset.Kernel(WrapLongitudePeriodic)
+            + pset.Kernel(BoundaryHaloKill)
             + pset.Kernel(AdvectionRK4)
         )
         print("LKM disabled: using standard advection")

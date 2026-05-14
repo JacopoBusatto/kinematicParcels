@@ -13,7 +13,10 @@ from kinematicparcels.postprocessing.config import load_postprocess_config
 from kinematicparcels.postprocessing.config.models import DatasetConfig, DatasetCoordinatesConfig, ExportsConfig, GridConfig, OutputConfig, PostprocessConfig
 from kinematicparcels.postprocessing.core.gridding import RegularGrid, build_grid_from_config
 from kinematicparcels.postprocessing.core.summaries import build_particle_summary
-from kinematicparcels.postprocessing.plotting.trajectories import plot_trajectories_map
+from kinematicparcels.postprocessing.plotting.trajectories import (
+    _split_longitude_wrapped_path,
+    plot_trajectories_map,
+)
 from kinematicparcels.postprocessing.workflows.run_start_end_regions import _prepare_region_trajectory_inputs
 from kinematicparcels.postprocessing.workflows.run_summary import run_summary
 
@@ -81,6 +84,30 @@ def test_resolve_trail_color_depends_on_tracer_visibility() -> None:
 
     assert grey == "0.4"
     assert colored != "0.4"
+
+
+def test_split_longitude_wrapped_path_breaks_antimeridian_jump() -> None:
+    lon = np.array([178.0, 179.5, -179.8, -178.9])
+    lat = np.array([-60.0, -60.2, -60.4, -60.6])
+
+    plot_segments = _split_longitude_wrapped_path(lon, lat)
+
+    assert len(plot_segments) == 2
+    np.testing.assert_allclose(plot_segments[0][0], np.array([178.0, 179.5]))
+    np.testing.assert_allclose(plot_segments[0][1], np.array([-60.0, -60.2]))
+    np.testing.assert_allclose(plot_segments[1][0], np.array([-179.8, -178.9]))
+    np.testing.assert_allclose(plot_segments[1][1], np.array([-60.4, -60.6]))
+
+
+def test_split_longitude_wrapped_path_keeps_regular_path_contiguous() -> None:
+    lon = np.array([10.0, 10.5, 11.0, 11.5])
+    lat = np.array([35.0, 35.2, 35.4, 35.6])
+
+    plot_segments = _split_longitude_wrapped_path(lon, lat)
+
+    assert len(plot_segments) == 1
+    np.testing.assert_allclose(plot_segments[0][0], lon)
+    np.testing.assert_allclose(plot_segments[0][1], lat)
 
 
 

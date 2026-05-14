@@ -16,7 +16,8 @@ def run_trajectories(cfg: PostprocessConfig, context: dict) -> None:
     df = get_trajectory_table(cfg, context)
 
     summary = None
-    if cfg.trajectories.animate:
+    needs_summary = bool(cfg.trajectories.plot_color_by) or cfg.trajectories.animate
+    if needs_summary:
         try:
             summary = get_particle_summary(cfg, context)
         except Exception:
@@ -36,6 +37,7 @@ def run_trajectories(cfg: PostprocessConfig, context: dict) -> None:
             show_start=cfg.trajectories.show_start,
             show_end=cfg.trajectories.show_end,
             alpha=cfg.trajectories.alpha,
+            summary_df=summary,
             color_by=cfg.trajectories.plot_color_by,
             cmap_name=cfg.trajectories.plot_cmap,
             cmap_mode=cfg.trajectories.plot_cmap_mode,

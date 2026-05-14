@@ -182,3 +182,19 @@ def BoundaryHaloKill(particle, fieldset, time):
     if fieldset.bh_periodic < 0.5:
         if particle.lon < fieldset.bh_lon_min or particle.lon > fieldset.bh_lon_max:
             particle.delete()
+
+
+def WrapLongitudePeriodic(particle, fieldset, time):
+    """Wrap particle longitude back into the original zonal domain when periodic."""
+    if fieldset.bh_periodic < 0.5:
+        return
+
+    west = fieldset.periodic_lon_west
+    span = fieldset.periodic_lon_span
+    if span <= 0.0:
+        return
+
+    while particle.lon < west:
+        particle.lon += span
+    while particle.lon >= west + span:
+        particle.lon -= span

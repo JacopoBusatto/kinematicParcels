@@ -39,6 +39,47 @@ def _normalize_key_columns(df: pd.DataFrame, cols: list[str]) -> pd.DataFrame:
     return out
 
 
+def _split_longitude_wrapped_path(
+    lon: np.ndarray,
+    lat: np.ndarray,
+    *,
+    max_lon_step: float = 180.0,
+) -> list[tuple[np.ndarray, np.ndarray]]:
+    """
+    Split a path into contiguous line segments across periodic longitude wraps.
+
+    A jump such as 179 -> -179 is a normal periodic wrap in the data, but when
+    plotted as a single polyline it becomes a long segment across the figure.
+    Returning explicit segments avoids passing NaN separators into Cartopy /
+    Shapely, which emits warnings when constructing projected line strings.
+    """
+    lon_arr = np.asarray(lon, dtype=float)
+    lat_arr = np.asarray(lat, dtype=float)
+
+    if lon_arr.ndim != 1 or lat_arr.ndim != 1:
+        raise ValueError("lon and lat must be 1D arrays.")
+    if lon_arr.shape != lat_arr.shape:
+        raise ValueError("lon and lat must have the same shape.")
+    if lon_arr.size < 2:
+        return [(lon_arr.copy(), lat_arr.copy())]
+
+    valid = np.isfinite(lon_arr[:-1]) & np.isfinite(lon_arr[1:])
+    jump_idx = np.flatnonzero(valid & (np.abs(np.diff(lon_arr)) > max_lon_step))
+    if jump_idx.size == 0:
+        return [(lon_arr.copy(), lat_arr.copy())]
+
+    segments: list[tuple[np.ndarray, np.ndarray]] = []
+    start = 0
+
+    for idx in jump_idx:
+        stop = idx + 1
+        segments.append((lon_arr[start:stop].copy(), lat_arr[start:stop].copy()))
+        start = stop
+
+    segments.append((lon_arr[start:].copy(), lat_arr[start:].copy()))
+    return segments
+
+
 def _resolve_color_lookup(
     df: pd.DataFrame,
     *,
@@ -284,14 +325,22 @@ def plot_trajectories_map(
         else:
             color = None
 
-        ax.plot(
+        plot_segments = _split_longitude_wrapped_path(
             g["lon"].to_numpy(),
             g["lat"].to_numpy(),
-            transform=ccrs.PlateCarree(),
-            color=color,
-            linewidth=linewidth,
-            alpha=alpha,
         )
+
+        for plot_lon, plot_lat in plot_segments:
+            if len(plot_lon) < 2:
+                continue
+            ax.plot(
+                plot_lon,
+                plot_lat,
+                transform=ccrs.PlateCarree(),
+                color=color,
+                linewidth=linewidth,
+                alpha=alpha,
+            )
 
         if show_start:
             first = g.iloc[0]
@@ -480,14 +529,22 @@ def plot_connectivity_map(
         start_color = colorizer["to_color"](raw_start_val)
         end_color = colorizer["to_color"](raw_end_val)
 
-        ax.plot(
+        plot_segments = _split_longitude_wrapped_path(
             g["lon"].to_numpy(),
             g["lat"].to_numpy(),
-            transform=ccrs.PlateCarree(),
-            color=end_color,
-            linewidth=linewidth,
-            alpha=alpha,
         )
+
+        for plot_lon, plot_lat in plot_segments:
+            if len(plot_lon) < 2:
+                continue
+            ax.plot(
+                plot_lon,
+                plot_lat,
+                transform=ccrs.PlateCarree(),
+                color=end_color,
+                linewidth=linewidth,
+                alpha=alpha,
+            )
 
         first = g.iloc[0]
         ax.scatter(
