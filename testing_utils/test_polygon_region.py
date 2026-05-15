@@ -2,11 +2,12 @@
 Test script to plot a polygonal region with grid points.
 
 Usage:
-    python test_polygon_region.py <dlon_dlat> [region_label]
+    python test_polygon_region.py <dlon_dlat> [region_label ...]
 
 Examples:
     python test_polygon_region.py 0.25
     python test_polygon_region.py 0.5 "sic"
+    python test_polygon_region.py 2 ACC oSO
 """
 
 import argparse
@@ -29,10 +30,10 @@ def main():
         help="Spatial resolution (dlon=dlat in degrees)",
     )
     parser.add_argument(
-        "region_label",
-        nargs="?",
-        default="sic",
-        help="Region label (default: sic)",
+        "region_labels",
+        nargs="*",
+        default=["sic"],
+        help="Region label(s) (default: sic)",
     )
     parser.add_argument(
         "--use-cartopy",
@@ -76,13 +77,18 @@ def main():
 
     args = parser.parse_args()
 
-    # Get region
-    region = get_region_by_label(args.region_label)
-    print(f"Region: {region.name} (label: {region.label})")
+    # Get regions
+    regions = [get_region_by_label(label) for label in args.region_labels]
+    region_summary = ", ".join(
+        f"{region.name} (label: {region.label})" for region in regions
+    )
+    print(f"Regions: {region_summary}")
     print(f"Spatial resolution: dlon={args.spatial_resolution}, dlat={args.spatial_resolution}")
 
     # Create region manager
-    region_manager = RegionManager([region])
+    region_manager = RegionManager(regions)
+
+    title_labels = ", ".join(region.label for region in regions)
 
     # Plot
     fig, ax = plot_regions(
@@ -98,7 +104,10 @@ def main():
         point_color="red",
         ax=None,
         figsize=tuple(args.figsize),
-        title=f"Polygonal Region: {region.name} (resolution: {args.spatial_resolution}°)",
+        title=(
+            f"Polygonal Regions: {title_labels} "
+            f"(resolution: {args.spatial_resolution}°)"
+        ),
         linewidth=2.0,
         polygon_linestyle="-",
         use_cartopy=args.use_cartopy,

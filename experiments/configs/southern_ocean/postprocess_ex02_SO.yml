@@ -1,5 +1,5 @@
 dataset:
-  input_path: C:/Users/Jacopo/Documents/SIMULATIONS/kinematicParcels/southern_ocean/ex01_iSO/ex01_iSO.zarr
+  input_path: C:/Users/Jacopo/Documents/SIMULATIONS/kinematicParcels/southern_ocean/ex02_SO/ex02_SO.zarr
 
 analysis:
   types:
@@ -8,7 +8,7 @@ analysis:
     - trajectories
 
 output:
-  output_dir: C:/Users/Jacopo/Documents/SIMULATIONS/kinematicParcels/southern_ocean/ex01_iSO/postprocessing/ex01_iSO
+  output_dir: C:/Users/Jacopo/Documents/SIMULATIONS/kinematicParcels/southern_ocean/ex02_SO/postprocessing/ex02_SO
 
 exports:
   save_trajectory_table: true
