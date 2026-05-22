@@ -1,8 +1,8 @@
 experiment:
-  name: SO
-  output_dir: C:\Users\Jacopo\Documents\SIMULATIONS\kinematicParcels\southern_ocean\ex02_SO
+  name: oSO
+  output_dir: C:\Users\Jacopo\Documents\SIMULATIONS\kinematicParcels\southern_ocean\ex03_oSO
 output:
-  zarr_name: ex02_SO.zarr
+  zarr_name: ex03_oSO.zarr
 
 
 fieldset:
@@ -21,9 +21,9 @@ fieldset:
 
 release:
   mode: region_grid
-  region_label: SO
-  dlon: 5.
-  dlat: 5.
+  region_label: oSO
+  dlon: 2.5
+  dlat: 2.5
   filter_domain: true
   filter_land: true
   continuous:

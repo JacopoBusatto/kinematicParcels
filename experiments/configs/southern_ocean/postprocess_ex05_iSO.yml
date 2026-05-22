@@ -1,5 +1,5 @@
 dataset:
-  input_path: C:/Users/Jacopo/Documents/SIMULATIONS/kinematicParcels/southern_ocean/ex02_SO/ex02_SO.zarr
+  input_path: C:/Users/Jacopo/Documents/SIMULATIONS/kinematicParcels/southern_ocean/ex05_iSO/ex05_iSO.zarr
 
 analysis:
   types:
@@ -9,7 +9,7 @@ analysis:
     # - trajectories
 
 output:
-  output_dir: C:/Users/Jacopo/Documents/SIMULATIONS/kinematicParcels/southern_ocean/ex02_SO/postprocessing/ex02_SO
+  output_dir: C:/Users/Jacopo/Documents/SIMULATIONS/kinematicParcels/southern_ocean/ex05_iSO/postprocessing/ex05_iSO
 
 exports:
   save_trajectory_table: true
@@ -27,8 +27,8 @@ grid:
   lon_max: 180.0
   lat_min: -80.0
   lat_max: -30.0
-  dlon: 2.5
-  dlat: 2.5
+  dlon: 1.0
+  dlat: 1.0
 
 release:
   mode: region_grid
@@ -75,9 +75,9 @@ meridional_crossing:
   direction: both
   segmentation:
     lat_filter: rolling_mean
-    filter_window: 2
-    direction_threshold_deg: 0
-    min_segment_duration_days: 0.5
+    filter_window: 14
+    direction_threshold_deg: 0.0
+    min_segment_duration_days: 3.0
     min_segment_displacement_deg: 0.5
     valid_if: duration_or_displacement
   crossing:

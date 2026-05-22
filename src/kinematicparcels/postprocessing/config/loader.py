@@ -21,6 +21,11 @@ from .models import (
     TrajectoriesConfig,
     PlottingConfig,
     StartEndRegionsConfig,
+    MeridionalCrossingConfig,
+    MeridionalCrossingCrossingConfig,
+    MeridionalCrossingOutputConfig,
+    MeridionalCrossingPlottingConfig,
+    MeridionalCrossingSegmentationConfig,
 )
 
 
@@ -732,6 +737,132 @@ def _parse_start_end_regions(section: dict[str, Any] | None) -> StartEndRegionsC
     )
 
 
+def _parse_meridional_crossing(section: dict[str, Any] | None) -> MeridionalCrossingConfig:
+    """
+    Parse the optional meridional_crossing section.
+    """
+    if section is None:
+        return MeridionalCrossingConfig()
+
+    section = _require_dict(section, "meridional_crossing")
+
+    direction = _require_nonempty_string(
+        section.get("direction", "both"),
+        "meridional_crossing.direction",
+    )
+
+    segmentation_section = section.get("segmentation", None)
+    if segmentation_section is None:
+        segmentation = MeridionalCrossingSegmentationConfig()
+    else:
+        segmentation_section = _require_dict(
+            segmentation_section,
+            "meridional_crossing.segmentation",
+        )
+        lat_filter = _require_nonempty_string(
+            segmentation_section.get("lat_filter", "rolling_mean"),
+            "meridional_crossing.segmentation.lat_filter",
+        )
+        filter_window_raw = segmentation_section.get("filter_window", 5)
+        if not isinstance(filter_window_raw, int) or filter_window_raw < 1:
+            raise ValueError(
+                "'meridional_crossing.segmentation.filter_window' must be an integer >= 1."
+            )
+
+        direction_threshold_raw = segmentation_section.get("direction_threshold_deg", "auto")
+        if isinstance(direction_threshold_raw, str):
+            direction_threshold_deg: float | str = _require_nonempty_string(
+                direction_threshold_raw,
+                "meridional_crossing.segmentation.direction_threshold_deg",
+            )
+        else:
+            direction_threshold_deg = _require_number(
+                direction_threshold_raw,
+                "meridional_crossing.segmentation.direction_threshold_deg",
+            )
+
+        min_segment_duration_days = _require_number(
+            segmentation_section.get("min_segment_duration_days", 1.5),
+            "meridional_crossing.segmentation.min_segment_duration_days",
+        )
+
+        min_segment_displacement_raw = segmentation_section.get(
+            "min_segment_displacement_deg",
+            "auto",
+        )
+        if isinstance(min_segment_displacement_raw, str):
+            min_segment_displacement_deg: float | str = _require_nonempty_string(
+                min_segment_displacement_raw,
+                "meridional_crossing.segmentation.min_segment_displacement_deg",
+            )
+        else:
+            min_segment_displacement_deg = _require_number(
+                min_segment_displacement_raw,
+                "meridional_crossing.segmentation.min_segment_displacement_deg",
+            )
+
+        valid_if = _require_nonempty_string(
+            segmentation_section.get("valid_if", "duration_or_displacement"),
+            "meridional_crossing.segmentation.valid_if",
+        )
+
+        segmentation = MeridionalCrossingSegmentationConfig(
+            lat_filter=lat_filter,
+            filter_window=filter_window_raw,
+            direction_threshold_deg=direction_threshold_deg,
+            min_segment_duration_days=min_segment_duration_days,
+            min_segment_displacement_deg=min_segment_displacement_deg,
+            valid_if=valid_if,
+        )
+
+    crossing_section = section.get("crossing", None)
+    if crossing_section is None:
+        crossing = MeridionalCrossingCrossingConfig()
+    else:
+        crossing_section = _require_dict(crossing_section, "meridional_crossing.crossing")
+        crossing_latitude_reference = _require_nonempty_string(
+            crossing_section.get("crossing_latitude_reference", "center"),
+            "meridional_crossing.crossing.crossing_latitude_reference",
+        )
+        count_once_per_segment_per_lat_bin = bool(
+            crossing_section.get("count_once_per_segment_per_lat_bin", True)
+        )
+        crossing = MeridionalCrossingCrossingConfig(
+            crossing_latitude_reference=crossing_latitude_reference,
+            count_once_per_segment_per_lat_bin=count_once_per_segment_per_lat_bin,
+        )
+
+    output_section = section.get("output", None)
+    if output_section is None:
+        output = MeridionalCrossingOutputConfig()
+    else:
+        output_section = _require_dict(output_section, "meridional_crossing.output")
+        output = MeridionalCrossingOutputConfig(
+            save_netcdf=bool(output_section.get("save_netcdf", True)),
+            save_grid_table=bool(output_section.get("save_grid_table", True)),
+            save_figures=bool(output_section.get("save_figures", True)),
+        )
+
+    plotting_section = section.get("plotting", None)
+    if plotting_section is None:
+        plotting = MeridionalCrossingPlottingConfig()
+    else:
+        plotting_section = _require_dict(plotting_section, "meridional_crossing.plotting")
+        plotting = MeridionalCrossingPlottingConfig(
+            enabled=bool(plotting_section.get("enabled", True)),
+            show_probability=bool(plotting_section.get("show_probability", True)),
+            show_counts=bool(plotting_section.get("show_counts", False)),
+        )
+
+    return MeridionalCrossingConfig(
+        direction=direction,
+        segmentation=segmentation,
+        crossing=crossing,
+        output=output,
+        plotting=plotting,
+    )
+
+
 def load_postprocess_config(path: str | Path) -> PostprocessConfig:
     """
     Load the post-processing YAML config.
@@ -762,6 +893,7 @@ def load_postprocess_config(path: str | Path) -> PostprocessConfig:
     trajectories = _parse_trajectories(raw.get("trajectories"))
     plotting = _parse_plotting(raw.get("plotting"))
     start_end_regions = _parse_start_end_regions(raw.get("start_end_regions"))
+    meridional_crossing = _parse_meridional_crossing(raw.get("meridional_crossing"))
 
     return PostprocessConfig(
         dataset=dataset,
@@ -776,5 +908,6 @@ def load_postprocess_config(path: str | Path) -> PostprocessConfig:
         fsle=fsle,
         trajectories=trajectories,
         plotting=plotting,
-        start_end_regions=start_end_regions
+        start_end_regions=start_end_regions,
+        meridional_crossing=meridional_crossing,
     )

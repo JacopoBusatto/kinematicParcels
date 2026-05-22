@@ -1,6 +1,7 @@
 from .beaching_times import compute_beaching_times
 from .density import compute_time_density
 from .fsle import build_fsle_pair_trajectories, compute_fsle
+from .meridional_crossing import compute_meridional_crossing
 from .start_end_regions import (
     build_region_manager,
     classify_start_end_regions,
@@ -12,6 +13,7 @@ __all__ = [
     "compute_beaching_times",
     "build_fsle_pair_trajectories",
     "compute_fsle",
+    "compute_meridional_crossing",
     "build_region_manager",
     "classify_start_end_regions",
     "compute_start_end_region_maps",

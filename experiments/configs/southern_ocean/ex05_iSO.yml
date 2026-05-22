@@ -1,8 +1,8 @@
 experiment:
-  name: SO
-  output_dir: C:\Users\Jacopo\Documents\SIMULATIONS\kinematicParcels\southern_ocean\ex02_SO
+  name: iSO
+  output_dir: C:\Users\Jacopo\Documents\SIMULATIONS\kinematicParcels\southern_ocean\ex05_iSO
 output:
-  zarr_name: ex02_SO.zarr
+  zarr_name: ex05_iSO.zarr
 
 
 fieldset:
@@ -21,9 +21,9 @@ fieldset:
 
 release:
   mode: region_grid
-  region_label: SO
-  dlon: 5.
-  dlat: 5.
+  region_label: iSO
+  dlon: 2.5
+  dlat: 2.5
   filter_domain: true
   filter_land: true
   continuous:
@@ -38,7 +38,7 @@ release:
 
 simulation:
   start_time: "2023-01-01 00:00"
-  runtime_days: 380.0
+  runtime_days: 1100.0
   dt_hours: 0.5
   outputdt_hours: 12.0
   particle_type: scipy

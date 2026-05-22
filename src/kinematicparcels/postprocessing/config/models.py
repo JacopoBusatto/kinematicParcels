@@ -213,6 +213,106 @@ class StartEndRegionsConfig:
 
 
 @dataclass(frozen=True)
+class MeridionalCrossingSegmentationConfig:
+    lat_filter: str = "rolling_mean"
+    filter_window: int = 5
+    direction_threshold_deg: float | str = "auto"
+    min_segment_duration_days: float = 1.5
+    min_segment_displacement_deg: float | str = "auto"
+    valid_if: str = "duration_or_displacement"
+
+    def __post_init__(self) -> None:
+        if self.lat_filter not in {"rolling_mean", "rolling_median", "none"}:
+            raise ValueError(
+                "meridional_crossing.segmentation.lat_filter must be one of: "
+                "'rolling_mean', 'rolling_median', 'none'."
+            )
+
+        if self.filter_window < 1:
+            raise ValueError("meridional_crossing.segmentation.filter_window must be >= 1.")
+
+        if isinstance(self.direction_threshold_deg, str):
+            if self.direction_threshold_deg != "auto":
+                raise ValueError(
+                    "meridional_crossing.segmentation.direction_threshold_deg must be numeric or 'auto'."
+                )
+        elif self.direction_threshold_deg < 0:
+            raise ValueError(
+                "meridional_crossing.segmentation.direction_threshold_deg must be >= 0."
+            )
+
+        if self.min_segment_duration_days < 0:
+            raise ValueError(
+                "meridional_crossing.segmentation.min_segment_duration_days must be >= 0."
+            )
+
+        if isinstance(self.min_segment_displacement_deg, str):
+            if self.min_segment_displacement_deg != "auto":
+                raise ValueError(
+                    "meridional_crossing.segmentation.min_segment_displacement_deg must be numeric or 'auto'."
+                )
+        elif self.min_segment_displacement_deg < 0:
+            raise ValueError(
+                "meridional_crossing.segmentation.min_segment_displacement_deg must be >= 0."
+            )
+
+        if self.valid_if != "duration_or_displacement":
+            raise ValueError(
+                "meridional_crossing.segmentation.valid_if must be 'duration_or_displacement'."
+            )
+
+
+@dataclass(frozen=True)
+class MeridionalCrossingCrossingConfig:
+    crossing_latitude_reference: str = "center"
+    count_once_per_segment_per_lat_bin: bool = True
+
+    def __post_init__(self) -> None:
+        if self.crossing_latitude_reference not in {"center", "edge"}:
+            raise ValueError(
+                "meridional_crossing.crossing.crossing_latitude_reference must be "
+                "'center' or 'edge'."
+            )
+
+
+@dataclass(frozen=True)
+class MeridionalCrossingOutputConfig:
+    save_netcdf: bool = True
+    save_grid_table: bool = True
+    save_figures: bool = True
+
+
+@dataclass(frozen=True)
+class MeridionalCrossingPlottingConfig:
+    enabled: bool = True
+    show_probability: bool = True
+    show_counts: bool = False
+
+
+@dataclass(frozen=True)
+class MeridionalCrossingConfig:
+    direction: str = "both"
+    segmentation: MeridionalCrossingSegmentationConfig = field(
+        default_factory=MeridionalCrossingSegmentationConfig
+    )
+    crossing: MeridionalCrossingCrossingConfig = field(
+        default_factory=MeridionalCrossingCrossingConfig
+    )
+    output: MeridionalCrossingOutputConfig = field(
+        default_factory=MeridionalCrossingOutputConfig
+    )
+    plotting: MeridionalCrossingPlottingConfig = field(
+        default_factory=MeridionalCrossingPlottingConfig
+    )
+
+    def __post_init__(self) -> None:
+        if self.direction not in {"northward", "southward", "both"}:
+            raise ValueError(
+                "meridional_crossing.direction must be one of: 'northward', 'southward', 'both'."
+            )
+
+
+@dataclass(frozen=True)
 class ReleaseConfig:
     """
     Describes how particles were released in the simulation.
@@ -253,6 +353,7 @@ class PostprocessConfig:
     trajectories: TrajectoriesConfig = field(default_factory=TrajectoriesConfig)
     plotting: PlottingConfig = field(default_factory=PlottingConfig)
     start_end_regions: StartEndRegionsConfig = field(default_factory=StartEndRegionsConfig)
+    meridional_crossing: MeridionalCrossingConfig = field(default_factory=MeridionalCrossingConfig)
 
 
 @dataclass(frozen=True)

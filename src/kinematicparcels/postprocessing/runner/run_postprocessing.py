@@ -48,6 +48,10 @@ def _run_single_analysis(
         from ..workflows.run_start_end_regions import run_start_end_regions
         run_start_end_regions(cfg, context)
 
+    elif analysis_name == "meridional_crossing":
+        from ..workflows.run_meridional_crossing import run_meridional_crossing
+        run_meridional_crossing(cfg, context)
+
     elif analysis_name == "summary":
         from ..workflows.run_summary import run_summary
         run_summary(cfg, context)

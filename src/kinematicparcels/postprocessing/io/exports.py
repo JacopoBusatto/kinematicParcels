@@ -2,11 +2,41 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import numpy as np
 import pandas as pd
 import xarray as xr
 
 
 _SUPPORTED_TABLE_FORMATS = {"parquet", "csv"}
+
+
+def _normalize_netcdf_attr_value(value):
+    if isinstance(value, (bool, np.bool_)):
+        return int(value)
+
+    if isinstance(value, tuple):
+        return tuple(_normalize_netcdf_attr_value(item) for item in value)
+
+    if isinstance(value, list):
+        return [_normalize_netcdf_attr_value(item) for item in value]
+
+    return value
+
+
+def _prepare_dataset_for_netcdf(ds: xr.Dataset) -> xr.Dataset:
+    out = ds.copy(deep=False)
+    out.attrs = {
+        key: _normalize_netcdf_attr_value(value)
+        for key, value in out.attrs.items()
+    }
+
+    for var_name in out.variables:
+        out[var_name].attrs = {
+            key: _normalize_netcdf_attr_value(value)
+            for key, value in out[var_name].attrs.items()
+        }
+
+    return out
 
 
 def save_table(
@@ -90,6 +120,7 @@ def save_dataset_netcdf(
     path = Path(path)
     path.parent.mkdir(parents=True, exist_ok=True)
 
-    ds.to_netcdf(path)
+    ds_to_save = _prepare_dataset_for_netcdf(ds)
+    ds_to_save.to_netcdf(path)
 
     return path

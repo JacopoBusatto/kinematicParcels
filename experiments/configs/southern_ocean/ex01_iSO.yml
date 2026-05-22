@@ -1,7 +1,9 @@
 experiment:
   name: iSO
-  output_dir: C:\Users\Jacopo\Documents\SIMULATIONS\kinematicParcels\southern_ocean\iSO
-
+  output_dir: C:\Users\Jacopo\Documents\SIMULATIONS\kinematicParcels\southern_ocean\ex01_iSO
+output:
+  zarr_name: ex01_iSO.zarr
+  
 fieldset:
   file_pattern: C:\Users\Jacopo\Documents\DATI\GLO_FORECASTS\6HOURLY\glo_currents_forecast_*.nc
   periodic_halo: true
@@ -46,5 +48,4 @@ simulation:
 lkm:
   enabled: false
 
-output:
-  zarr_name: 01_iSO.zarr
+
