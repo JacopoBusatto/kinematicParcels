@@ -76,7 +76,7 @@ def test_resolve_trail_color_depends_on_tracer_visibility() -> None:
     import matplotlib.colors as mcolors
     import matplotlib.pyplot as plt
 
-    cmap = plt.cm.get_cmap("tab10")
+    cmap = plt.get_cmap("tab10")
     norm = mcolors.Normalize(vmin=0, vmax=1)
 
     grey = _resolve_trail_color(show_tracer=True, color_code=0.0, cmap=cmap, norm=norm)

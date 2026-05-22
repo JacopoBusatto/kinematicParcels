@@ -187,6 +187,6 @@ def animate_density(
             frame_paths.append(frame_path)
 
         images = [imageio.imread(fp) for fp in frame_paths]
-        imageio.mimsave(outpath, images, fps=fps)
+        imageio.mimsave(outpath, images, duration=1000.0 / float(fps))
 
     return outpath

@@ -17,7 +17,7 @@ from kinematicparcels.runner.kernels import WrapLongitudePeriodic
 from kinematicparcels.utilities.init_checks import filter_inside_domain
 
 
-ROOT = Path(__file__).resolve().parent
+ROOT = Path(__file__).resolve().parents[1]
 
 
 def _base_cfg(field_pattern: str) -> dict:
@@ -249,7 +249,8 @@ def test_circle_release_assigns_circle_id_to_all_group_members(tmp_path: Path):
     assert release_times is not None
     assert "circle_id" in metadata
     assert set(np.unique(metadata["circle_id"]).tolist()) == {1, 2}
-    assert len(lons) == len(lats) == len(release_times) == len(metadata["circle_id"]) == 6
+    assert len(lons) == len(lats) == len(release_times) == len(metadata["circle_id"]) == 3
+    assert np.all(metadata["group_size"] == 2)
 
     for group_id in np.unique(metadata["group_id"]):
         group_circle_ids = np.unique(metadata["circle_id"][metadata["group_id"] == group_id])

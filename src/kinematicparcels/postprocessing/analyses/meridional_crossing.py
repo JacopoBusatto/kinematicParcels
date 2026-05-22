@@ -498,7 +498,7 @@ def compute_meridional_crossing(
             "count_once_per_segment_per_lat_bin": cfg.crossing.count_once_per_segment_per_lat_bin,
             "normalization": "crossing_count_direction / n_valid_directional_segments_direction",
             "longitude_convention": _longitude_convention_for_grid(grid),
-            "created_at_utc": pd.Timestamp.utcnow().isoformat(),
+            "created_at_utc": pd.Timestamp.now(tz="UTC").isoformat(),
             "software_version": __version__,
         },
     )

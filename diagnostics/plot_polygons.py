@@ -1,13 +1,13 @@
 """
-Test script to plot a polygonal region with grid points.
+Diagnostic script to plot polygonal regions with grid points.
 
 Usage:
-    python test_polygon_region.py <dlon_dlat> [region_label ...]
+    python diagnostics/plot_polygons.py <dlon_dlat> [region_label ...]
 
 Examples:
-    python test_polygon_region.py 0.25
-    python test_polygon_region.py 0.5 "sic"
-    python test_polygon_region.py 2 ACC oSO
+    python diagnostics/plot_polygons.py 0.25
+    python diagnostics/plot_polygons.py 0.5 "sic"
+    python diagnostics/plot_polygons.py 2 ACC oSO
 """
 
 import argparse

@@ -28,6 +28,9 @@ dependencies = [
 [tool.setuptools.packages.find]
 where = ["src"]
 
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+
 
 [project.scripts]
 run-parcels-experiment = "kinematicparcels.runner.run_experiment:main"

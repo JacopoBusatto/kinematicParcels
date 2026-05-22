@@ -22,7 +22,7 @@ Interpretation:
 
 Usage:
     cd <repo root>
-    python testing_utils/diagnose_empty_frames.py
+        python diagnostics/diagnose_empty_frames.py
 """
 
 from __future__ import annotations

@@ -183,9 +183,9 @@ def animate_trajectories(
     if categorical_mode:
         categories = [str(v) for v in pd.unique(non_null.astype(str))]
         if cmap_name is not None:
-            base_cmap = plt.cm.get_cmap(cmap_name)
+            base_cmap = plt.get_cmap(cmap_name)
         else:
-            base_cmap = plt.cm.get_cmap(
+            base_cmap = plt.get_cmap(
                 "tab10" if len(categories) <= 10 else "tab20" if len(categories) <= 20 else "hsv"
             )
         if hasattr(base_cmap, "colors") and len(getattr(base_cmap, "colors", [])) >= len(categories):
@@ -405,6 +405,6 @@ def animate_trajectories(
             frame_paths.append(frame_path)
 
         images = [imageio.imread(fp) for fp in frame_paths]
-        imageio.mimsave(outpath, images, fps=fps)
+        imageio.mimsave(outpath, images, duration=1000.0 / float(fps))
 
     return outpath

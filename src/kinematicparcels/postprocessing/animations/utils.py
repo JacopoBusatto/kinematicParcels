@@ -2,9 +2,8 @@ from __future__ import annotations
 
 import matplotlib.dates as mdates
 import matplotlib.patches as patches
-import matplotlib.pyplot as plt
 import matplotlib.colors as mcolors
-import matplotlib.cm as cm
+import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 import xarray as xr
@@ -162,7 +161,7 @@ def build_animation_colormap(
     if vmax < vmin:
         raise ValueError("vmax must be greater than or equal to vmin.")
 
-    cmap = cm.get_cmap(cmap_name).copy()
+    cmap = plt.get_cmap(cmap_name).copy()
     cmap.set_under(under_color)
     cmap.set_over(over_color)
 

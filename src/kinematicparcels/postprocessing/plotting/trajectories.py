@@ -135,7 +135,7 @@ def _build_colorizer(values: pd.Series, *, cmap_name: str | None = None, cmap_mo
         vmax = float(full_numeric.max())
         if np.isclose(vmin, vmax):
             vmax = vmin + 1.0
-        cmap = plt.cm.get_cmap(cmap_name if cmap_name is not None else "viridis")
+        cmap = plt.get_cmap(cmap_name if cmap_name is not None else "viridis")
         norm = mcolors.Normalize(vmin=vmin, vmax=vmax)
 
         def _to_color_numeric(value):
@@ -152,9 +152,9 @@ def _build_colorizer(values: pd.Series, *, cmap_name: str | None = None, cmap_mo
 
     categories = [str(v) for v in pd.unique(non_null.astype(str))]
     if cmap_name is not None:
-        base_cmap = plt.cm.get_cmap(cmap_name)
+        base_cmap = plt.get_cmap(cmap_name)
     else:
-        base_cmap = plt.cm.get_cmap(
+        base_cmap = plt.get_cmap(
             "tab10" if len(categories) <= 10 else "tab20" if len(categories) <= 20 else "hsv"
         )
     if hasattr(base_cmap, "colors") and len(getattr(base_cmap, "colors", [])) >= len(categories):
@@ -297,7 +297,7 @@ def plot_trajectories_map(
     if colorizer is None and has_group_member:
         group_members = sorted(df["group_member"].unique())
         n_members = len(group_members)
-        cmap = plt.cm.get_cmap("tab10" if n_members <= 10 else "hsv")
+        cmap = plt.get_cmap("tab10" if n_members <= 10 else "hsv")
         member_to_color = {
             m: cmap((i / (n_members - 1)) if n_members > 1 else 0)
             for i, m in enumerate(group_members)

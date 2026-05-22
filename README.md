@@ -101,10 +101,15 @@ kinematicParcels/
 ├── fields/                    (input velocity fields, not tracked)
 ├── outputs/                   (simulation outputs, not tracked)
 ├── logs/                      (optional run logs)
-├── testing_utils/
+├── tests/
+│   ├── test_lkm_basic.py
+│   ├── test_fsle.py
+│   └── ...
+├── diagnostics/
+│   ├── diagnose_empty_frames.py
 │   ├── interpolate_field_over_trajectory.py
-│   ├── test.py
-│   └── test_shapes.py
+│   ├── plot_polygons.py
+│   └── check_shapes.py
 ├── environment.yml
 ├── pyproject.toml
 ├── LICENSE.md

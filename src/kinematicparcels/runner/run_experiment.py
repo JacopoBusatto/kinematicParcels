@@ -447,7 +447,7 @@ def _tile_metadata(metadata: dict, repeat_factor: int) -> dict:
 
 
 def _is_backward_simulation(sim_cfg: dict) -> bool:
-    return float(sim_cfg["dt_hours"]) < 0.0
+    return float(sim_cfg.get("dt_hours", 1.0)) < 0.0
 
 
 def _build_release_schedule(
