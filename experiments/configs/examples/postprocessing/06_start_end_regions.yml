@@ -1,0 +1,67 @@
+# Example postprocessing config for the `start_end_regions` analysis.
+
+dataset:
+  input_path: ./outputs/one_trajectory_test.zarr
+  coordinates:
+    trajectory: trajectory
+    obs: obs
+    time: time
+    lon: lon
+    lat: lat
+    z: z
+
+analysis:
+  types:
+    - start_end_regions
+
+output:
+  output_dir: ./outputs/postprocessing/examples/start_end_regions
+
+exports:
+  save_trajectory_table: false
+  save_particle_summary: true
+  table_format: parquet
+
+cleaning:
+  truncate_stagnant: false
+  stagnant_tol: 1.0e-6
+  stagnant_min_consecutive: 2
+
+grid:
+  mode: explicit_edges  # explicit_edges | from_initial_centers
+  lon_min: 13.0
+  lon_max: 15.0
+  lat_min: 36.0
+  lat_max: 38.0
+  dlon: 0.1
+  dlat: 0.1
+
+release:
+  mode: region_grid  # Grid products are meaningful mainly for region_grid + continuous=false.
+  continuous: false
+
+plotting:
+  projection: PlateCarree
+
+start_end_regions:
+  region_labels: null  # Use null for all labels or provide a YAML list of region names.
+  how_many: priority_max
+  priority_level: null
+  priority_mode: exact
+  input_lon_mode: "-180_180"
+  plot: false
+
+  plot_connectivity: false
+  animate_connectivity: false
+  connectivity_segments: true  # True draws straight start->end segments; false loads full paths.
+  connectivity_color_by: start_region
+  connectivity_label: region
+  connectivity_title: Trajectories by region
+  connectivity_show_start: true
+  connectivity_show_end: true
+  connectivity_alpha: null  # Set a float in [0, 1] to override plot alpha.
+  connectivity_max_group_member: null
+  connectivity_animation_fps: null
+  connectivity_animation_show_tracer: null
+  connectivity_trail: null
+  connectivity_trail_steps: null

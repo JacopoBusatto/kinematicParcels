@@ -1,0 +1,51 @@
+# Example postprocessing config for the `beaching_times` analysis.
+
+dataset:
+  input_path: ./outputs/one_trajectory_test.zarr
+  coordinates:
+    trajectory: trajectory
+    obs: obs
+    time: time
+    lon: lon
+    lat: lat
+    z: z
+
+analysis:
+  types:
+    - beaching_times
+
+output:
+  output_dir: ./outputs/postprocessing/examples/beaching_times
+
+exports:
+  save_trajectory_table: false
+  save_particle_summary: true
+  table_format: parquet
+
+cleaning:
+  truncate_stagnant: false
+  stagnant_tol: 1.0e-6
+  stagnant_min_consecutive: 2
+
+grid:
+  mode: explicit_edges
+  lon_min: 13.0
+  lon_max: 15.0
+  lat_min: 36.0
+  lat_max: 38.0
+  dlon: 0.1
+  dlat: 0.1
+
+release:
+  mode: point_list
+  continuous: false
+
+plotting:
+  projection: PlateCarree
+
+beaching_times:
+  lon_col: lon0
+  lat_col: lat0
+  value_col: lifetime_seconds
+  statistic: min  # Any non-empty string is accepted; downstream code expects a supported reducer.
+  plot: false

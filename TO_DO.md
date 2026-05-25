@@ -72,4 +72,8 @@ It returns
 We can also add a filter on the transition, removing isolated symbolic points:
 - if a symbolic value is isolated AND the previous and the next point are equal, we substitute this isolated point with the neighbour value.
 
-
+Let's first discuss the workflow and the coding strategy, assessing all the uncertainties you might have.
+Only then we can produce to the coding. Try to minimize the writing, reusing the existing modules and following the postprocessing structure flow. Check the documentation and the current state. At the end of the coding phase, we also need to create 
+- the example yml that describes this module's options
+- the documentation `POSTPROCESSING.md` updated with the new module
+- the test scripts that need to run smoothly

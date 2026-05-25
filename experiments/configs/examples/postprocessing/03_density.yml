@@ -1,0 +1,62 @@
+# Example postprocessing config for the `density` analysis.
+
+dataset:
+  input_path: ./outputs/test_group_pairs.zarr
+  coordinates:
+    trajectory: trajectory
+    obs: obs
+    time: time
+    lon: lon
+    lat: lat
+    z: z
+
+analysis:
+  types:
+    - density
+
+output:
+  output_dir: ./outputs/postprocessing/examples/density
+
+exports:
+  save_trajectory_table: false
+  save_particle_summary: true
+  table_format: parquet
+
+cleaning:
+  truncate_stagnant: false
+  stagnant_tol: 1.0e-6
+  stagnant_min_consecutive: 2
+
+grid:
+  mode: explicit_edges  # explicit_edges | from_initial_centers
+  lon_min: 13.0
+  lon_max: 15.0
+  lat_min: 36.0
+  lat_max: 38.0
+  dlon: 0.1
+  dlat: 0.1
+
+release:
+  mode: point_list
+  continuous: false
+
+plotting:
+  projection: PlateCarree
+
+density:
+  lon_col: lon
+  lat_col: lat
+  time_col: time
+  normalize_active: true
+  normalize_total: true
+  fill_ever_active_empty_with_zero: false
+  group_member: null  # Set 1, 2, ... to keep only one grouped member before binning.
+
+  animate: false
+  animation_var: particle_count
+  animation_label: particle_count
+  animation_fps: 8
+  animation_every_n: 1
+  animation_vmin: null
+  animation_vmax: null
+  show_time_bar: true

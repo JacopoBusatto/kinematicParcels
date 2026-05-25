@@ -1,0 +1,37 @@
+# Example postprocessing config for the `summary` analysis.
+# `summary` has no dedicated YAML section: its behavior is controlled by the
+# shared sections below.
+
+dataset:
+  input_path: ./outputs/one_trajectory_test.zarr
+  coordinates:
+    trajectory: trajectory
+    obs: obs
+    time: time
+    lon: lon
+    lat: lat
+    z: z  # Set to null for 2D datasets without a depth coordinate.
+
+analysis:
+  types:
+    - summary  # You can list multiple analyses here; they run in order.
+
+output:
+  output_dir: ./outputs/postprocessing/examples/summary
+
+exports:
+  save_trajectory_table: false
+  save_particle_summary: true
+  table_format: parquet  # The code expects a non-empty string.
+
+cleaning:
+  truncate_stagnant: false
+  stagnant_tol: 1.0e-6
+  stagnant_min_consecutive: 2
+
+release:
+  mode: point_list  # Typical values include point_list, region_grid, circle, or lkm.
+  continuous: false
+
+plotting:
+  projection: PlateCarree

@@ -1,0 +1,55 @@
+# Example postprocessing config for the `fsle` analysis.
+
+dataset:
+  input_path: ./outputs/test_group_pairs.zarr
+  coordinates:
+    trajectory: trajectory
+    obs: obs
+    time: time
+    lon: lon
+    lat: lat
+    z: z
+
+analysis:
+  types:
+    - fsle
+
+output:
+  output_dir: ./outputs/postprocessing/examples/fsle
+
+exports:
+  save_trajectory_table: true
+  save_particle_summary: true
+  table_format: parquet
+
+cleaning:
+  truncate_stagnant: false
+  stagnant_tol: 1.0e-6
+  stagnant_min_consecutive: 2
+
+release:
+  mode: point_list
+  continuous: false
+
+plotting:
+  projection: PlateCarree
+
+fsle:
+  pair_mode: center_pairs  # center_pairs | all_pairs
+  min_scale: 0.01
+  max_scale: 5.0
+  rho_increment: 1.4142135623730951  # Must be > 1.
+  save_crossing_events: false
+  plot: true
+  reference_slopes:
+    - delta^-2/3
+    - delta^-1
+    - delta^-2
+  reference_slope_anchor_scales:
+    delta^-2/3: 0.5
+    delta^-1: 2.0
+    delta^-2: 5.0
+  x_min: 0.01
+  x_max: 5.0
+  y_min: 1.0e-3
+  y_max: 10.0

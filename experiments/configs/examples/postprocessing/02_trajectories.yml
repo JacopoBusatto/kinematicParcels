@@ -1,0 +1,60 @@
+# Example postprocessing config for the `trajectories` analysis.
+
+dataset:
+  input_path: ./outputs/test_group_pairs.zarr
+  coordinates:
+    trajectory: trajectory
+    obs: obs
+    time: time
+    lon: lon
+    lat: lat
+    z: z  # Use null if the dataset is purely 2D.
+
+analysis:
+  types:
+    - trajectories
+
+output:
+  output_dir: ./outputs/postprocessing/examples/trajectories
+
+exports:
+  save_trajectory_table: true
+  save_particle_summary: true
+  table_format: parquet
+
+cleaning:
+  truncate_stagnant: false
+  stagnant_tol: 1.0e-6
+  stagnant_min_consecutive: 2
+
+release:
+  mode: point_list
+  continuous: false
+
+plotting:
+  projection: PlateCarree
+
+trajectories:
+  plot: true
+  title: Trajectories
+  show_start: true
+  show_end: true
+  alpha: 0.7  # Must stay between 0 and 1.
+  plot_color_by: null  # Null means auto; grouped data falls back to group_member.
+  plot_cmap: null  # Null means auto palette selection.
+  plot_cmap_mode: auto  # auto | categorical | numeric
+
+  animate: false
+  animation_fps: 8
+  animation_every_n: 1
+  animation_color_by: lat0
+  animation_cmap: null
+  animation_cmap_mode: auto  # auto | categorical | numeric
+  animation_vmin: null
+  animation_vmax: null
+  animation_label: value
+  show_time_bar: true
+  trail: true
+  trail_steps: null  # Set an integer > 0 to keep only the last N steps in the trail.
+
+  max_group_member: null  # Set 1, 2, ... to plot only the first grouped members.

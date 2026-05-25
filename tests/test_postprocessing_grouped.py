@@ -437,21 +437,24 @@ def test_build_grid_from_config_uses_member1_release_centers() -> None:
 def test_load_postprocess_config_parses_connectivity_alpha(tmp_path: Path) -> None:
     cfg_path = tmp_path / "post.yml"
     cfg_path.write_text(
-        """
-        dataset:
-          input_path: ./dummy.zarr
-        trajectories:
-          alpha: 0.35
-        start_end_regions:
-          connectivity_alpha: 0.25
-          connectivity_animation_show_tracer: false
-        """,
+                """
+                dataset:
+                    input_path: ./dummy.zarr
+                trajectories:
+                    alpha: 0.35
+                density:
+                    group_member: 2
+                start_end_regions:
+                    connectivity_alpha: 0.25
+                    connectivity_animation_show_tracer: false
+                """,
         encoding="utf-8",
     )
 
     cfg = load_postprocess_config(cfg_path)
 
     assert cfg.trajectories.alpha == 0.35
+    assert cfg.density.group_member == 2
     assert cfg.start_end_regions.connectivity_alpha == 0.25
     assert cfg.start_end_regions.connectivity_animation_show_tracer is False
 

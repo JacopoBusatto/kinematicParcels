@@ -1,0 +1,69 @@
+# Example postprocessing config for the `meridional_crossing` analysis.
+
+dataset:
+  input_path: ./outputs/one_trajectory_test.zarr
+  coordinates:
+    trajectory: trajectory
+    obs: obs
+    time: time
+    lon: lon
+    lat: lat
+    z: z
+
+analysis:
+  types:
+    - meridional_crossing
+
+output:
+  output_dir: ./outputs/postprocessing/examples/meridional_crossing
+
+exports:
+  save_trajectory_table: false
+  save_particle_summary: true
+  table_format: parquet
+
+cleaning:
+  truncate_stagnant: false
+  stagnant_tol: 1.0e-6
+  stagnant_min_consecutive: 2
+
+grid:
+  mode: explicit_edges
+  lon_min: 13.0
+  lon_max: 15.0
+  lat_min: 36.0
+  lat_max: 38.0
+  dlon: 0.1
+  dlat: 0.1
+
+release:
+  mode: region_grid
+  continuous: false
+
+plotting:
+  projection: PlateCarree
+
+meridional_crossing:
+  direction: both  # northward | southward | both
+
+  segmentation:
+    lat_filter: rolling_mean  # rolling_mean | rolling_median | none
+    filter_window: 5
+    direction_threshold_deg: auto  # Use a number or the string auto.
+    min_segment_duration_days: 1.5
+    min_segment_displacement_deg: auto  # Use a number or the string auto.
+    valid_if: duration_or_displacement
+
+  crossing:
+    crossing_latitude_reference: center  # center | edge
+    count_once_per_segment_per_lat_bin: true
+
+  output:
+    save_netcdf: true
+    save_grid_table: true
+    save_figures: true
+
+  plotting:
+    enabled: true
+    show_probability: true
+    show_counts: false

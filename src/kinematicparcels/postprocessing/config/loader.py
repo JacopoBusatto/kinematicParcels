@@ -276,6 +276,14 @@ def _parse_density(section: dict[str, Any] | None) -> DensityConfig:
     normalize_total = bool(section.get("normalize_total", True))
     fill_ever_active_empty_with_zero = bool(section.get("fill_ever_active_empty_with_zero", False))
 
+    group_member_raw = section.get("group_member", None)
+    if group_member_raw is None:
+        group_member = None
+    else:
+        if not isinstance(group_member_raw, int) or group_member_raw <= 0:
+            raise ValueError("'density.group_member' must be an integer > 0 or null.")
+        group_member = group_member_raw
+
     animate = bool(section.get("animate", False))
     animation_var = _require_nonempty_string(
         section.get("animation_var", "particle_count"),
@@ -316,6 +324,7 @@ def _parse_density(section: dict[str, Any] | None) -> DensityConfig:
         time_col=time_col,
         normalize_active=normalize_active,
         normalize_total=normalize_total,
+        group_member=group_member,
         animate=animate,
         animation_var=animation_var,
         animation_label=animation_label,
