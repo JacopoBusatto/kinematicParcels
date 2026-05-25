@@ -213,6 +213,25 @@ class StartEndRegionsConfig:
 
 
 @dataclass(frozen=True)
+class TransitionProbabilityConfig:
+    region_labels: tuple[str, ...] = field(default_factory=tuple)
+    time_frequency: int = 1
+    how_many: str = "priority_max"
+    priority_level: int | None = None
+    priority_mode: str = "exact"
+    input_lon_mode: str = "-180_180"
+    max_group_member: int | None = None
+    filter_isolated: bool = False
+
+    def __post_init__(self) -> None:
+        if self.time_frequency < 1:
+            raise ValueError("transition_probability.time_frequency must be an integer >= 1.")
+
+        if self.max_group_member is not None and self.max_group_member < 1:
+            raise ValueError("transition_probability.max_group_member must be an integer > 0 or null.")
+
+
+@dataclass(frozen=True)
 class MeridionalCrossingSegmentationConfig:
     lat_filter: str = "rolling_mean"
     filter_window: int = 5
@@ -354,6 +373,7 @@ class PostprocessConfig:
     plotting: PlottingConfig = field(default_factory=PlottingConfig)
     start_end_regions: StartEndRegionsConfig = field(default_factory=StartEndRegionsConfig)
     meridional_crossing: MeridionalCrossingConfig = field(default_factory=MeridionalCrossingConfig)
+    transition_probability: TransitionProbabilityConfig = field(default_factory=TransitionProbabilityConfig)
 
 
 @dataclass(frozen=True)

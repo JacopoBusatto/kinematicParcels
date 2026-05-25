@@ -24,7 +24,7 @@ warnings.filterwarnings(
 
 from parcels import FieldSet, ParticleSet, ScipyParticle, JITParticle, AdvectionRK4, Variable
 
-from kinematicparcels.utilities.geographicalRegions import (
+from kinematicparcels.regions import (
     get_region_by_label,
     make_regular_grid_in_region,
 )

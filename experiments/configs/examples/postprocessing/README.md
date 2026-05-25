@@ -9,6 +9,7 @@ This folder contains one self-contained YAML example for each supported postproc
 - `05_fsle.yml`
 - `06_start_end_regions.yml`
 - `07_meridional_crossing.yml`
+- `08_transition_probability.yml`
 
 Each file is intended as an option reference rather than a minimal runnable config.
 The shared sections (`dataset`, `analysis`, `output`, `exports`, `cleaning`, `release`, `plotting`, and `grid` where relevant) are kept explicit so a user can copy a single file and edit it locally.

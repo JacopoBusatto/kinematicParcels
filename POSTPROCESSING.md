@@ -13,12 +13,12 @@ Typical diagnostics produced include:
 - particle density maps
 - beaching time maps
 - start/end region classification
+- transition probability matrices
 - trajectory visualisation
 - FSLE spectra
 
 Future extensions may include:
 
-- connectivity matrices
 - residence time statistics
 - particle encounter metrics
 
@@ -454,13 +454,18 @@ io/
     Readers and export utilities
 
 core/
-    Particle statistics and grid helpers
+  Particle statistics, grid helpers, and shared region classification helpers
 
 analyses/
     Scientific diagnostics
     - density
     - beaching_times
     - start_end_regions
+    - transition_probability
+
+Shared region-selection helpers used by multiple analyses live under:
+
+- `postprocessing/core/regions.py`
 
 plotting/
     Map and trajectory plotting utilities
@@ -490,6 +495,7 @@ The currently supported analysis types are:
 - beaching_times
 - fsle
 - start_end_regions
+- transition_probability
 - trajectories
 
 These are selected in the YAML configuration:
@@ -502,6 +508,7 @@ analysis:
     - beaching_times
     - fsle
     - start_end_regions
+    - transition_probability
     - trajectories
 ```
 
@@ -683,7 +690,7 @@ Input:
 
 Region definitions are loaded from:
 
-kinematicparcels.utilities.geographicalRegions
+kinematicparcels.regions
 
 The analysis supports:
 
@@ -716,6 +723,59 @@ start_end_regions:
 - `priority_mode` which priority level to choose. Available: exact, atleast, atmost
 - `input_lon_mode` format of the longitude. Available: "-180_180", "0_360"
 - `plot` draw a plot
+
+------------------------------------------------------------
+TRANSITION PROBABILITY
+------------------------------------------------------------
+
+Computes the time-dependent transition probability matrix between a selected
+set of geographic regions.
+
+Input:
+- trajectory_table
+
+For each retained time step, the workflow:
+
+- classifies every particle position into one of the selected regions
+- determines the region where each particle started
+- excludes particles whose initial point is outside the selected regions
+- counts how many particles that started in region `i` are in region `j`
+- normalizes by the number of particles that started in region `i`
+
+The exported CSV contains one row per sampled timestamp and one probability
+column per ordered region pair:
+
+```text
+time, p_<origin1>__<target1>, ..., p_<originN>__<targetN>
+```
+
+The analysis reuses the same region-selection options as `start_end_regions`
+and warns when the selected regions do not all share the same priority level.
+
+Options:
+```yaml
+transition_probability:
+  region_labels:
+    - sesc-mod
+    - sesc-sir
+  time_frequency: 1
+  how_many: priority_max
+  priority_level: null
+  priority_mode: exact
+  input_lon_mode: "-180_180"
+  max_group_member: null
+  filter_isolated: false
+```
+
+- `region_labels` list of regions to include in the matrix; required
+- `time_frequency` retain one point every N input time steps
+- `how_many`, `priority_level`, `priority_mode`, `input_lon_mode` follow the same meaning as in `start_end_regions`
+- `max_group_member` when grouped trajectories are present, include members up to this index; `null` keeps all members
+- `filter_isolated` replace isolated symbolic labels when previous and next labels are equal and non-null
+
+Output:
+
+- `transition_probability.csv`
 
 ------------------------------------------------------------
 TRAJECTORIES
@@ -775,6 +835,7 @@ analysis:
     - beaching_times
     - fsle
     - start_end_regions
+    - transition_probability
     - trajectories
 
 exports:
@@ -826,6 +887,18 @@ start_end_regions:
   priority_mode: exact
   input_lon_mode: "-180_180"
   plot: true
+
+transition_probability:
+  region_labels:
+    - sesc-mod
+    - sesc-sir
+  time_frequency: 2
+  how_many: priority_max
+  priority_level: 7
+  priority_mode: exact
+  input_lon_mode: "-180_180"
+  max_group_member: null
+  filter_isolated: true
 
 trajectories:
   plot: true

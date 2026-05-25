@@ -1,0 +1,47 @@
+# Example postprocessing config for the `transition_probability` analysis.
+
+dataset:
+  input_path: ./outputs/one_trajectory_test.zarr
+  coordinates:
+    trajectory: trajectory
+    obs: obs
+    time: time
+    lon: lon
+    lat: lat
+    z: z
+
+analysis:
+  types:
+    - transition_probability
+
+output:
+  output_dir: ./outputs/postprocessing/examples/transition_probability
+
+exports:
+  save_trajectory_table: false
+  save_particle_summary: true
+  table_format: parquet
+
+cleaning:
+  truncate_stagnant: false
+  stagnant_tol: 1.0e-6
+  stagnant_min_consecutive: 2
+
+release:
+  mode: region_grid
+  continuous: false
+
+plotting:
+  projection: PlateCarree
+
+transition_probability:
+  region_labels:
+    - sesc-mod
+    - sesc-sir
+  time_frequency: 1
+  how_many: priority_max
+  priority_level: 7
+  priority_mode: exact
+  input_lon_mode: "-180_180"
+  max_group_member: null  # Set an integer to keep only members <= this value.
+  filter_isolated: true   # Replace isolated symbolic labels when neighbors agree.

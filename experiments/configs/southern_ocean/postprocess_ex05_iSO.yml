@@ -5,7 +5,8 @@ analysis:
   types:
     # - summary
     # - density
-    - meridional_crossing
+    # - meridional_crossing
+    - transition_probability
     # - trajectories
 
 output:
@@ -91,3 +92,16 @@ meridional_crossing:
     enabled: true
     show_probability: true
     show_counts: false
+
+transition_probability:
+  region_labels:
+    - iSO
+    - ACC
+    - oSO
+  time_frequency: 2
+  how_many: priority_max
+  priority_level: 2
+  priority_mode: exact
+  input_lon_mode: "-180_180"
+  max_group_member: null  # Set an integer to keep only members <= this value.
+  filter_isolated: true   # Replace isolated symbolic labels when neighbors agree.

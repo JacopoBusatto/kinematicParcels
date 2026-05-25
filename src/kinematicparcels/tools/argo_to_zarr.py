@@ -12,7 +12,7 @@ import xarray as xr
 import yaml
 from tqdm import tqdm
 
-from kinematicparcels.utilities.geographicalRegions import ALL_REGIONS, Region, RegionManager
+from kinematicparcels.regions import ALL_REGIONS, Region, RegionManager
 
 
 DEFAULT_COLUMNS = {

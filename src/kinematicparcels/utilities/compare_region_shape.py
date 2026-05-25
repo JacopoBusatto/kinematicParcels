@@ -2,8 +2,7 @@ import warnings
 import matplotlib.pyplot as plt
 from matplotlib.lines import Line2D
 
-from kinematicparcels.utilities.geographicalRegions import Region, plot_regions, RegionManager
-from kinematicparcels.utilities.regions_definitions import REGIONS_DATA_RECTANGLES, REGIONS_DATA
+from kinematicparcels.regions import Region, RegionManager, REGIONS_DATA, REGIONS_DATA_RECTANGLES, plot_regions
 
 
 def _get_region_cfg_by_label(label, regions_data):

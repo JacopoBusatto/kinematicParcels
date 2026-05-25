@@ -21,6 +21,7 @@ from .models import (
     TrajectoriesConfig,
     PlottingConfig,
     StartEndRegionsConfig,
+    TransitionProbabilityConfig,
     MeridionalCrossingConfig,
     MeridionalCrossingCrossingConfig,
     MeridionalCrossingOutputConfig,
@@ -746,6 +747,76 @@ def _parse_start_end_regions(section: dict[str, Any] | None) -> StartEndRegionsC
     )
 
 
+def _parse_transition_probability(
+    section: dict[str, Any] | None,
+) -> TransitionProbabilityConfig:
+    """
+    Parse the optional transition_probability section.
+    """
+    if section is None:
+        return TransitionProbabilityConfig()
+
+    section = _require_dict(section, "transition_probability")
+
+    region_labels_raw = section.get("region_labels", None)
+    if not isinstance(region_labels_raw, list) or len(region_labels_raw) == 0:
+        raise ValueError("'transition_probability.region_labels' must be a non-empty list.")
+
+    region_labels: list[str] = []
+    for i, item in enumerate(region_labels_raw):
+        if not isinstance(item, str) or not item.strip():
+            raise ValueError(
+                f"transition_probability.region_labels[{i}] must be a non-empty string."
+            )
+        region_labels.append(item.strip())
+
+    time_frequency_raw = section.get("time_frequency", 1)
+    if not isinstance(time_frequency_raw, int) or time_frequency_raw < 1:
+        raise ValueError("'transition_probability.time_frequency' must be an integer >= 1.")
+
+    how_many = _require_nonempty_string(
+        section.get("how_many", "priority_max"),
+        "transition_probability.how_many",
+    )
+    priority_mode = _require_nonempty_string(
+        section.get("priority_mode", "exact"),
+        "transition_probability.priority_mode",
+    )
+    input_lon_mode = _require_nonempty_string(
+        section.get("input_lon_mode", "-180_180"),
+        "transition_probability.input_lon_mode",
+    )
+
+    priority_level_raw = section.get("priority_level", None)
+    if priority_level_raw is None:
+        priority_level = None
+    else:
+        if not isinstance(priority_level_raw, int):
+            raise ValueError("'transition_probability.priority_level' must be an integer or null.")
+        priority_level = priority_level_raw
+
+    max_group_member_raw = section.get("max_group_member", None)
+    if max_group_member_raw is None:
+        max_group_member = None
+    else:
+        if not isinstance(max_group_member_raw, int) or max_group_member_raw < 1:
+            raise ValueError("'transition_probability.max_group_member' must be an integer > 0 or null.")
+        max_group_member = max_group_member_raw
+
+    filter_isolated = bool(section.get("filter_isolated", False))
+
+    return TransitionProbabilityConfig(
+        region_labels=tuple(region_labels),
+        time_frequency=time_frequency_raw,
+        how_many=how_many,
+        priority_level=priority_level,
+        priority_mode=priority_mode,
+        input_lon_mode=input_lon_mode,
+        max_group_member=max_group_member,
+        filter_isolated=filter_isolated,
+    )
+
+
 def _parse_meridional_crossing(section: dict[str, Any] | None) -> MeridionalCrossingConfig:
     """
     Parse the optional meridional_crossing section.
@@ -903,6 +974,14 @@ def load_postprocess_config(path: str | Path) -> PostprocessConfig:
     plotting = _parse_plotting(raw.get("plotting"))
     start_end_regions = _parse_start_end_regions(raw.get("start_end_regions"))
     meridional_crossing = _parse_meridional_crossing(raw.get("meridional_crossing"))
+    transition_probability_raw = raw.get("transition_probability")
+    transition_probability = _parse_transition_probability(transition_probability_raw)
+
+    if "transition_probability" in analysis.types and len(transition_probability.region_labels) == 0:
+        raise ValueError(
+            "The 'transition_probability' analysis requires a non-empty "
+            "'transition_probability.region_labels' list."
+        )
 
     return PostprocessConfig(
         dataset=dataset,
@@ -919,4 +998,5 @@ def load_postprocess_config(path: str | Path) -> PostprocessConfig:
         plotting=plotting,
         start_end_regions=start_end_regions,
         meridional_crossing=meridional_crossing,
+        transition_probability=transition_probability,
     )

@@ -32,13 +32,21 @@ kinematicParcels/
 │       │   ├── kernels_lkm_inline.py
 │       │   ├── run_experiment.py
 │       │   └── run_experiment_series.py
+│       ├── regions/
+│       │   ├── __init__.py
+│       │   ├── classification.py
+│       │   ├── core.py
+│       │   ├── definitions.py
+│       │   └── plotting.py
 │       ├── postprocessing/
 │       │   ├── __init__.py
 │       │   ├── analyses/
 │       │   │   ├── __init__.py
 │       │   │   ├── beaching_times.py
 │       │   │   ├── density.py
-│       │   │   └── start_end_regions.py
+│       │   │   ├── meridional_crossing.py
+│       │   │   ├── start_end_regions.py
+│       │   │   └── transition_probability.py
 │       │   ├── animations/
 │       │   │   ├── __init__.py
 │       │   │   ├── density.py
@@ -52,6 +60,7 @@ kinematicParcels/
 │       │   │   ├── __init__.py
 │       │   │   ├── filters.py
 │       │   │   ├── gridding.py
+│       │   │   ├── regions.py
 │       │   │   └── summaries.py
 │       │   ├── io/
 │       │   │   ├── __init__.py
@@ -73,8 +82,10 @@ kinematicParcels/
 │       │       ├── quicklook.py
 │       │       ├── run_beaching_times.py
 │       │       ├── run_density.py
+│       │       ├── run_meridional_crossing.py
 │       │       ├── run_start_end_regions.py
 │       │       ├── run_summary.py
+│       │       ├── run_transition_probability.py
 │       │       └── run_trajectories.py
 │       └── utilities/
 │           ├── __init__.py
@@ -638,8 +649,11 @@ For comprehensive documentation, refer to [GROUPED_PARTICLES.md](GROUPED_PARTICL
 
 # Utilities
 
-geographicalRegions.py  
-Defines geographic regions and builds regular release grids.
+regions/  
+Package-wide region subsystem: definitions, region model, classification helpers, grid helpers, and plotting.
+
+utilities/geographicalRegions.py and utilities/regions_definitions.py  
+Compatibility shims that re-export the canonical `kinematicparcels.regions` API.
 
 group_expansion.py  
 Geometric transformation for grouped-particle initialization. Expands base release points into multi-particle groups with domain filtering.

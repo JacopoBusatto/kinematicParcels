@@ -1,73 +1,11 @@
 from __future__ import annotations
 
-import numpy as np
 import pandas as pd
 import xarray as xr
 
-from ..core import RegularGrid
-from kinematicparcels.utilities.geographicalRegions import ALL_REGIONS, RegionManager
-
-
-_PRIORITY_BY_LABEL = {r.label: float(r.priority) for r in ALL_REGIONS}
-
-
-def _normalize_region_result(result) -> tuple[str | None, float, float]:
-    """
-    Normalize RegionManager.find_regions output to:
-    (label, numeric_label, priority)
-
-    Supported outputs:
-    - None
-    - dict with keys 'label' and 'numericLabel'
-    - list of dicts
-    - object-like result with .label and .numericLabel
-    """
-    if result is None:
-        return None, np.nan, np.nan
-
-    if isinstance(result, list):
-        if len(result) == 0:
-            return None, np.nan, np.nan
-        result = result[0]
-
-    if isinstance(result, dict):
-        label = result.get("label", None)
-        numeric_label = result.get("numericLabel", np.nan)
-        priority = result.get("priority", _PRIORITY_BY_LABEL.get(label, np.nan))
-        return (
-            label,
-            float(numeric_label) if numeric_label is not None else np.nan,
-            float(priority) if priority is not None else np.nan,
-        )
-
-    label = getattr(result, "label", None)
-    numeric_label = getattr(result, "numericLabel", np.nan)
-    priority = getattr(result, "priority", _PRIORITY_BY_LABEL.get(label, np.nan))
-
-    return (
-        label,
-        float(numeric_label) if numeric_label is not None else np.nan,
-        float(priority) if priority is not None else np.nan,
-    )
-
-
-def build_region_manager(
-    *,
-    region_labels: tuple[str, ...] | None = None,
-) -> RegionManager:
-    """
-    Build a RegionManager from ALL_REGIONS, optionally filtering by label.
-    """
-    if region_labels is None:
-        selected = ALL_REGIONS
-    else:
-        wanted = set(region_labels)
-        selected = [r for r in ALL_REGIONS if r.label in wanted]
-
-    if len(selected) == 0:
-        raise ValueError("No regions selected for start/end region analysis.")
-
-    return RegionManager(selected)
+from ..core import RegularGrid, classify_region_points
+from ..core.regions import build_region_manager
+from kinematicparcels.regions import RegionManager
 
 
 def classify_start_end_regions(
@@ -97,50 +35,32 @@ def classify_start_end_regions(
     if missing:
         raise KeyError(f"Input summary dataframe missing required columns: {missing}")
 
-    out = summary_df.copy()
-
-    start_regions: list[str | None] = []
-    start_numeric: list[float] = []
-    start_priority: list[float] = []
-    end_regions: list[str | None] = []
-    end_numeric: list[float] = []
-    end_priority: list[float] = []
-
-    for row in out.itertuples(index=False):
-        start_result = region_manager.find_regions(
-            getattr(row, start_lon_col),
-            getattr(row, start_lat_col),
-            howMany=how_many,
-            priority_level=priority_level,
-            priority_mode=priority_mode,
-            input_lon_mode=input_lon_mode,
-        )
-        end_result = region_manager.find_regions(
-            getattr(row, end_lon_col),
-            getattr(row, end_lat_col),
-            howMany=how_many,
-            priority_level=priority_level,
-            priority_mode=priority_mode,
-            input_lon_mode=input_lon_mode,
-        )
-
-        s_label, s_num, s_priority = _normalize_region_result(start_result)
-        e_label, e_num, e_priority = _normalize_region_result(end_result)
-
-        start_regions.append(s_label)
-        start_numeric.append(s_num)
-        start_priority.append(s_priority)
-        end_regions.append(e_label)
-        end_numeric.append(e_num)
-        end_priority.append(e_priority)
-
-    out["start_region"] = start_regions
-    out["start_numericLabel"] = start_numeric
-    out["start_priority"] = start_priority
-    out["end_region"] = end_regions
-    out["end_numericLabel"] = end_numeric
-    out["end_priority"] = end_priority
-
+    out = classify_region_points(
+        summary_df,
+        region_manager=region_manager,
+        how_many=how_many,
+        priority_level=priority_level,
+        priority_mode=priority_mode,
+        input_lon_mode=input_lon_mode,
+        lon_col=start_lon_col,
+        lat_col=start_lat_col,
+        region_col="start_region",
+        numeric_col="start_numericLabel",
+        priority_col="start_priority",
+    )
+    out = classify_region_points(
+        out,
+        region_manager=region_manager,
+        how_many=how_many,
+        priority_level=priority_level,
+        priority_mode=priority_mode,
+        input_lon_mode=input_lon_mode,
+        lon_col=end_lon_col,
+        lat_col=end_lat_col,
+        region_col="end_region",
+        numeric_col="end_numericLabel",
+        priority_col="end_priority",
+    )
     return out
 
 

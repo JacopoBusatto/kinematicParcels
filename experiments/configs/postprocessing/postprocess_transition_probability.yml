@@ -1,0 +1,36 @@
+dataset:
+  input_path: C:/Users/Jacopo/Documents/DATI/PATAGONIA/simulation/output_PFall.zarr
+
+analysis:
+  types:
+    - summary
+    - transition_probability
+
+output:
+  output_dir: C:/Users/Jacopo/Documents/DATI/PATAGONIA/simulation/output_PFall.zarr/postprocessing_transition_probability
+
+exports:
+  save_trajectory_table: true
+  save_particle_summary: true
+  table_format: parquet
+
+cleaning:
+  truncate_stagnant: true
+  stagnant_tol: 1.0e-6
+  stagnant_min_consecutive: 2
+
+release:
+  mode: region_grid
+  continuous: false
+
+transition_probability:
+  region_labels:
+    - sesc-mod
+    - sesc-sir
+  time_frequency: 1
+  how_many: priority_max
+  priority_level: 7
+  priority_mode: exact
+  input_lon_mode: "-180_180"
+  max_group_member: null
+  filter_isolated: true

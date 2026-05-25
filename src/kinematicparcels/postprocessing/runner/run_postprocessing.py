@@ -52,6 +52,10 @@ def _run_single_analysis(
         from ..workflows.run_meridional_crossing import run_meridional_crossing
         run_meridional_crossing(cfg, context)
 
+    elif analysis_name == "transition_probability":
+        from ..workflows.run_transition_probability import run_transition_probability
+        run_transition_probability(cfg, context)
+
     elif analysis_name == "summary":
         from ..workflows.run_summary import run_summary
         run_summary(cfg, context)

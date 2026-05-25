@@ -12,10 +12,13 @@ from .gridding import (
     build_release_grid_from_summary,
     infer_regular_spacing_from_centers,
 )
+from .regions import build_region_manager, classify_region_points
 from .summaries import build_particle_summary
 
 __all__ = [
     "build_particle_summary",
+    "build_region_manager",
+    "classify_region_points",
     "filter_by_bbox",
     "filter_by_time_range",
     "filter_by_trajectories",
