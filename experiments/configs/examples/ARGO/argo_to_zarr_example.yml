@@ -1,0 +1,43 @@
+# Example configuration for converting ARGO CSV files into a Parcels-compatible Zarr dataset.
+# Update the input path to match your local ARGO archive before running the converter.
+
+input:
+  csv_dir: C:/Users/Jacopo/OneDrive - CNR/ARGO/ACC
+  pattern: PR_PF_*.csv
+
+columns:
+  platform_code: PLATFORM_CODE
+  time: DATE (YYYY-MM-DDTHH:MI:SSZ)
+  lat: LATITUDE (degree_north)
+  lon: LONGITUDE (degree_east)
+  pressure: PRES_ADJUSTED (decibar)
+
+variables:
+  optional:
+    - TEMP_ADJUSTED (degree_Celsius)
+    - PSAL_ADJUSTED (psu)
+
+processing:
+  parking_depth:
+    mode: fixed
+    value: 1000.0
+
+  segment:
+    mode: split_as_new
+    max_gap_days: 10.0
+    min_duration_days: 15.0
+    max_speed_km_per_day: 500.0
+
+  regions:
+    names_or_labels:
+      - sic
+    cut_from_first_entry: false
+    input_lon_mode: -180_180
+
+  resample:
+    enabled: true
+    frequency: 1d
+    interpolate: time
+
+output:
+  path: ./outputs/argo/acc_ARGO.zarr

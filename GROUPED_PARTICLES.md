@@ -113,7 +113,49 @@ Each particle receives custom metadata variables:
 
 ### Zarr Output
 
-[**Note:** Custom metadata fields are passed to Parcels but availability in Zarr output should be verified with your Parcels version. See _Verification_ below.]
+The raw Zarr variables depend on which grouped execution path produced the run.
+
+#### Core variables always present
+
+| Variable | Meaning |
+|----------|---------|
+| `time` | Observation time |
+| `lon` | Stored longitude |
+| `lat` | Stored latitude |
+| `z` | Particle depth |
+
+#### Layout 1: member-based grouped output
+
+This is the legacy layout where each group member is a separate Parcels particle.
+
+| Variable | Meaning |
+|----------|---------|
+| `group_id` | Group identifier shared by all members of the same release center |
+| `group_member` | Member index inside the group |
+| `group_size` | Number of members in the group |
+| `circle_id` | Source circle identifier when using `release.mode: circle` |
+| `center_lon`, `center_lat` | Group center diagnostics |
+| `x_rel_m`, `y_rel_m` | Member position relative to the group center in local meters |
+| `lon`, `lat` | Actual coordinates of that member |
+
+#### Layout 2: grouped-entity output
+
+This is the current default for `group.size > 1`. One Parcels particle stores the whole group.
+
+| Variable | Meaning |
+|----------|---------|
+| `group_id` | Group identifier |
+| `group_size` | Number of active members in the group |
+| `circle_id` | Source circle identifier when using `release.mode: circle` |
+| `center_lon`, `center_lat` | Arithmetic center of the member coordinates |
+| `lon`, `lat` | Standard Parcels position fields; in this layout they are equal to `center_lon`, `center_lat` |
+| `lon_1..lon_4`, `lat_1..lat_4` | Coordinates of members 1 through 4 |
+
+Notes:
+
+- Grouped-entity mode currently supports fixed sizes from 2 to 4.
+- Only the numbered member variables from `1` to `group_size` are meaningful for a given group.
+- In postprocessing, grouped-entity raw output is expanded into member-wise rows, so downstream analyses can work with `group_member`, `lon`, and `lat` as if each member had been saved separately.
 
 ---
 

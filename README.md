@@ -659,6 +659,29 @@ Generates disk/sphere releases with configurable sampling, scheduling, and valid
 
 Simulation outputs are stored as **Zarr datasets**.
 
+Each output is a Parcels trajectory dataset with dimensions `trajectory` and `obs`.
+The core variables always present in raw output are:
+
+| Variable | Meaning |
+|----------|---------|
+| `time` | Observation time for each saved particle state |
+| `lon` | Particle longitude; in grouped-entity mode this is the group-center longitude |
+| `lat` | Particle latitude; in grouped-entity mode this is the group-center latitude |
+| `z` | Particle depth |
+
+Additional variables depend on the release mode and grouped-run layout.
+
+### Grouped release variables
+
+Two grouped raw-output layouts may appear depending on the execution path.
+
+| Layout | Variables typically present | Notes |
+|--------|-----------------------------|-------|
+| Member-based grouped output | `group_id`, `group_member`, `group_size`, optionally `circle_id`, `center_lon`, `center_lat`, `x_rel_m`, `y_rel_m` | One Parcels particle per member. `lon` and `lat` are the member coordinates. |
+| Grouped-entity output | `group_id`, `group_size`, optionally `circle_id`, `center_lon`, `center_lat`, `lon_1..lon_4`, `lat_1..lat_4` | One Parcels particle per group. `lon` and `lat` are aliases of `center_lon` and `center_lat`. Member coordinates are stored in the numbered `lon_i`, `lat_i` fields. Only `1..group_size` are meaningful. |
+
+In current grouped-entity runs with `group.size > 1`, the raw Zarr usually contains the group center twice: once as the standard Parcels coordinates `lon`, `lat`, and once as the explicit diagnostics `center_lon`, `center_lat`.
+
 Example:
 
 outputs/output_experiment.zarr

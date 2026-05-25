@@ -12,6 +12,7 @@ This folder contains self-contained YAML examples for the main experiment config
 - 06_circle_gaussian_2d.yml
 - 07_lkm_grouped_2d.yml
 - 08_circle_multistart_2d.yml
+- ARGO/argo_to_zarr_example.yml
 
 ## Notes
 
@@ -19,3 +20,4 @@ This folder contains self-contained YAML examples for the main experiment config
 - Use explicit comments only where behavior is non-obvious.
 - Prefer test_fields/ for reproducible examples in this repository.
 - Region-grid examples use `region_label: med_cpf`.
+- The ARGO example documents an external-data workflow, so its input path is a placeholder that should be adjusted locally.

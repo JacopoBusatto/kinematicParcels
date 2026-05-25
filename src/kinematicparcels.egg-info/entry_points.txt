@@ -1,3 +1,4 @@
 [console_scripts]
+convert-argo-to-zarr = kinematicparcels.tools.argo_to_zarr:main
 run-parcels-experiment = kinematicparcels.runner.run_experiment:main
 run-parcels-postprocessing = kinematicparcels.postprocessing.runner.cli:main

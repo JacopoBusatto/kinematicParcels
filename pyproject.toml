@@ -35,3 +35,4 @@ testpaths = ["tests"]
 [project.scripts]
 run-parcels-experiment = "kinematicparcels.runner.run_experiment:main"
 run-parcels-postprocessing = "kinematicparcels.postprocessing.runner.cli:main"
+convert-argo-to-zarr = "kinematicparcels.tools.argo_to_zarr:main"

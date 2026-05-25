@@ -79,12 +79,21 @@ Notes:
 Two raw output layouts may appear depending on run mode.
 
 1. Member-based output
-- Typical variables include `group_id`, `group_member`, `group_size`, `lon`, `lat`.
+- One Parcels particle is written for each member.
+- Core variables are `time`, `lon`, `lat`, `z`.
+- Typical grouped variables include `group_id`, `group_member`, `group_size`.
+- Depending on release mode and diagnostics, raw output may also contain `circle_id`, `center_lon`, `center_lat`, `x_rel_m`, `y_rel_m`.
+- In this layout, `lon` and `lat` are the actual member coordinates.
 
 2. Grouped-entity output
-- Group-level canonical `lon`, `lat` are group-center track.
+- One Parcels particle is written for the whole group.
+- Core variables are `time`, `lon`, `lat`, `z`.
+- Typical grouped variables include `group_id`, `group_size`, `center_lon`, `center_lat` and, for circle releases, `circle_id`.
+- Group-level canonical `lon`, `lat` are the group-center track.
+- In current grouped-entity output, `lon` and `lat` are equal to `center_lon` and `center_lat`.
 - Member coordinates are stored in `lon_1..lon_4`, `lat_1..lat_4`.
 - `group_member` is not stored directly in raw output.
+- Only the numbered member variables from `1` to `group_size` are meaningful.
 
 Postprocessing expands grouped-entity output to member-wise rows so trajectory plots and `max_group_member` work as expected.
 
