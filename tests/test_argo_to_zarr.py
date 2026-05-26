@@ -412,3 +412,342 @@ def test_resample_interpolates_longitude_across_dateline_without_midpoint_jump(t
 
     assert np.isclose(abs(lon[1]), 180.0)
     assert np.all(wrapped_steps <= 1.1)
+
+
+def test_shared_time_with_shift_start_to_reference_uses_common_time_grid(tmp_path: Path) -> None:
+    csv_path_1 = tmp_path / "argo_align_1.csv"
+    csv_path_2 = tmp_path / "argo_align_2.csv"
+
+    _write_csv(
+        csv_path_1,
+        [
+            {
+                "PLATFORM_CODE": 1900042,
+                "DATE (YYYY-MM-DDTHH:MI:SSZ)": "2026-04-15T00:00:00Z",
+                "LATITUDE (degree_north)": -55.0,
+                "LONGITUDE (degree_east)": 10.0,
+                "PRES_ADJUSTED (decibar)": 2.0,
+            },
+            {
+                "PLATFORM_CODE": 1900042,
+                "DATE (YYYY-MM-DDTHH:MI:SSZ)": "2026-04-17T00:00:00Z",
+                "LATITUDE (degree_north)": -54.0,
+                "LONGITUDE (degree_east)": 12.0,
+                "PRES_ADJUSTED (decibar)": 2.0,
+            },
+        ],
+    )
+
+    _write_csv(
+        csv_path_2,
+        [
+            {
+                "PLATFORM_CODE": 1901042,
+                "DATE (YYYY-MM-DDTHH:MI:SSZ)": "2026-05-01T00:00:00Z",
+                "LATITUDE (degree_north)": -50.0,
+                "LONGITUDE (degree_east)": 20.0,
+                "PRES_ADJUSTED (decibar)": 2.0,
+            },
+            {
+                "PLATFORM_CODE": 1901042,
+                "DATE (YYYY-MM-DDTHH:MI:SSZ)": "2026-05-04T00:00:00Z",
+                "LATITUDE (degree_north)": -49.0,
+                "LONGITUDE (degree_east)": 21.5,
+                "PRES_ADJUSTED (decibar)": 2.0,
+            },
+        ],
+    )
+
+    config = {
+        "input": {"csv_files": [str(csv_path_1), str(csv_path_2)]},
+        "output": {"path": str(tmp_path / "aligned.zarr")},
+        "processing": {
+            "parking_depth": {"mode": "fixed", "value": 1000.0},
+            "segment": {"mode": "ignore", "max_gap_days": 10.0},
+            "resample": {
+                "enabled": True,
+                "frequency": "1d",
+                "interpolate": "time",
+                "reference_time": "2020-01-01T00:00:00Z",
+                "shared_time": True,
+                "shift_start_to_reference": True,
+            },
+        },
+    }
+
+    trajectories = convert_argo_to_dataframe(config)
+
+    assert len(trajectories) == 2
+    for trajectory in trajectories:
+        assert trajectory["time"].iloc[0] == pd.Timestamp("2020-01-01T00:00:00")
+
+    assert trajectories[0]["time"].tolist() == [
+        pd.Timestamp("2020-01-01T00:00:00"),
+        pd.Timestamp("2020-01-02T00:00:00"),
+        pd.Timestamp("2020-01-03T00:00:00"),
+        pd.Timestamp("2020-01-04T00:00:00"),
+    ]
+    assert trajectories[1]["time"].tolist() == [
+        pd.Timestamp("2020-01-01T00:00:00"),
+        pd.Timestamp("2020-01-02T00:00:00"),
+        pd.Timestamp("2020-01-03T00:00:00"),
+        pd.Timestamp("2020-01-04T00:00:00"),
+    ]
+
+    shared_prefix = min(len(trajectory) for trajectory in trajectories)
+    for obs_index in range(shared_prefix):
+        values = [trajectory["time"].iloc[obs_index] for trajectory in trajectories]
+        assert len(set(values)) == 1
+
+    assert np.isnan(trajectories[0]["lon"].iloc[-1])
+    assert np.isnan(trajectories[0]["lat"].iloc[-1])
+
+
+def test_shared_time_trims_leading_empty_prefix(tmp_path: Path) -> None:
+    csv_path_1 = tmp_path / "argo_shared_trim_1.csv"
+    csv_path_2 = tmp_path / "argo_shared_trim_2.csv"
+
+    _write_csv(
+        csv_path_1,
+        [
+            {
+                "PLATFORM_CODE": 1900042,
+                "DATE (YYYY-MM-DDTHH:MI:SSZ)": "2002-11-30T00:00:00Z",
+                "LATITUDE (degree_north)": -55.0,
+                "LONGITUDE (degree_east)": 10.0,
+                "PRES_ADJUSTED (decibar)": 2.0,
+            },
+            {
+                "PLATFORM_CODE": 1900042,
+                "DATE (YYYY-MM-DDTHH:MI:SSZ)": "2002-12-10T00:00:00Z",
+                "LATITUDE (degree_north)": -54.0,
+                "LONGITUDE (degree_east)": 12.0,
+                "PRES_ADJUSTED (decibar)": 2.0,
+            },
+        ],
+    )
+
+    _write_csv(
+        csv_path_2,
+        [
+            {
+                "PLATFORM_CODE": 1901042,
+                "DATE (YYYY-MM-DDTHH:MI:SSZ)": "2002-12-02T00:00:00Z",
+                "LATITUDE (degree_north)": -50.0,
+                "LONGITUDE (degree_east)": 20.0,
+                "PRES_ADJUSTED (decibar)": 2.0,
+            },
+            {
+                "PLATFORM_CODE": 1901042,
+                "DATE (YYYY-MM-DDTHH:MI:SSZ)": "2002-12-12T00:00:00Z",
+                "LATITUDE (degree_north)": -49.0,
+                "LONGITUDE (degree_east)": 21.5,
+                "PRES_ADJUSTED (decibar)": 2.0,
+            },
+        ],
+    )
+
+    config = {
+        "input": {"csv_files": [str(csv_path_1), str(csv_path_2)]},
+        "output": {"path": str(tmp_path / "shared_trim.zarr")},
+        "processing": {
+            "parking_depth": {"mode": "fixed", "value": 1000.0},
+            "segment": {"mode": "ignore", "max_gap_days": 10.0},
+            "resample": {
+                "enabled": True,
+                "frequency": "10d",
+                "interpolate": "time",
+                "reference_time": "2000-01-01T00:00:00Z",
+                "shared_time": True,
+                "shift_start_to_reference": False,
+            },
+        },
+    }
+
+    trajectories = convert_argo_to_dataframe(config)
+
+    assert len(trajectories) == 2
+    for trajectory in trajectories:
+        assert trajectory["time"].iloc[0] == pd.Timestamp("2002-12-06T00:00:00")
+
+    assert trajectories[0]["time"].tolist() == [
+        pd.Timestamp("2002-12-06T00:00:00"),
+    ]
+    assert trajectories[1]["time"].tolist() == [
+        pd.Timestamp("2002-12-06T00:00:00"),
+    ]
+
+
+def test_shared_time_requires_reference_time_when_enabled(tmp_path: Path) -> None:
+    csv_path = tmp_path / "argo_missing_reference_time.csv"
+    _write_csv(
+        csv_path,
+        [
+            {
+                "PLATFORM_CODE": 1900042,
+                "DATE (YYYY-MM-DDTHH:MI:SSZ)": "2026-04-15T00:00:00Z",
+                "LATITUDE (degree_north)": -55.0,
+                "LONGITUDE (degree_east)": 10.0,
+                "PRES_ADJUSTED (decibar)": 2.0,
+            },
+        ],
+    )
+
+    config = {
+        "input": {"csv_files": [str(csv_path)]},
+        "output": {"path": str(tmp_path / "align_missing_start.zarr")},
+        "processing": {
+            "parking_depth": {"mode": "fixed", "value": 1000.0},
+            "segment": {"mode": "ignore", "max_gap_days": 10.0},
+            "resample": {
+                "enabled": True,
+                "frequency": "1d",
+                "shared_time": True,
+            },
+        },
+    }
+
+    try:
+        convert_argo_to_dataframe(config)
+    except ValueError as exc:
+        assert "processing.resample.reference_time" in str(exc)
+    else:
+        raise AssertionError("Expected shared_time without reference_time to raise ValueError")
+
+
+def test_shared_time_requires_frequency_when_enabled(tmp_path: Path) -> None:
+    csv_path = tmp_path / "argo_shared_time_missing_frequency.csv"
+    _write_csv(
+        csv_path,
+        [
+            {
+                "PLATFORM_CODE": 1900042,
+                "DATE (YYYY-MM-DDTHH:MI:SSZ)": "2026-04-15T00:00:00Z",
+                "LATITUDE (degree_north)": -55.0,
+                "LONGITUDE (degree_east)": 10.0,
+                "PRES_ADJUSTED (decibar)": 2.0,
+            },
+            {
+                "PLATFORM_CODE": 1900042,
+                "DATE (YYYY-MM-DDTHH:MI:SSZ)": "2026-04-17T00:00:00Z",
+                "LATITUDE (degree_north)": -54.0,
+                "LONGITUDE (degree_east)": 12.0,
+                "PRES_ADJUSTED (decibar)": 2.0,
+            },
+        ],
+    )
+
+    config = {
+        "input": {"csv_files": [str(csv_path)]},
+        "output": {"path": str(tmp_path / "align_missing_frequency.zarr")},
+        "processing": {
+            "parking_depth": {"mode": "fixed", "value": 1000.0},
+            "segment": {"mode": "ignore", "max_gap_days": 10.0},
+            "resample": {
+                "enabled": False,
+                "reference_time": "2020-01-01T00:00:00Z",
+                "shared_time": True,
+            },
+        },
+    }
+
+    try:
+        convert_argo_to_dataframe(config)
+    except ValueError as exc:
+        assert "processing.resample.frequency" in str(exc)
+    else:
+        raise AssertionError("Expected shared_time without frequency to raise ValueError")
+
+
+def test_reference_time_anchors_non_shared_resampling_grid(tmp_path: Path) -> None:
+    csv_path = tmp_path / "argo_reference_time_grid.csv"
+    _write_csv(
+        csv_path,
+        [
+            {
+                "PLATFORM_CODE": 1900042,
+                "DATE (YYYY-MM-DDTHH:MI:SSZ)": "2026-04-15T12:00:00Z",
+                "LATITUDE (degree_north)": -55.0,
+                "LONGITUDE (degree_east)": 10.0,
+                "PRES_ADJUSTED (decibar)": 2.0,
+            },
+            {
+                "PLATFORM_CODE": 1900042,
+                "DATE (YYYY-MM-DDTHH:MI:SSZ)": "2026-04-17T12:00:00Z",
+                "LATITUDE (degree_north)": -54.0,
+                "LONGITUDE (degree_east)": 12.0,
+                "PRES_ADJUSTED (decibar)": 2.0,
+            },
+        ],
+    )
+
+    config = {
+        "input": {"csv_files": [str(csv_path)]},
+        "output": {"path": str(tmp_path / "reference_time_grid.zarr")},
+        "processing": {
+            "parking_depth": {"mode": "fixed", "value": 1000.0},
+            "segment": {"mode": "ignore", "max_gap_days": 10.0},
+            "resample": {
+                "enabled": True,
+                "frequency": "1d",
+                "interpolate": "time",
+                "reference_time": "2026-04-15T00:00:00Z",
+                "shared_time": False,
+                "shift_start_to_reference": False,
+            },
+        },
+    }
+
+    trajectories = convert_argo_to_dataframe(config)
+
+    assert len(trajectories) == 1
+    trajectory = trajectories[0]
+    assert trajectory["time"].tolist() == [
+        pd.Timestamp("2026-04-16T00:00:00"),
+        pd.Timestamp("2026-04-17T00:00:00"),
+    ]
+
+
+def test_shift_start_to_reference_works_without_shared_time(tmp_path: Path) -> None:
+    csv_path = tmp_path / "argo_shift_only.csv"
+    _write_csv(
+        csv_path,
+        [
+            {
+                "PLATFORM_CODE": 1900042,
+                "DATE (YYYY-MM-DDTHH:MI:SSZ)": "2026-04-15T00:00:00Z",
+                "LATITUDE (degree_north)": -55.0,
+                "LONGITUDE (degree_east)": 10.0,
+                "PRES_ADJUSTED (decibar)": 2.0,
+            },
+            {
+                "PLATFORM_CODE": 1900042,
+                "DATE (YYYY-MM-DDTHH:MI:SSZ)": "2026-04-17T00:00:00Z",
+                "LATITUDE (degree_north)": -54.0,
+                "LONGITUDE (degree_east)": 12.0,
+                "PRES_ADJUSTED (decibar)": 2.0,
+            },
+        ],
+    )
+
+    config = {
+        "input": {"csv_files": [str(csv_path)]},
+        "output": {"path": str(tmp_path / "shift_only.zarr")},
+        "processing": {
+            "parking_depth": {"mode": "fixed", "value": 1000.0},
+            "segment": {"mode": "ignore", "max_gap_days": 10.0},
+            "resample": {
+                "enabled": False,
+                "reference_time": "2020-01-01T00:00:00Z",
+                "shift_start_to_reference": True,
+            },
+        },
+    }
+
+    trajectories = convert_argo_to_dataframe(config)
+
+    assert len(trajectories) == 1
+    assert trajectories[0]["time"].tolist() == [
+        pd.Timestamp("2020-01-01T00:00:00"),
+        pd.Timestamp("2020-01-03T00:00:00"),
+    ]

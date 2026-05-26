@@ -27,11 +27,11 @@ processing:
 
   segment:
     # mode: split_as_new
-    # mode: longest
-    mode: ignore
+    mode: longest
+    # mode: ignore
     max_gap_days: 12.0
     min_duration_days: 39.0
-    max_speed_km_per_day: 500.0
+    max_speed_km_per_day: 250.0
 
   regions:
     names_or_labels:
@@ -45,6 +45,9 @@ processing:
     enabled: true
     frequency: 10d
     interpolate: time
+    reference_time: 2000-01-01T00:00:00Z
+    shared_time: true
+    shift_start_to_reference: false
 
 output:
-  path: C:/Users/Jacopo/OneDrive - CNR/ARGO/ACC/zarr/subset/ARGO_SO.zarr
+  path: C:/Users/Jacopo/OneDrive - CNR/ARGO/ACC/zarr/SO_not_alligned.zarr

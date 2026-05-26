@@ -43,6 +43,9 @@ class SegmentConfig:
 class ResampleConfig:
     frequency: str | None = None
     interpolate: str = "time"
+    reference_time: pd.Timestamp | None = None
+    shared_time: bool = False
+    shift_start_to_reference: bool = False
 
 
 @dataclass(frozen=True)
@@ -164,9 +167,39 @@ def _resolve_resample_config(config: dict[str, Any]) -> ResampleConfig:
     frequency = raw.get("frequency") if enabled else None
     if isinstance(frequency, str):
         frequency = frequency.lower()
+
+    shared_time = bool(raw.get("shared_time", False))
+    shift_start_to_reference = bool(raw.get("shift_start_to_reference", False))
+    reference_time_raw = raw.get("reference_time")
+
+    align_raw = raw.get("align_start", {}) or {}
+    align_start_enabled = bool(align_raw.get("enabled", False))
+    if align_start_enabled:
+        if reference_time_raw is None:
+            reference_time_raw = align_raw.get("start_time")
+        if "shared_time" not in raw:
+            shared_time = True
+        if "shift_start_to_reference" not in raw:
+            shift_start_to_reference = True
+
+    reference_time: pd.Timestamp | None = None
+    if reference_time_raw is not None:
+        reference_time = pd.to_datetime(reference_time_raw, utc=True, errors="raise").tz_convert(None)
+
+    if (shared_time or shift_start_to_reference) and reference_time is None:
+        raise ValueError(
+            "processing.resample.reference_time is required when shared_time or shift_start_to_reference is enabled"
+        )
+    if shared_time:
+        if frequency is None:
+            raise ValueError("processing.resample.frequency is required when shared_time is true")
+
     return ResampleConfig(
         frequency=frequency,
         interpolate=str(raw.get("interpolate", "time")),
+        reference_time=reference_time,
+        shared_time=shared_time,
+        shift_start_to_reference=shift_start_to_reference,
     )
 
 
@@ -488,17 +521,44 @@ def _wrap_longitudes(lon: np.ndarray) -> np.ndarray:
     return ((values + 180.0) % 360.0) - 180.0
 
 
-def _resample_single_trajectory(df: pd.DataFrame, *, config: ResampleConfig) -> pd.DataFrame:
-    if not config.frequency or len(df) <= 1:
+def _shift_trajectory_to_start(trajectory: pd.DataFrame, target_start: pd.Timestamp) -> pd.DataFrame:
+    if trajectory.empty:
+        return trajectory.copy()
+
+    shifted = trajectory.copy()
+    offset = target_start - shifted["time"].iloc[0]
+    shifted.loc[:, "time"] = shifted["time"] + offset
+    return shifted
+
+
+def _resample_single_trajectory(
+    df: pd.DataFrame,
+    *,
+    config: ResampleConfig,
+    target_index: pd.DatetimeIndex | None = None,
+    keep_full_target_index: bool = False,
+) -> pd.DataFrame:
+    if (not config.frequency and target_index is None) or df.empty:
         return df.reset_index(drop=True)
 
     ordered = _collapse_duplicate_times(df).set_index("time").copy()
+    min_time = ordered.index.min()
+    max_time = ordered.index.max()
     if "lon" in ordered.columns:
         ordered.loc[:, "lon"] = _unwrap_longitudes(ordered["lon"].to_numpy(dtype=float))
 
-    new_index = pd.date_range(ordered.index.min(), ordered.index.max(), freq=config.frequency)
-    if len(new_index) == 0 or new_index[-1] != ordered.index.max():
-        new_index = new_index.append(pd.DatetimeIndex([ordered.index.max()]))
+    if target_index is None:
+        new_index = pd.date_range(min_time, max_time, freq=config.frequency)
+        if len(new_index) == 0 or new_index[-1] != max_time:
+            new_index = new_index.append(pd.DatetimeIndex([max_time]))
+    else:
+        if keep_full_target_index:
+            new_index = target_index
+        else:
+            new_index = target_index[(target_index >= min_time) & (target_index <= max_time)]
+
+    if len(new_index) == 0:
+        return ordered.reset_index(drop=False).rename(columns={"index": "time"}).reset_index(drop=True)
 
     expanded = ordered.reindex(ordered.index.union(new_index)).sort_index()
 
@@ -514,6 +574,12 @@ def _resample_single_trajectory(df: pd.DataFrame, *, config: ResampleConfig) -> 
         expanded.loc[:, other_cols] = expanded.loc[:, other_cols].ffill().bfill()
 
     result = expanded.loc[new_index].reset_index().rename(columns={"index": "time"})
+    if keep_full_target_index:
+        active_mask = (result["time"] >= min_time) & (result["time"] <= max_time)
+        inactive_mask = ~active_mask
+        value_columns = [column for column in result.columns if column != "time"]
+        if value_columns:
+            result.loc[inactive_mask, value_columns] = np.nan
     if "lon" in result.columns:
         result.loc[:, "lon"] = _wrap_longitudes(result["lon"].to_numpy(dtype=float))
     return result.reset_index(drop=True)
@@ -524,12 +590,74 @@ def _apply_resampling(
     *,
     config: ResampleConfig,
 ) -> list[pd.DataFrame]:
-    if not config.frequency or len(trajectories) <= 1:
-        return [_resample_single_trajectory(trajectory, config=config) for trajectory in trajectories]
+    working_trajectories = trajectories
+    if config.shift_start_to_reference:
+        if config.reference_time is None:
+            raise ValueError("reference_time must be set when shift_start_to_reference is enabled")
+        working_trajectories = [
+            _shift_trajectory_to_start(trajectory, config.reference_time)
+            for trajectory in trajectories
+        ]
+
+    if config.shared_time:
+        if config.reference_time is None:
+            raise ValueError("reference_time must be set when shared_time is enabled")
+        if not config.frequency:
+            raise ValueError("processing.resample.frequency is required when shared_time is true")
+
+        non_empty = [trajectory for trajectory in working_trajectories if not trajectory.empty]
+        if not non_empty:
+            return working_trajectories
+
+        min_start_time = min(trajectory["time"].iloc[0] for trajectory in non_empty)
+        max_end_time = max(trajectory["time"].iloc[-1] for trajectory in non_empty)
+        common_index = pd.date_range(config.reference_time, max_end_time, freq=config.frequency)
+        if len(common_index) == 0:
+            common_index = pd.DatetimeIndex([config.reference_time])
+        else:
+            common_index = common_index[common_index >= min_start_time]
+            if len(common_index) == 0:
+                common_index = pd.DatetimeIndex([max_end_time])
+
+        trajectory_iterator = (
+            tqdm(working_trajectories, desc="Resampling trajectories", unit="traj")
+            if len(working_trajectories) > 1
+            else working_trajectories
+        )
+        return [
+            _resample_single_trajectory(
+                trajectory,
+                config=config,
+                target_index=common_index,
+                keep_full_target_index=True,
+            )
+            for trajectory in trajectory_iterator
+        ]
+
+    if not config.frequency:
+        return [trajectory.reset_index(drop=True) for trajectory in working_trajectories]
+
+    if config.reference_time is not None:
+        resampled: list[pd.DataFrame] = []
+        trajectory_iterator = (
+            tqdm(working_trajectories, desc="Resampling trajectories", unit="traj")
+            if len(working_trajectories) > 1
+            else working_trajectories
+        )
+        for trajectory in trajectory_iterator:
+            if trajectory.empty:
+                resampled.append(trajectory.reset_index(drop=True))
+                continue
+            local_index = pd.date_range(config.reference_time, trajectory["time"].iloc[-1], freq=config.frequency)
+            resampled.append(_resample_single_trajectory(trajectory, config=config, target_index=local_index))
+        return resampled
+
+    if len(working_trajectories) <= 1:
+        return [_resample_single_trajectory(trajectory, config=config) for trajectory in working_trajectories]
 
     return [
         _resample_single_trajectory(trajectory, config=config)
-        for trajectory in tqdm(trajectories, desc="Resampling trajectories", unit="traj")
+        for trajectory in tqdm(working_trajectories, desc="Resampling trajectories", unit="traj")
     ]
 
 
@@ -640,6 +768,12 @@ def convert_argo_to_dataframe(config: dict[str, Any]) -> list[pd.DataFrame]:
     print(f"Kept {len(trajectories)} trajectory segment(s) after region filtering")
     if resample_config.frequency:
         print(f"Resampling trajectories at frequency: {resample_config.frequency}")
+    if resample_config.shared_time and resample_config.reference_time is not None:
+        print(f"Using shared time grid from reference time: {resample_config.reference_time.isoformat()}")
+    elif resample_config.reference_time is not None:
+        print(f"Anchoring resampling to reference time: {resample_config.reference_time.isoformat()}")
+    if resample_config.shift_start_to_reference and resample_config.reference_time is not None:
+        print(f"Shifting trajectory starts to reference time: {resample_config.reference_time.isoformat()}")
     trajectories = _apply_resampling(trajectories, config=resample_config)
 
     normalized: list[pd.DataFrame] = []
