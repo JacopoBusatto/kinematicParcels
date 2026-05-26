@@ -20,7 +20,7 @@ output:
 exports:
   save_trajectory_table: false
   save_particle_summary: true
-  table_format: parquet
+  table_format: parquet  # parquet | csv
 
 cleaning:
   truncate_stagnant: false
@@ -28,7 +28,7 @@ cleaning:
   stagnant_min_consecutive: 2
 
 release:
-  mode: region_grid
+  mode: region_grid  # point_list | region_grid | circle | lkm
   continuous: false
 
 plotting:
@@ -38,10 +38,12 @@ transition_probability:
   region_labels:
     - sesc-mod
     - sesc-sir
-  time_frequency: 1
-  how_many: priority_max
+  time_step_stride: 1  # Keep one row every N original trajectory observations.
+  how_many: priority_max  # first | last | all | priority_min | priority_max
   priority_level: 7
-  priority_mode: exact
-  input_lon_mode: "-180_180"
+  priority_mode: exact  # exact | atleast | atmost
+  input_lon_mode: "-180_180"  # "-180_180" | "0_360"
+  min_life_days: 0
+  trimming_age_days: null  # Keep all ages, or set a maximum particle age in days.
   max_group_member: null  # Set an integer to keep only members <= this value.
   filter_isolated: true   # Replace isolated symbolic labels when neighbors agree.

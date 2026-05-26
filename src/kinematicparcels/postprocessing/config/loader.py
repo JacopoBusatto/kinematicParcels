@@ -770,9 +770,10 @@ def _parse_transition_probability(
             )
         region_labels.append(item.strip())
 
-    time_frequency_raw = section.get("time_frequency", 1)
-    if not isinstance(time_frequency_raw, int) or time_frequency_raw < 1:
-        raise ValueError("'transition_probability.time_frequency' must be an integer >= 1.")
+    time_step_stride_raw = section.get("time_step_stride", 1)
+
+    if not isinstance(time_step_stride_raw, int) or time_step_stride_raw < 1:
+        raise ValueError("'transition_probability.time_step_stride' must be an integer >= 1.")
 
     how_many = _require_nonempty_string(
         section.get("how_many", "priority_max"),
@@ -795,6 +796,22 @@ def _parse_transition_probability(
             raise ValueError("'transition_probability.priority_level' must be an integer or null.")
         priority_level = priority_level_raw
 
+    min_life_days_raw = section.get("min_life_days", 0)
+    min_life_days = _require_number(min_life_days_raw, "transition_probability.min_life_days")
+    if min_life_days < 0:
+        raise ValueError("'transition_probability.min_life_days' must be >= 0.")
+
+    trimming_age_days_raw = section.get("trimming_age_days", None)
+    if trimming_age_days_raw is None:
+        trimming_age_days = None
+    else:
+        trimming_age_days = _require_number(
+            trimming_age_days_raw,
+            "transition_probability.trimming_age_days",
+        )
+        if trimming_age_days < 0:
+            raise ValueError("'transition_probability.trimming_age_days' must be >= 0 or null.")
+
     max_group_member_raw = section.get("max_group_member", None)
     if max_group_member_raw is None:
         max_group_member = None
@@ -807,11 +824,13 @@ def _parse_transition_probability(
 
     return TransitionProbabilityConfig(
         region_labels=tuple(region_labels),
-        time_frequency=time_frequency_raw,
+        time_step_stride=time_step_stride_raw,
         how_many=how_many,
         priority_level=priority_level,
         priority_mode=priority_mode,
         input_lon_mode=input_lon_mode,
+        min_life_days=min_life_days,
+        trimming_age_days=trimming_age_days,
         max_group_member=max_group_member,
         filter_isolated=filter_isolated,
     )

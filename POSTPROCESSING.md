@@ -742,11 +742,11 @@ For each retained time step, the workflow:
 - counts how many particles that started in region `i` are in region `j`
 - normalizes by the number of particles that started in region `i`
 
-The exported CSV contains one row per sampled timestamp and one probability
+The exported CSV contains one row per sampled particle age and one probability
 column per ordered region pair:
 
 ```text
-time, p_<origin1>__<target1>, ..., p_<originN>__<targetN>
+age_days, p_<origin1>__<target1>, ..., p_<originN>__<targetN>
 ```
 
 The analysis reuses the same region-selection options as `start_end_regions`
@@ -758,20 +758,28 @@ transition_probability:
   region_labels:
     - sesc-mod
     - sesc-sir
-  time_frequency: 1
+  time_step_stride: 1
   how_many: priority_max
   priority_level: null
   priority_mode: exact
   input_lon_mode: "-180_180"
+  min_life_days: 0
+  trimming_age_days: null
   max_group_member: null
   filter_isolated: false
 ```
 
 - `region_labels` list of regions to include in the matrix; required
-- `time_frequency` retain one point every N input time steps
+- `time_step_stride` retain one point every N input time steps
 - `how_many`, `priority_level`, `priority_mode`, `input_lon_mode` follow the same meaning as in `start_end_regions`
+- `min_life_days` keep only particles whose total lifetime is at least this many days
+- `trimming_age_days` discard samples whose particle age exceeds this value; no interpolation is performed at the cutoff
 - `max_group_member` when grouped trajectories are present, include members up to this index; `null` keeps all members
 - `filter_isolated` replace isolated symbolic labels when previous and next labels are equal and non-null
+
+The normalization denominator is still the number of particles that started in each
+origin region. Setting `trimming_age_days` alone does not force a constant denominator
+across all exported ages; use `min_life_days = trimming_age_days` when that is desired.
 
 Output:
 
@@ -892,11 +900,13 @@ transition_probability:
   region_labels:
     - sesc-mod
     - sesc-sir
-  time_frequency: 2
+  time_step_stride: 2
   how_many: priority_max
   priority_level: 7
   priority_mode: exact
   input_lon_mode: "-180_180"
+  min_life_days: 0
+  trimming_age_days: null
   max_group_member: null
   filter_isolated: true
 

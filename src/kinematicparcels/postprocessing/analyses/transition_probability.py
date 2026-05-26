@@ -40,6 +40,15 @@ def _apply_isolated_region_filter(labels: pd.Series) -> pd.Series:
     return pd.Series(filtered, index=labels.index, dtype=labels.dtype)
 
 
+def _empty_transition_table(region_order: list[str]) -> pd.DataFrame:
+    columns = ["age_days"] + [
+        f"p_{origin}__{target}"
+        for origin in region_order
+        for target in region_order
+    ]
+    return pd.DataFrame(columns=columns)
+
+
 def _resolve_selected_regions(cfg: TransitionProbabilityConfig):
     region_manager = build_region_manager(region_labels=cfg.region_labels)
     selected_by_label = {region.label: region for region in region_manager.get_regions()}
@@ -79,12 +88,7 @@ def compute_transition_probability(
         raise KeyError(f"Input dataframe missing required columns: {missing}")
 
     if df.empty:
-        columns = ["time"] + [
-            f"p_{origin}__{target}"
-            for origin in cfg.region_labels
-            for target in cfg.region_labels
-        ]
-        return pd.DataFrame(columns=columns)
+        return _empty_transition_table(list(cfg.region_labels))
 
     if region_manager is None:
         region_manager, ordered_regions = _resolve_selected_regions(cfg)
@@ -114,24 +118,41 @@ def compute_transition_probability(
         work = work.loc[work["group_member"] <= cfg.max_group_member].copy()
 
     if work.empty:
-        columns = ["time"] + [
-            f"p_{origin}__{target}"
-            for origin in region_order
-            for target in region_order
-        ]
-        return pd.DataFrame(columns=columns)
+        return _empty_transition_table(region_order)
 
     particle_cols = _particle_group_cols(work)
     work = work.sort_values(particle_cols + ["obs"]).reset_index(drop=True)
-    work = work.loc[work["obs"] % cfg.time_frequency == 0].copy()
+
+    particle_meta = (
+        work.groupby(particle_cols, sort=False)
+        .agg(first_time=("time", "min"), last_time=("time", "max"))
+        .reset_index()
+    )
+    particle_meta["lifetime"] = particle_meta["last_time"] - particle_meta["first_time"]
+
+    min_life = pd.Timedelta(days=cfg.min_life_days)
+    eligible_particles = particle_meta.loc[
+        particle_meta["lifetime"] >= min_life,
+        particle_cols + ["first_time", "lifetime"],
+    ]
+    work = work.merge(eligible_particles, on=particle_cols, how="inner")
 
     if work.empty:
-        columns = ["time"] + [
-            f"p_{origin}__{target}"
-            for origin in region_order
-            for target in region_order
-        ]
-        return pd.DataFrame(columns=columns)
+        return _empty_transition_table(region_order)
+
+    work["age"] = work["time"] - work["first_time"]
+
+    if cfg.trimming_age_days is not None:
+        trimming_age = pd.Timedelta(days=cfg.trimming_age_days)
+        work = work.loc[work["age"] <= trimming_age].copy()
+
+    if work.empty:
+        return _empty_transition_table(region_order)
+
+    work = work.loc[work["obs"] % cfg.time_step_stride == 0].copy()
+
+    if work.empty:
+        return _empty_transition_table(region_order)
 
     work = classify_region_points(
         work,
@@ -165,34 +186,29 @@ def compute_transition_probability(
     work = work.loc[work["start_region"].isin(region_order)].copy()
 
     if work.empty:
-        columns = ["time"] + [
-            f"p_{origin}__{target}"
-            for origin in region_order
-            for target in region_order
-        ]
-        return pd.DataFrame(columns=columns)
+        return _empty_transition_table(region_order)
 
-    sampled_times = pd.Index(pd.unique(work["time"]), name="time")
+    sampled_ages = pd.Index(sorted(pd.unique(work["age"])), name="age")
     denominators = origin_regions[origin_regions["start_region"].isin(region_order)]["start_region"].value_counts()
 
     counts = (
         work.loc[work["current_region"].isin(region_order)]
-        .groupby(["time", "start_region", "current_region"], sort=False)
+        .groupby(["age", "start_region", "current_region"], sort=False)
         .size()
         .rename("count")
         .reset_index()
     )
 
     if counts.empty:
-        pivot = pd.DataFrame(index=sampled_times)
+        pivot = pd.DataFrame(index=sampled_ages)
     else:
         pivot = counts.pivot_table(
-            index="time",
+            index="age",
             columns=["start_region", "current_region"],
             values="count",
             aggfunc="sum",
             fill_value=0,
-        ).reindex(index=sampled_times, fill_value=0)
+        ).reindex(index=sampled_ages, fill_value=0)
 
     ordered_columns = pd.MultiIndex.from_product(
         [region_order, region_order],
@@ -200,7 +216,7 @@ def compute_transition_probability(
     )
     pivot = pivot.reindex(columns=ordered_columns, fill_value=0)
 
-    probability = pd.DataFrame(index=sampled_times)
+    probability = pd.DataFrame(index=sampled_ages)
     for origin in region_order:
         denominator = int(denominators.get(origin, 0))
         for target in region_order:
@@ -211,4 +227,7 @@ def compute_transition_probability(
                 probability[column_name] = pivot[(origin, target)].astype(float) / float(denominator)
 
     probability = probability.reset_index()
+    probability["age_days"] = probability["age"].dt.total_seconds() / 86400.0
+    probability = probability.drop(columns=["age"])
+    probability = probability[["age_days"] + [c for c in probability.columns if c != "age_days"]]
     return probability

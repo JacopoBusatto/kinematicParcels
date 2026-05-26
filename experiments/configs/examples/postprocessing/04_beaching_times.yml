@@ -20,7 +20,7 @@ output:
 exports:
   save_trajectory_table: false
   save_particle_summary: true
-  table_format: parquet
+  table_format: parquet  # parquet | csv
 
 cleaning:
   truncate_stagnant: false
@@ -28,7 +28,7 @@ cleaning:
   stagnant_min_consecutive: 2
 
 grid:
-  mode: explicit_edges
+  mode: explicit_edges  # explicit_edges | from_initial_centers
   lon_min: 13.0
   lon_max: 15.0
   lat_min: 36.0
@@ -37,7 +37,7 @@ grid:
   dlat: 0.1
 
 release:
-  mode: point_list
+  mode: point_list  # point_list | region_grid | circle | lkm
   continuous: false
 
 plotting:
@@ -47,5 +47,5 @@ beaching_times:
   lon_col: lon0
   lat_col: lat0
   value_col: lifetime_seconds
-  statistic: min  # Any non-empty string is accepted; downstream code expects a supported reducer.
+  statistic: min  # mean | count | sum | min | max | median | std
   plot: false

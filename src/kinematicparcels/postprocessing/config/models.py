@@ -215,17 +215,25 @@ class StartEndRegionsConfig:
 @dataclass(frozen=True)
 class TransitionProbabilityConfig:
     region_labels: tuple[str, ...] = field(default_factory=tuple)
-    time_frequency: int = 1
+    time_step_stride: int = 1
     how_many: str = "priority_max"
     priority_level: int | None = None
     priority_mode: str = "exact"
     input_lon_mode: str = "-180_180"
+    min_life_days: float = 0.0
+    trimming_age_days: float | None = None
     max_group_member: int | None = None
     filter_isolated: bool = False
 
     def __post_init__(self) -> None:
-        if self.time_frequency < 1:
-            raise ValueError("transition_probability.time_frequency must be an integer >= 1.")
+        if self.time_step_stride < 1:
+            raise ValueError("transition_probability.time_step_stride must be an integer >= 1.")
+
+        if self.min_life_days < 0:
+            raise ValueError("transition_probability.min_life_days must be >= 0.")
+
+        if self.trimming_age_days is not None and self.trimming_age_days < 0:
+            raise ValueError("transition_probability.trimming_age_days must be >= 0 or null.")
 
         if self.max_group_member is not None and self.max_group_member < 1:
             raise ValueError("transition_probability.max_group_member must be an integer > 0 or null.")

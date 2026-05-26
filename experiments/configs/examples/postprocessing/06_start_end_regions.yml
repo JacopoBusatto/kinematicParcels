@@ -20,7 +20,7 @@ output:
 exports:
   save_trajectory_table: false
   save_particle_summary: true
-  table_format: parquet
+  table_format: parquet  # parquet | csv
 
 cleaning:
   truncate_stagnant: false
@@ -37,7 +37,7 @@ grid:
   dlat: 0.1
 
 release:
-  mode: region_grid  # Grid products are meaningful mainly for region_grid + continuous=false.
+  mode: region_grid  # point_list | region_grid | circle | lkm. Grid products are meaningful mainly for region_grid + continuous=false.
   continuous: false
 
 plotting:
@@ -45,10 +45,10 @@ plotting:
 
 start_end_regions:
   region_labels: null  # Use null for all labels or provide a YAML list of region names.
-  how_many: priority_max
+  how_many: priority_max  # first | last | all | priority_min | priority_max
   priority_level: null
-  priority_mode: exact
-  input_lon_mode: "-180_180"
+  priority_mode: exact  # exact | atleast | atmost
+  input_lon_mode: "-180_180"  # "-180_180" | "0_360"
   plot: false
 
   plot_connectivity: false

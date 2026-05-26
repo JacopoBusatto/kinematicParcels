@@ -22,7 +22,7 @@ output:
 exports:
   save_trajectory_table: false
   save_particle_summary: true
-  table_format: parquet  # The code expects a non-empty string.
+  table_format: parquet  # parquet | csv
 
 cleaning:
   truncate_stagnant: false
@@ -30,7 +30,7 @@ cleaning:
   stagnant_min_consecutive: 2
 
 release:
-  mode: point_list  # Typical values include point_list, region_grid, circle, or lkm.
+  mode: point_list  # point_list | region_grid | circle | lkm
   continuous: false
 
 plotting:

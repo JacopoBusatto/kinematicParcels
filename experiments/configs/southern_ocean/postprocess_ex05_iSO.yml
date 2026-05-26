@@ -98,10 +98,12 @@ transition_probability:
     - iSO
     - ACC
     - oSO
-  time_frequency: 2
+  time_step_stride: 2
   how_many: priority_max
   priority_level: 2
   priority_mode: exact
   input_lon_mode: "-180_180"
+  min_life_days: 0
+  trimming_age_days: null
   max_group_member: null  # Set an integer to keep only members <= this value.
   filter_isolated: true   # Replace isolated symbolic labels when neighbors agree.
