@@ -77,3 +77,14 @@ Only then we can produce to the coding. Try to minimize the writing, reusing the
 - the example yml that describes this module's options
 - the documentation `POSTPROCESSING.md` updated with the new module
 - the test scripts that need to run smoothly
+------------
+We need to slightly modify the logic of this module: 
+- we don't use the absolute time axis, but the "age" of the particle, namely `time - time[0]`, so that unsyncronized starts are counted correctly. I would give the number in days unit.
+- We need a minimum life length for the trajectories: the particles that live less thant that treshold are ignored.
+- We could need a maximum time length as well. since we are counting a probability, it is necessary to have a constant number of trajectory. So we need a maximum "age", above which the trajectories are trimmed.
+
+If my reasoning is correct, these case should be accounted:
+- putting 0 on the min time would mean that every trajectory is considered, whatever its duration is; then maybe trimmed with max
+- putting min and max the same, we would have segments of trajectories exactly of that value of length
+
+Let's clarify all your doubts before writing any code

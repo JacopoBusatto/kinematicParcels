@@ -30,6 +30,9 @@ DEFAULT_DATASET_ATTRS = {
     "source": "ARGO CSV conversion",
 }
 
+TRAJECTORY_LEVEL_COLUMNS = {"platform_code"}
+NON_INTERPOLATED_COLUMNS = {"platform_code"}
+
 
 @dataclass(frozen=True)
 class SegmentConfig:
@@ -168,12 +171,12 @@ def _resolve_resample_config(config: dict[str, Any]) -> ResampleConfig:
     if isinstance(frequency, str):
         frequency = frequency.lower()
 
-    shared_time = bool(raw.get("shared_time", False))
-    shift_start_to_reference = bool(raw.get("shift_start_to_reference", False))
-    reference_time_raw = raw.get("reference_time")
+    shared_time = bool(raw.get("shared_time", False)) if enabled else False
+    shift_start_to_reference = bool(raw.get("shift_start_to_reference", False)) if enabled else False
+    reference_time_raw = raw.get("reference_time") if enabled else None
 
     align_raw = raw.get("align_start", {}) or {}
-    align_start_enabled = bool(align_raw.get("enabled", False))
+    align_start_enabled = enabled and bool(align_raw.get("enabled", False))
     if align_start_enabled:
         if reference_time_raw is None:
             reference_time_raw = align_raw.get("start_time")
@@ -242,6 +245,43 @@ def _coerce_time_series(series: pd.Series) -> pd.Series:
     return times.dt.tz_convert(None)
 
 
+def _resolve_csv_read_columns(
+    csv_path: Path,
+    *,
+    columns: dict[str, str],
+    optional_variables: list[str],
+) -> tuple[list[str], str | None]:
+    available_columns = pd.read_csv(csv_path, nrows=0).columns.tolist()
+
+    required = [
+        columns["platform_code"],
+        columns["time"],
+        columns["lat"],
+        columns["lon"],
+    ]
+    missing = [column for column in required if column not in available_columns]
+    if missing:
+        missing_str = ", ".join(missing)
+        raise KeyError(f"Missing required ARGO columns in {csv_path}: {missing_str}")
+
+    missing_optional = [column for column in optional_variables if column not in available_columns]
+    if missing_optional:
+        missing_str = ", ".join(missing_optional)
+        raise KeyError(f"Missing requested optional ARGO columns in {csv_path}: {missing_str}")
+
+    pressure_candidates = [columns.get("pressure"), "PRES (decibar)"]
+    pressure_col = next(
+        (column for column in pressure_candidates if isinstance(column, str) and column in available_columns),
+        None,
+    )
+
+    read_columns = [*required, *optional_variables]
+    if pressure_col is not None:
+        read_columns.append(pressure_col)
+
+    return list(dict.fromkeys(read_columns)), pressure_col
+
+
 def _choose_surface_rows(df: pd.DataFrame, *, group_cols: list[str], pressure_col: str | None) -> pd.DataFrame:
     if pressure_col is None or pressure_col not in df.columns:
         return df.drop_duplicates(subset=group_cols, keep="first").copy()
@@ -261,27 +301,12 @@ def _read_surface_points(
     optional_variables: list[str],
     parking_depth_value: float,
 ) -> pd.DataFrame:
-    df = pd.read_csv(csv_path)
-
-    required = [
-        columns["platform_code"],
-        columns["time"],
-        columns["lat"],
-        columns["lon"],
-    ]
-    missing = [column for column in required if column not in df.columns]
-    if missing:
-        missing_str = ", ".join(missing)
-        raise KeyError(f"Missing required ARGO columns in {csv_path}: {missing_str}")
-
-    missing_optional = [column for column in optional_variables if column not in df.columns]
-    if missing_optional:
-        missing_str = ", ".join(missing_optional)
-        raise KeyError(f"Missing requested optional ARGO columns in {csv_path}: {missing_str}")
-
-    pressure_col = columns.get("pressure")
-    if pressure_col not in df.columns:
-        pressure_col = "PRES (decibar)" if "PRES (decibar)" in df.columns else None
+    read_columns, pressure_col = _resolve_csv_read_columns(
+        csv_path,
+        columns=columns,
+        optional_variables=optional_variables,
+    )
+    df = pd.read_csv(csv_path, usecols=read_columns)
 
     time_col = columns["time"]
     lat_col = columns["lat"]
@@ -307,9 +332,12 @@ def _read_surface_points(
     }
 
     surface = surface.rename(columns=rename_map)
-    surface["platform_code"] = pd.to_numeric(surface["platform_code"], errors="coerce")
-    if surface["platform_code"].isna().any():
+    platform_codes = pd.to_numeric(surface["platform_code"], errors="coerce")
+    if platform_codes.isna().any():
         raise ValueError(f"Non-numeric platform_code values found in {csv_path}")
+    if not np.allclose(platform_codes.to_numpy(dtype=float), np.round(platform_codes.to_numpy(dtype=float))):
+        raise ValueError(f"Non-integer platform_code values found in {csv_path}")
+    surface["platform_code"] = platform_codes.to_numpy(dtype=np.int64)
 
     surface["z"] = float(parking_depth_value)
 
@@ -325,14 +353,14 @@ def _read_surface_points(
     return surface[keep_columns].reset_index(drop=True)
 
 
-def _merge_platform_surface_points(
-    existing: pd.DataFrame | None,
-    incoming: pd.DataFrame,
-) -> pd.DataFrame:
-    if existing is None or existing.empty:
-        return incoming.sort_values(["platform_code", "time", "lat", "lon"], kind="stable").reset_index(drop=True)
+def _merge_platform_surface_points(frames: list[pd.DataFrame]) -> pd.DataFrame:
+    if not frames:
+        return pd.DataFrame()
 
-    merged = pd.concat([existing, incoming], ignore_index=True)
+    if len(frames) == 1:
+        return frames[0].sort_values(["platform_code", "time", "lat", "lon"], kind="stable").reset_index(drop=True)
+
+    merged = pd.concat(frames, ignore_index=True)
     merged = merged.sort_values(["platform_code", "time", "lat", "lon"], kind="stable")
     merged = merged.drop_duplicates(subset=["platform_code", "time", "lat", "lon"], keep="last")
     return merged.reset_index(drop=True)
@@ -531,6 +559,17 @@ def _shift_trajectory_to_start(trajectory: pd.DataFrame, target_start: pd.Timest
     return shifted
 
 
+def _collapse_shared_time_trajectory(trajectory: pd.DataFrame) -> pd.DataFrame:
+    if trajectory.empty:
+        return trajectory.copy()
+
+    valid_mask = trajectory["lon"].notna() & trajectory["lat"].notna()
+    if not valid_mask.any():
+        return trajectory.iloc[0:0].copy().reset_index(drop=True)
+
+    return trajectory.loc[valid_mask].reset_index(drop=True).copy()
+
+
 def _resample_single_trajectory(
     df: pd.DataFrame,
     *,
@@ -563,15 +602,16 @@ def _resample_single_trajectory(
     expanded = ordered.reindex(ordered.index.union(new_index)).sort_index()
 
     numeric_cols = expanded.select_dtypes(include=[np.number, "bool"]).columns.tolist()
-    if numeric_cols:
-        expanded.loc[:, numeric_cols] = expanded.loc[:, numeric_cols].interpolate(
+    interpolated_numeric_cols = [column for column in numeric_cols if column not in NON_INTERPOLATED_COLUMNS]
+    if interpolated_numeric_cols:
+        expanded.loc[:, interpolated_numeric_cols] = expanded.loc[:, interpolated_numeric_cols].interpolate(
             method=config.interpolate,
             limit_direction="both",
         )
 
-    other_cols = [column for column in expanded.columns if column not in numeric_cols]
-    if other_cols:
-        expanded.loc[:, other_cols] = expanded.loc[:, other_cols].ffill().bfill()
+    fill_only_cols = [column for column in expanded.columns if column not in interpolated_numeric_cols]
+    if fill_only_cols:
+        expanded.loc[:, fill_only_cols] = expanded.loc[:, fill_only_cols].ffill().bfill()
 
     result = expanded.loc[new_index].reset_index().rename(columns={"index": "time"})
     if keep_full_target_index:
@@ -625,11 +665,13 @@ def _apply_resampling(
             else working_trajectories
         )
         return [
-            _resample_single_trajectory(
-                trajectory,
-                config=config,
-                target_index=common_index,
-                keep_full_target_index=True,
+            _collapse_shared_time_trajectory(
+                _resample_single_trajectory(
+                    trajectory,
+                    config=config,
+                    target_index=common_index,
+                    keep_full_target_index=True,
+                )
             )
             for trajectory in trajectory_iterator
         ]
@@ -682,6 +724,7 @@ def _series_to_fixed_width_array(series: pd.Series, length: int) -> np.ndarray:
 
 
 def build_dataset_from_trajectories(trajectories: list[pd.DataFrame]) -> xr.Dataset:
+    trajectories = [trajectory for trajectory in trajectories if not trajectory.empty]
     if not trajectories:
         raise ValueError("The ARGO conversion produced no trajectories after filtering.")
 
@@ -696,8 +739,15 @@ def build_dataset_from_trajectories(trajectories: list[pd.DataFrame]) -> xr.Data
             if column not in {"trajectory", "obs"} and column not in variable_names:
                 variable_names.append(column)
 
-    data_vars: dict[str, tuple[tuple[str, str], np.ndarray]] = {}
+    data_vars: dict[str, tuple[tuple[str, ...], np.ndarray]] = {}
     for name in variable_names:
+        if name in TRAJECTORY_LEVEL_COLUMNS:
+            values = np.asarray([frame[name].iloc[0] for frame in ordered])
+            if pd.api.types.is_numeric_dtype(values.dtype):
+                values = pd.to_numeric(values, errors="raise").astype(np.int64)
+            data_vars[name] = (("trajectory",), values)
+            continue
+
         sample_series = ordered[0][name]
         rows = [_series_to_fixed_width_array(frame[name], max_obs) for frame in ordered]
         values = np.stack(rows, axis=0)
@@ -721,6 +771,21 @@ def build_dataset_from_trajectories(trajectories: list[pd.DataFrame]) -> xr.Data
     return ds
 
 
+def _build_zarr_encoding(ds: xr.Dataset) -> dict[str, dict[str, Any]]:
+    trajectory_size = int(ds.sizes.get("trajectory", 1))
+    obs_size = int(ds.sizes.get("obs", 1))
+    obs_chunk = 1 if obs_size > 0 else 1
+
+    encoding: dict[str, dict[str, Any]] = {}
+    for name, variable in ds.data_vars.items():
+        if variable.dims == ("trajectory", "obs"):
+            encoding[name] = {"chunks": (trajectory_size, obs_chunk)}
+        elif variable.dims == ("trajectory",):
+            encoding[name] = {"chunks": (trajectory_size,)}
+
+    return encoding
+
+
 def convert_argo_to_dataframe(config: dict[str, Any]) -> list[pd.DataFrame]:
     columns = _resolve_columns(config)
     files = _resolve_input_files(config)
@@ -732,7 +797,7 @@ def convert_argo_to_dataframe(config: dict[str, Any]) -> list[pd.DataFrame]:
 
     print(f"Resolved {len(files)} ARGO CSV file(s)")
     file_iterator = tqdm(files, desc="Reading ARGO CSV files", unit="file") if len(files) > 1 else files
-    platform_buffers: dict[float, pd.DataFrame] = {}
+    platform_buffers: dict[int, list[pd.DataFrame]] = {}
     for csv_path in file_iterator:
         surface_points = _read_surface_points(
             csv_path,
@@ -742,20 +807,27 @@ def convert_argo_to_dataframe(config: dict[str, Any]) -> list[pd.DataFrame]:
         )
 
         for platform_code, platform_df in surface_points.groupby("platform_code", sort=False):
-            code = float(platform_code)
-            platform_buffers[code] = _merge_platform_surface_points(
-                platform_buffers.get(code),
-                platform_df.reset_index(drop=True),
-            )
+            code = int(platform_code)
+            platform_buffers.setdefault(code, []).append(platform_df.reset_index(drop=True))
 
-    n_platforms = len(platform_buffers)
+    merged_platform_buffers = {
+        platform_code: _merge_platform_surface_points(frames)
+        for platform_code, frames in platform_buffers.items()
+    }
+
+    n_platforms = len(merged_platform_buffers)
     print(f"Buffered surface fixes for {n_platforms} platform(s)")
     print(f"Applying segmentation policy: {segment_config.mode}")
     trajectories: list[pd.DataFrame] = []
     platform_iterator = (
-        tqdm(platform_buffers.items(), total=len(platform_buffers), desc="Segmenting platforms", unit="platform")
-        if len(platform_buffers) > 1
-        else platform_buffers.items()
+        tqdm(
+            merged_platform_buffers.items(),
+            total=len(merged_platform_buffers),
+            desc="Segmenting platforms",
+            unit="platform",
+        )
+        if len(merged_platform_buffers) > 1
+        else merged_platform_buffers.items()
     )
     for _, platform_df in platform_iterator:
         trajectories.extend(_apply_segment_policy(platform_df.reset_index(drop=True), config=segment_config))
@@ -776,6 +848,12 @@ def convert_argo_to_dataframe(config: dict[str, Any]) -> list[pd.DataFrame]:
         print(f"Shifting trajectory starts to reference time: {resample_config.reference_time.isoformat()}")
     trajectories = _apply_resampling(trajectories, config=resample_config)
 
+    pre_drop_count = len(trajectories)
+    trajectories = [trajectory for trajectory in trajectories if not trajectory.empty]
+    dropped_empty = pre_drop_count - len(trajectories)
+    if dropped_empty > 0:
+        print(f"Dropped {dropped_empty} empty trajectory segment(s) after resampling")
+
     normalized: list[pd.DataFrame] = []
     trajectory_iterator = (
         tqdm(enumerate(trajectories), total=len(trajectories), desc="Normalizing trajectories", unit="traj")
@@ -795,11 +873,12 @@ def convert_argo_to_zarr(config: dict[str, Any]) -> xr.Dataset:
     trajectories = convert_argo_to_dataframe(config)
     print("Building output dataset")
     ds = build_dataset_from_trajectories(trajectories)
+    encoding = _build_zarr_encoding(ds)
 
     output_path = _resolve_output_path(config)
     output_path.parent.mkdir(parents=True, exist_ok=True)
     print(f"Writing Zarr dataset to {output_path}")
-    ds.to_zarr(output_path, mode="w")
+    ds.to_zarr(output_path, mode="w", encoding=encoding)
     print("ARGO conversion completed")
     return ds
 

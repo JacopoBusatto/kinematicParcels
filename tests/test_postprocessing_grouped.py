@@ -13,6 +13,7 @@ from kinematicparcels.postprocessing.config import load_postprocess_config
 from kinematicparcels.postprocessing.config.models import DatasetConfig, DatasetCoordinatesConfig, ExportsConfig, GridConfig, OutputConfig, PostprocessConfig
 from kinematicparcels.postprocessing.core.gridding import RegularGrid, build_grid_from_config
 from kinematicparcels.postprocessing.core.summaries import build_particle_summary
+from kinematicparcels.postprocessing.io.parcels import sanitize_trajectories
 from kinematicparcels.postprocessing.plotting.trajectories import (
     _split_longitude_wrapped_path,
     plot_trajectories_map,
@@ -389,6 +390,32 @@ def test_run_summary_preserves_group_member_for_grouped_datasets(tmp_path: Path)
     assert sorted(traj["group_member"].unique().tolist()) == [1, 2]
     assert "group_member" in summary.columns
     assert sorted(summary["group_member"].unique().tolist()) == [1, 2]
+
+
+def test_sanitize_trajectories_drops_trajectory_if_first_obs_is_invalid() -> None:
+    df = pd.DataFrame(
+        {
+            "trajectory": [10, 10, 10, 10, 11, 11],
+            "obs": [0, 1, 2, 3, 0, 1],
+            "time": pd.to_datetime(
+                [
+                    "2020-01-01T00:00:00",
+                    "2020-01-11T00:00:00",
+                    "2020-01-21T00:00:00",
+                    "2020-01-31T00:00:00",
+                    "2020-01-01T00:00:00",
+                    "2020-01-11T00:00:00",
+                ]
+            ),
+            "lon": [np.nan, 10.0, 11.0, np.nan, 20.0, 21.0],
+            "lat": [np.nan, -55.0, -54.0, np.nan, -50.0, -49.0],
+        }
+    )
+
+    cleaned = sanitize_trajectories(df)
+
+    assert cleaned["trajectory"].unique().tolist() == [11]
+    assert cleaned.loc[cleaned["trajectory"] == 11, "obs"].tolist() == [0, 1]
 
 
 def test_build_grid_from_config_uses_member1_release_centers() -> None:

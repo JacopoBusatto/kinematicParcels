@@ -21,8 +21,7 @@ conda-meta/
 Thumbs.db
 
 # Outputs and data
-fields/*
-!fields/.gitkeep
+fields/
 
 outputs/*
 !outputs/.gitkeep
@@ -46,6 +45,19 @@ logs/*
 # Local data download scripts (operator-specific)
 download_*.py
 copernicus_env.yml
+
+# Keep only curated example/template configs in git
+experiments/configs/**
+!experiments/configs/examples/
+!experiments/configs/examples/**
+!experiments/configs/circle_release_example.yml
+!experiments/configs/regular_grid_example.yml
+!experiments/configs/regular_grid_example_multilevel.yml
+!experiments/configs/multiple_simulation_run.yml
+!experiments/configs/multiple_simulation_postprocessing.yml
+!experiments/configs/postprocessing/
+experiments/configs/postprocessing/*
+!experiments/configs/postprocessing/postprocess.yml
 
 # Legacy local-only sources
 cpp_legacy/

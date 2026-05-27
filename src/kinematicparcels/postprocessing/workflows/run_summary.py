@@ -19,7 +19,7 @@ def run_summary(cfg: PostprocessConfig, context: dict) -> None:
     print("Building trajectory table")
 
     trajectory_table = get_trajectory_table(cfg, context)
-
+    print("Input trajectory table:", cfg.dataset.input_path)
     print("Building particle summary")
     particle_summary = build_particle_summary(trajectory_table)
     context["particle_summary"] = particle_summary

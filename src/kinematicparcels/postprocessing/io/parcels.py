@@ -297,7 +297,7 @@ def sanitize_trajectories(
         if truncate_at_first_invalid:
             first_invalid_positions = (~valid_mask).nonzero()[0]
             if len(first_invalid_positions) > 0:
-                first_invalid_idx = first_invalid_positions[0]
+                first_invalid_idx = int(first_invalid_positions[0])
                 g = g.iloc[:first_invalid_idx].copy()
             else:
                 g = g.copy()

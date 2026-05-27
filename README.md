@@ -101,14 +101,17 @@ kinematicParcels/
 │           └── regions_definitions.py
 ├── experiments/
 │   └── configs/
-│       ├── exp_NPstg_surface.yml
-│       ├── exp_NPstg_multilevel.yml
-│       ├── fjords_template_PFunion.yml
-│       ├── fjords_template_postprocessing.yml
-│       ├── fjords_test_1p.yml
-│       ├── fjords_test_PFunion.yml
+│       ├── examples/
+│       │   ├── 01_point_list_single_2d.yml
+│       │   ├── ...
+│       │   └── postprocessing/
+│       ├── circle_release_example.yml
+│       ├── regular_grid_example.yml
+│       ├── regular_grid_example_multilevel.yml
 │       ├── multiple_simulation_postprocessing.yml
-│       └── multiple_simulation_run.yml
+│       ├── multiple_simulation_run.yml
+│       └── postprocessing/
+│           └── postprocess.yml
 ├── fields/                    (input velocity fields, not tracked)
 ├── outputs/                   (simulation outputs, not tracked)
 ├── logs/                      (optional run logs)

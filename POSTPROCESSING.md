@@ -1036,7 +1036,7 @@ The series runner:
 ## MASTER CONFIGURATION (SCHEDULE MODE)
 
 ```yaml
-template_config: .\experiments\configs\postprocess.yml
+template_config: .\experiments\configs\postprocessing\postprocess.yml
 
 series:
   simulation_output_root: C:/Users/Jacopo/Documents/DATI/PATAGONIA/simulation_series
