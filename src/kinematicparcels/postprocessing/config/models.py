@@ -105,6 +105,7 @@ class BeachingTimesConfig:
 @dataclass(frozen=True)
 class FSLEConfig:
     pair_mode: str = "center_pairs"
+    meridional_only: bool = False
     min_scale: float = 5.0e-3
     max_scale: float = 1.0e4
     rho_increment: float = 2 ** 0.5

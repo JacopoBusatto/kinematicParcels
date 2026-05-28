@@ -16,6 +16,7 @@ src/kinematicparcels/postprocessing/analyses/density.py
 src/kinematicparcels/postprocessing/analyses/fsle.py
 src/kinematicparcels/postprocessing/analyses/meridional_crossing.py
 src/kinematicparcels/postprocessing/analyses/start_end_regions.py
+src/kinematicparcels/postprocessing/analyses/transition_probability.py
 src/kinematicparcels/postprocessing/animations/__init__.py
 src/kinematicparcels/postprocessing/animations/density.py
 src/kinematicparcels/postprocessing/animations/trajectories.py
@@ -26,6 +27,7 @@ src/kinematicparcels/postprocessing/config/models.py
 src/kinematicparcels/postprocessing/core/__init__.py
 src/kinematicparcels/postprocessing/core/filters.py
 src/kinematicparcels/postprocessing/core/gridding.py
+src/kinematicparcels/postprocessing/core/regions.py
 src/kinematicparcels/postprocessing/core/summaries.py
 src/kinematicparcels/postprocessing/io/__init__.py
 src/kinematicparcels/postprocessing/io/exports.py
@@ -49,6 +51,12 @@ src/kinematicparcels/postprocessing/workflows/run_meridional_crossing.py
 src/kinematicparcels/postprocessing/workflows/run_start_end_regions.py
 src/kinematicparcels/postprocessing/workflows/run_summary.py
 src/kinematicparcels/postprocessing/workflows/run_trajectories.py
+src/kinematicparcels/postprocessing/workflows/run_transition_probability.py
+src/kinematicparcels/regions/__init__.py
+src/kinematicparcels/regions/classification.py
+src/kinematicparcels/regions/core.py
+src/kinematicparcels/regions/definitions.py
+src/kinematicparcels/regions/plotting.py
 src/kinematicparcels/runner/__init__.py
 src/kinematicparcels/runner/grouped_kernels.py
 src/kinematicparcels/runner/kernels.py
@@ -58,6 +66,9 @@ src/kinematicparcels/runner/run_experiment_series.py
 src/kinematicparcels/tools/__init__.py
 src/kinematicparcels/tools/argo_to_zarr.py
 src/kinematicparcels/tools/check_argo_data.py
+src/kinematicparcels/tools/couple_trajectories.py
+src/kinematicparcels/tools/drifter_to_zarr.py
+src/kinematicparcels/tools/zarr_writer.py
 src/kinematicparcels/utilities/__init__.py
 src/kinematicparcels/utilities/circle_release.py
 src/kinematicparcels/utilities/compare_region_shape.py
@@ -72,6 +83,8 @@ src/kinematicparcels/utilities/lkm.py
 src/kinematicparcels/utilities/regions_definitions.py
 tests/test_argo_to_zarr.py
 tests/test_continuous_release.py
+tests/test_couple_trajectories.py
+tests/test_drifter_to_zarr.py
 tests/test_fsle.py
 tests/test_grouped_classes.py
 tests/test_integration.py
@@ -80,3 +93,4 @@ tests/test_meridional_crossing.py
 tests/test_parcels_api.py
 tests/test_postprocessing_grouped.py
 tests/test_release_land_filter.py
+tests/test_transition_probability.py

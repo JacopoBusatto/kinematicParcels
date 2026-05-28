@@ -647,6 +647,7 @@ Options:
 ```yaml
 fsle:
   pair_mode: center_pairs
+  meridional_only: false
   min_scale: 0.01
   max_scale: 5.0
   rho_increment: 1.4142135623730951
@@ -665,6 +666,7 @@ fsle:
 ```
 
 - `pair_mode` pair construction rule for grouped releases. Available: `center_pairs`, `all_pairs`
+- `meridional_only` if `true`, compute pair separation from latitude differences only and ignore zonal separation
 - `min_scale` and `max_scale` lower and upper separation thresholds in km
 - `rho_increment` geometric factor between consecutive scales. Must be greater than 1
 - `save_crossing_events` save the raw threshold-crossing events table in addition to the spectrum table
@@ -882,6 +884,7 @@ beaching_times:
 
 fsle:
   pair_mode: center_pairs
+  meridional_only: false
   min_scale: 0.01
   max_scale: 10.0
   rho_increment: 1.4142135623730951

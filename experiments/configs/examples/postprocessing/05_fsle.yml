@@ -36,6 +36,7 @@ plotting:
 
 fsle:
   pair_mode: center_pairs  # center_pairs | all_pairs
+  meridional_only: false
   min_scale: 0.01
   max_scale: 5.0
   rho_increment: 1.4142135623730951  # Must be > 1.

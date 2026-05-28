@@ -20,6 +20,7 @@ def run_fsle(cfg: PostprocessConfig, context: dict) -> None:
     result = compute_fsle(
         df,
         pair_mode=cfg.fsle.pair_mode,
+        meridional_only=cfg.fsle.meridional_only,
         min_scale=cfg.fsle.min_scale,
         max_scale=cfg.fsle.max_scale,
         rho_increment=cfg.fsle.rho_increment,

@@ -9,7 +9,11 @@ import zarr
 from kinematicparcels.postprocessing.config.models import DatasetCoordinatesConfig
 from kinematicparcels.postprocessing.io.parcels import build_trajectory_table, open_parcels_dataset
 from kinematicparcels.postprocessing.io.parcels import resolve_parcels_schema
-from kinematicparcels.tools.argo_to_zarr import convert_argo_to_dataframe, convert_argo_to_zarr
+from kinematicparcels.tools.argo_to_zarr import (
+    _resolve_region_filter_config,
+    convert_argo_to_dataframe,
+    convert_argo_to_zarr,
+)
 
 
 def _write_csv(path: Path, rows: list[dict]) -> None:
@@ -313,6 +317,22 @@ def test_region_cut_and_resample_keep_only_points_after_entry(tmp_path: Path) ->
     assert len(trajectory) == 3
     assert np.isclose(trajectory["lon"].iloc[1], 14.2)
     assert np.isclose(trajectory["lat"].iloc[1], 36.9)
+
+
+def test_region_filter_normalizes_yaml_parsed_input_lon_mode() -> None:
+    config = {
+        "processing": {
+            "regions": {
+                "names_or_labels": ["sic"],
+                "cut_from_first_entry": True,
+                "input_lon_mode": -180180,
+            },
+        },
+    }
+
+    resolved = _resolve_region_filter_config(config)
+
+    assert resolved.input_lon_mode == "-180_180"
 
 
 def test_resample_handles_duplicate_times_within_trajectory(tmp_path: Path) -> None:

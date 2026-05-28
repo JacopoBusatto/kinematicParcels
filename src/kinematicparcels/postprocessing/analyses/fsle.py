@@ -47,10 +47,18 @@ def _haversine_km(
     return EARTH_RADIUS_KM * c
 
 
+def _meridional_distance_km(
+    lat1: np.ndarray,
+    lat2: np.ndarray,
+) -> np.ndarray:
+    return EARTH_RADIUS_KM * np.abs(np.radians(lat2) - np.radians(lat1))
+
+
 def build_fsle_pair_trajectories(
     df: pd.DataFrame,
     *,
     pair_mode: str = "center_pairs",
+    meridional_only: bool = False,
 ) -> pd.DataFrame:
     required = {"group_id", "group_member", "group_size", "obs", "time", "lon", "lat"}
     missing = sorted(required - set(df.columns))
@@ -112,12 +120,18 @@ def build_fsle_pair_trajectories(
 
     pairs = pd.concat(pair_chunks, ignore_index=True)
     pairs = pairs.sort_values(["pair_id", "obs"]).reset_index(drop=True)
-    pairs["distance_km"] = _haversine_km(
-        pairs["lon_a"].to_numpy(),
-        pairs["lat_a"].to_numpy(),
-        pairs["lon_b"].to_numpy(),
-        pairs["lat_b"].to_numpy(),
-    )
+    if meridional_only:
+        pairs["distance_km"] = _meridional_distance_km(
+            pairs["lat_a"].to_numpy(),
+            pairs["lat_b"].to_numpy(),
+        )
+    else:
+        pairs["distance_km"] = _haversine_km(
+            pairs["lon_a"].to_numpy(),
+            pairs["lat_a"].to_numpy(),
+            pairs["lon_b"].to_numpy(),
+            pairs["lat_b"].to_numpy(),
+        )
     return pairs
 
 
@@ -290,11 +304,16 @@ def compute_fsle(
     df: pd.DataFrame,
     *,
     pair_mode: str = "center_pairs",
+    meridional_only: bool = False,
     min_scale: float = 5.0e-3,
     max_scale: float = 1.0e4,
     rho_increment: float = 2 ** 0.5,
 ) -> FSLEAnalysisResult:
-    pairs = build_fsle_pair_trajectories(df, pair_mode=pair_mode)
+    pairs = build_fsle_pair_trajectories(
+        df,
+        pair_mode=pair_mode,
+        meridional_only=meridional_only,
+    )
     pairs = _add_elapsed_days(pairs)
     scales = _build_scales(min_scale, max_scale, rho_increment)
     crossing_events = _collect_crossing_events(pairs, scales)

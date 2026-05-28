@@ -234,7 +234,7 @@ processing:
   regions:
     names_or_labels: []
     cut_from_first_entry: false
-    input_lon_mode: -180_180
+    input_lon_mode: "-180_180"
 ```
 
 Behavior details:
@@ -254,7 +254,7 @@ processing:
       - sic
       - Ionian Sea 1
     cut_from_first_entry: false
-    input_lon_mode: -180_180
+    input_lon_mode: "-180_180"
 ```
 
 ### `processing.resample`

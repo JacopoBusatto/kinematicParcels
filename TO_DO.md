@@ -49,8 +49,54 @@ modifichiamo il codice di interpolazione, che capisca quando stiamo interpolando
 Solo dopo questo andiamo a togliere i salti non fisici.
 
 **Drifter conversion**
+Next tool on the way: we have to create in src/kinematicparcels/tool/ a new utility toolkit.
+This tool converts Drifter data data (csv format) in a zarr format identical to the one produced by parcels as output, with the same idea behind the argo conversion tool, as if it was a single trajectory simulation. In this way, that all the postprocessing scripts can be used for the drifters trajectory data.
+
+For example here: `C:\Users\Jacopo\OneDrive - CNR\DRIFTERS\csv\SO_2000-2025.csv` there is the csv file of all the trajectory in the southern ocean from 20000101 to 22506XX.
+this is the header and the first rows:
+ID,time,latitude,longitude,drogue_lost_date,DrogueLength
+,UTC,degrees_north,degrees_east,UTC,
+103798,2012-04-23T18:00:00Z,44.66,-9.975,2011-10-26T00:00:00Z,5.2 m
+103798,2012-04-24T00:00:00Z,44.626,-9.939,2011-10-26T00:00:00Z,5.2 m
+
+The code has to
+1) clip the trajectories after the drogue lost days, if any
+2) select the desiderd minimum drogue length (an optional parameter)
+3) calculate the segment of the same trajectory: if the time resolution of the trajectory becomes larger than 6 hours (time resolution), or however it becomes irregular, it has to be considered as it escaped the queried (from the source download) region and the trajectory has to be split in different segments. 
+The user can choose to: 
+a. select the longest segment
+b. ignore the splitting and consider an irregular trajectory
+c. consider different segments as different platforms. the trajectory sequential identification are different, but they keep the source ID (we can call it platform_code to maintain consistence with the ARGO conversion)
+4) if the user specifies one (or a list of) geographical regions, it selects the trajectories that pass by that region at least once. The user can also decide to cut the trajectory from its first point in one of the specified regions onward or to keep the whole trajectory.
+5) time resample and interpolation strategy is the same as argo conversion.
+6) create a single zarr file similar to the outputs of parcels simulations (same as argo conversion)
+
+We can have a similar yml input file
+
+Before writing the code, we need to address all your doubts, check the workflow; then create tests that confirm the right development of our methodology. Try to use what already exists, if anything is compatible when possible.
+
+
 
 **Couple building**
+I want to create the next tool, based on the legacy coupleDrifter.py script.
+This new version starts from a zarr file, like the one generated from the argo data. The user must know that it is required that the input zarr must have the time variable of the trajectories in a shared sequencing, as we do in the aro conversion script, such that we can look for syncronus trajectories.
+
+The general idea is
+- we loop over the trajectories
+- we consider all the other trajectories that have a shared time window.
+- pair by pair, we take the shared window, if any
+- we calculate the spatial distance between the two trajectory (here is necessary the shared time grid)
+- if the minimum distance is smaller than a threshold, we take the two trajectory from the time of that distance onward
+- that pair becomes a new group entity with two members.
+- we calculate the needed variables to fill the output format of a zarr output of a grouped particle output
+- we store that pair
+- we move to the next pair candidate
+- we proceed this with all the possible pairs in the input file (without counting the pairs twice: i.e. if the trajectory n was paired with the trajectory m, when it is m turn we do not need to check what hapens with the trajectory n since it was already checked)
+
+the legacy script should do the same thing, with different i/o formats.
+Let's first check the logic of my idea, then the logic of the legacy code and let's see if they match.
+Once every uncertainties are solved we can proceed with the implementation, thinking if we can make the new script more efficient.
+
 
 **Transition probability matrix**
 I want to build a new post processing module. It works like this

@@ -1,0 +1,35 @@
+# Example configuration for converting drifter CSV files into a Parcels-compatible Zarr dataset.
+# Update the input path to match your local drifter archive before running the converter.
+
+input:
+  csv_files:
+    - C:/Users/Jacopo/OneDrive - CNR/DRIFTERS/csv/SO_2000-2025.csv
+
+columns:
+  platform_code: ID
+  time: time
+  lat: latitude
+  lon: longitude
+  drogue_lost_time: drogue_lost_date
+  drogue_length: DrogueLength
+
+processing:
+  drogue:
+    clip_after_loss: true
+    minimum_length_m: 5.0
+
+  segment:
+    mode: split_as_new
+    step_hours: 6.0
+    tolerance_minutes: 30.0
+
+  resample:
+    enabled: true
+    frequency: 6h
+    interpolate: time
+    # reference_time: 2000-01-01T00:00:00Z
+    # shared_time: true
+    # shift_start_to_reference: false
+
+output:
+  path: ./outputs/drifters/SO_drifters.zarr

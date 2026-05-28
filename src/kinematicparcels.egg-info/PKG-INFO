@@ -52,13 +52,21 @@ kinematicParcels/
 │       │   ├── kernels_lkm_inline.py
 │       │   ├── run_experiment.py
 │       │   └── run_experiment_series.py
+│       ├── regions/
+│       │   ├── __init__.py
+│       │   ├── classification.py
+│       │   ├── core.py
+│       │   ├── definitions.py
+│       │   └── plotting.py
 │       ├── postprocessing/
 │       │   ├── __init__.py
 │       │   ├── analyses/
 │       │   │   ├── __init__.py
 │       │   │   ├── beaching_times.py
 │       │   │   ├── density.py
-│       │   │   └── start_end_regions.py
+│       │   │   ├── meridional_crossing.py
+│       │   │   ├── start_end_regions.py
+│       │   │   └── transition_probability.py
 │       │   ├── animations/
 │       │   │   ├── __init__.py
 │       │   │   ├── density.py
@@ -72,6 +80,7 @@ kinematicParcels/
 │       │   │   ├── __init__.py
 │       │   │   ├── filters.py
 │       │   │   ├── gridding.py
+│       │   │   ├── regions.py
 │       │   │   └── summaries.py
 │       │   ├── io/
 │       │   │   ├── __init__.py
@@ -93,8 +102,10 @@ kinematicParcels/
 │       │       ├── quicklook.py
 │       │       ├── run_beaching_times.py
 │       │       ├── run_density.py
+│       │       ├── run_meridional_crossing.py
 │       │       ├── run_start_end_regions.py
 │       │       ├── run_summary.py
+│       │       ├── run_transition_probability.py
 │       │       └── run_trajectories.py
 │       └── utilities/
 │           ├── __init__.py
@@ -110,14 +121,17 @@ kinematicParcels/
 │           └── regions_definitions.py
 ├── experiments/
 │   └── configs/
-│       ├── exp_NPstg_surface.yml
-│       ├── exp_NPstg_multilevel.yml
-│       ├── fjords_template_PFunion.yml
-│       ├── fjords_template_postprocessing.yml
-│       ├── fjords_test_1p.yml
-│       ├── fjords_test_PFunion.yml
+│       ├── examples/
+│       │   ├── 01_point_list_single_2d.yml
+│       │   ├── ...
+│       │   └── postprocessing/
+│       ├── circle_release_example.yml
+│       ├── regular_grid_example.yml
+│       ├── regular_grid_example_multilevel.yml
 │       ├── multiple_simulation_postprocessing.yml
-│       └── multiple_simulation_run.yml
+│       ├── multiple_simulation_run.yml
+│       └── postprocessing/
+│           └── postprocess.yml
 ├── fields/                    (input velocity fields, not tracked)
 ├── outputs/                   (simulation outputs, not tracked)
 ├── logs/                      (optional run logs)
@@ -658,8 +672,11 @@ For comprehensive documentation, refer to [GROUPED_PARTICLES.md](GROUPED_PARTICL
 
 # Utilities
 
-geographicalRegions.py  
-Defines geographic regions and builds regular release grids.
+regions/  
+Package-wide region subsystem: definitions, region model, classification helpers, grid helpers, and plotting.
+
+utilities/geographicalRegions.py and utilities/regions_definitions.py  
+Compatibility shims that re-export the canonical `kinematicparcels.regions` API.
 
 group_expansion.py  
 Geometric transformation for grouped-particle initialization. Expands base release points into multi-particle groups with domain filtering.
@@ -848,6 +865,8 @@ Possible future developments:
 - automatic trajectory plotting
 - integration with HPC batch systems
 - additional command-line tools
+
+Current tool documentation is collected in `TOOLS.md`.
 
 ---
 

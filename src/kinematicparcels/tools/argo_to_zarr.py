@@ -13,6 +13,11 @@ import yaml
 from tqdm import tqdm
 
 from kinematicparcels.regions import ALL_REGIONS, Region, RegionManager
+from kinematicparcels.tools.zarr_writer import (
+    DEFAULT_TRAJECTORY_DATASET_ATTRS,
+    build_dataset_from_trajectories,
+    build_zarr_encoding,
+)
 
 
 DEFAULT_COLUMNS = {
@@ -24,9 +29,7 @@ DEFAULT_COLUMNS = {
 }
 
 DEFAULT_DATASET_ATTRS = {
-    "Conventions": "CF-1.6/CF-1.7",
-    "feature_type": "trajectory",
-    "ncei_template_version": "NCEI_NetCDF_Trajectory_Template_v2.0",
+    **DEFAULT_TRAJECTORY_DATASET_ATTRS,
     "source": "ARGO CSV conversion",
 }
 
@@ -209,10 +212,15 @@ def _resolve_resample_config(config: dict[str, Any]) -> ResampleConfig:
 def _resolve_region_filter_config(config: dict[str, Any]) -> RegionFilterConfig:
     raw = config.get("processing", {}).get("regions", {})
     names_or_labels = tuple(raw.get("names_or_labels", []) or [])
+    input_lon_mode_raw = raw.get("input_lon_mode", "-180_180")
+    input_lon_mode = str(input_lon_mode_raw)
+    if input_lon_mode in {"-180180", "180180"}:
+        input_lon_mode = "-180_180"
+
     return RegionFilterConfig(
         names_or_labels=names_or_labels,
         cut_from_first_entry=bool(raw.get("cut_from_first_entry", False)),
-        input_lon_mode=str(raw.get("input_lon_mode", "-180_180")),
+        input_lon_mode=input_lon_mode,
     )
 
 
@@ -703,89 +711,6 @@ def _apply_resampling(
     ]
 
 
-def _series_to_fixed_width_array(series: pd.Series, length: int) -> np.ndarray:
-    if pd.api.types.is_datetime64_any_dtype(series.dtype):
-        out = np.full(length, np.datetime64("NaT"), dtype="datetime64[ns]")
-        values = series.to_numpy(dtype="datetime64[ns]")
-        out[: len(values)] = values
-        return out
-
-    if pd.api.types.is_numeric_dtype(series.dtype):
-        out = np.full(length, np.nan, dtype=np.float64)
-        values = pd.to_numeric(series, errors="coerce").to_numpy(dtype=np.float64)
-        out[: len(values)] = values
-        return out
-
-    values = series.astype(str).to_numpy()
-    width = max([1, *(len(value) for value in values)])
-    out = np.full(length, "", dtype=f"<U{width}")
-    out[: len(values)] = values
-    return out
-
-
-def build_dataset_from_trajectories(trajectories: list[pd.DataFrame]) -> xr.Dataset:
-    trajectories = [trajectory for trajectory in trajectories if not trajectory.empty]
-    if not trajectories:
-        raise ValueError("The ARGO conversion produced no trajectories after filtering.")
-
-    ordered = sorted(trajectories, key=lambda frame: int(frame["trajectory"].iloc[0]))
-    trajectory_ids = np.asarray([int(frame["trajectory"].iloc[0]) for frame in ordered], dtype=np.int64)
-    max_obs = max(len(frame) for frame in ordered)
-    obs = np.arange(max_obs, dtype=np.int32)
-
-    variable_names = []
-    for frame in ordered:
-        for column in frame.columns:
-            if column not in {"trajectory", "obs"} and column not in variable_names:
-                variable_names.append(column)
-
-    data_vars: dict[str, tuple[tuple[str, ...], np.ndarray]] = {}
-    for name in variable_names:
-        if name in TRAJECTORY_LEVEL_COLUMNS:
-            values = np.asarray([frame[name].iloc[0] for frame in ordered])
-            if pd.api.types.is_numeric_dtype(values.dtype):
-                values = pd.to_numeric(values, errors="raise").astype(np.int64)
-            data_vars[name] = (("trajectory",), values)
-            continue
-
-        sample_series = ordered[0][name]
-        rows = [_series_to_fixed_width_array(frame[name], max_obs) for frame in ordered]
-        values = np.stack(rows, axis=0)
-
-        if pd.api.types.is_datetime64_any_dtype(sample_series.dtype):
-            values = values.astype("datetime64[ns]")
-        elif pd.api.types.is_numeric_dtype(sample_series.dtype):
-            values = values.astype(np.float64)
-
-        data_vars[name] = (("trajectory", "obs"), values)
-
-    ds = xr.Dataset(
-        data_vars=data_vars,
-        coords={
-            "trajectory": trajectory_ids,
-            "obs": obs,
-        },
-        attrs=dict(DEFAULT_DATASET_ATTRS),
-    )
-
-    return ds
-
-
-def _build_zarr_encoding(ds: xr.Dataset) -> dict[str, dict[str, Any]]:
-    trajectory_size = int(ds.sizes.get("trajectory", 1))
-    obs_size = int(ds.sizes.get("obs", 1))
-    obs_chunk = 1 if obs_size > 0 else 1
-
-    encoding: dict[str, dict[str, Any]] = {}
-    for name, variable in ds.data_vars.items():
-        if variable.dims == ("trajectory", "obs"):
-            encoding[name] = {"chunks": (trajectory_size, obs_chunk)}
-        elif variable.dims == ("trajectory",):
-            encoding[name] = {"chunks": (trajectory_size,)}
-
-    return encoding
-
-
 def convert_argo_to_dataframe(config: dict[str, Any]) -> list[pd.DataFrame]:
     columns = _resolve_columns(config)
     files = _resolve_input_files(config)
@@ -872,8 +797,12 @@ def convert_argo_to_dataframe(config: dict[str, Any]) -> list[pd.DataFrame]:
 def convert_argo_to_zarr(config: dict[str, Any]) -> xr.Dataset:
     trajectories = convert_argo_to_dataframe(config)
     print("Building output dataset")
-    ds = build_dataset_from_trajectories(trajectories)
-    encoding = _build_zarr_encoding(ds)
+    ds = build_dataset_from_trajectories(
+        trajectories,
+        trajectory_level_columns=TRAJECTORY_LEVEL_COLUMNS,
+        dataset_attrs=DEFAULT_DATASET_ATTRS,
+    )
+    encoding = build_zarr_encoding(ds)
 
     output_path = _resolve_output_path(config)
     output_path.parent.mkdir(parents=True, exist_ok=True)

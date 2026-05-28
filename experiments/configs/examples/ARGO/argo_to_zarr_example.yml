@@ -32,7 +32,7 @@ processing:
     names_or_labels:
       - sic
     cut_from_first_entry: false
-    input_lon_mode: -180_180
+    input_lon_mode: "-180_180"
 
   resample:
     enabled: true

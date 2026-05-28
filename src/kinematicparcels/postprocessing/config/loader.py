@@ -386,6 +386,7 @@ def _parse_fsle(section: dict[str, Any] | None) -> FSLEConfig:
         section.get("pair_mode", "center_pairs"),
         "fsle.pair_mode",
     )
+    meridional_only = bool(section.get("meridional_only", False))
     min_scale = _require_number(section.get("min_scale", 5.0e-3), "fsle.min_scale")
     max_scale = _require_number(section.get("max_scale", 1.0e4), "fsle.max_scale")
     rho_increment = _require_number(
@@ -432,6 +433,7 @@ def _parse_fsle(section: dict[str, Any] | None) -> FSLEConfig:
 
     return FSLEConfig(
         pair_mode=pair_mode,
+        meridional_only=meridional_only,
         min_scale=min_scale,
         max_scale=max_scale,
         rho_increment=rho_increment,

@@ -1,0 +1,450 @@
+# Tools
+
+This document summarizes the utilities currently living under `src/kinematicparcels/tools`.
+
+It separates:
+
+- supported user-facing command-line tools
+- internal helper modules used by those tools
+- ad hoc inspection scripts that are useful during development but are not packaged as stable commands
+
+---
+
+## User-Facing CLI Tools
+
+The following tools are installed through the package entry points defined in `pyproject.toml`.
+
+### `convert-argo-to-zarr`
+
+**Purpose**
+
+Convert one or more ARGO CSV files into a Parcels-compatible trajectory Zarr dataset.
+
+The converter:
+
+- extracts one surface fix per transmission phase
+- keeps the original ARGO identifier in `platform_code`
+- optionally splits or filters the trajectories
+- optionally resamples and interpolates them
+- writes a `trajectory x obs` Zarr dataset readable by the repository postprocessing tools
+
+**Run**
+
+```bash
+convert-argo-to-zarr experiments/configs/examples/ARGO/argo_to_zarr_example.yml
+```
+
+Equivalent module form:
+
+```bash
+python -m kinematicparcels.tools.argo_to_zarr experiments/configs/examples/ARGO/argo_to_zarr_example.yml
+```
+
+**CLI arguments**
+
+- `config`: path to the YAML configuration file
+
+**Configuration file structure**
+
+The command itself only accepts the YAML path. The actual processing options live in the YAML file.
+
+Supported top-level sections:
+
+- `input`
+- `output`
+- `columns`
+- `variables`
+- `processing`
+
+#### `input`
+
+Controls which CSV files are read.
+
+Supported keys:
+
+- `csv_files`: explicit list of file paths
+- `csv_glob`: glob expression
+- `csv_dir`: input directory
+- `pattern`: filename pattern used with `csv_dir`
+
+#### `output`
+
+Supported keys:
+
+- `path`: output Zarr path
+
+#### `columns`
+
+Maps CSV columns to the internal names expected by the converter.
+
+Supported keys:
+
+- `platform_code`
+- `time`
+- `lat`
+- `lon`
+- `pressure`
+
+#### `variables`
+
+Supported keys:
+
+- `optional`: list of extra CSV columns to preserve in the output dataset
+
+#### `processing.parking_depth`
+
+Current supported mode:
+
+- `mode: fixed`
+- `value`: constant depth assigned to `z`
+
+#### `processing.segment`
+
+Controls segmentation of a platform trajectory.
+
+Supported keys:
+
+- `mode`: `ignore`, `longest`, or `split_as_new`
+- accepted `mode` aliases: `split` and `separate` map to `split_as_new`; `irregular` maps to `ignore`
+- `max_gap_days`
+- `min_duration_days`
+- `max_speed_km_per_day`
+
+#### `processing.regions`
+
+Optional trajectory filtering by geographical region.
+
+Supported keys:
+
+- `names_or_labels`
+- `cut_from_first_entry`
+- `input_lon_mode`
+
+#### `processing.resample`
+
+Optional temporal resampling and interpolation.
+
+Supported keys:
+
+- `enabled`
+- `frequency`
+- `interpolate`
+- `reference_time`
+- `shared_time`
+- `shift_start_to_reference`
+- `align_start`
+
+#### `processing.resample.align_start`
+
+Compatibility block for aligning all trajectories to a common start time.
+
+Supported keys:
+
+- `enabled`
+- `start_time`
+
+When `align_start.enabled: true` is used, the converter uses `start_time` as the resampling reference time and, unless explicitly overridden, also enables both `shared_time` and `shift_start_to_reference`.
+
+**Important note on time layout**
+
+Even when `shared_time: true` is used, the written Zarr output is collapsed back to each trajectory's valid local observation window. The output keeps absolute `time`, but `obs` remains a local per-trajectory index rather than a global synchronized time coordinate.
+
+**Output**
+
+Typical variables written:
+
+- `time`
+- `lon`
+- `lat`
+- `z`
+- `platform_code`
+- any columns listed in `variables.optional`
+
+**Examples**
+
+- Example YAML: `experiments/configs/examples/ARGO/argo_to_zarr_example.yml`
+- Example notes: `experiments/configs/examples/ARGO/README.md`
+
+---
+
+### `convert-drifter-to-zarr`
+
+**Purpose**
+
+Convert one or more drifter CSV files into a Parcels-compatible trajectory Zarr dataset.
+
+The converter:
+
+- keeps the source drifter identifier in `platform_code`
+- optionally clips trajectories at `drogue_lost_date`
+- optionally filters platforms by minimum drogue length
+- optionally splits irregular trajectories into segments
+- optionally filters by region and resamples/interpolates the time axis
+- writes a `trajectory x obs` Zarr dataset readable by the repository postprocessing tools
+
+**Run**
+
+```bash
+convert-drifter-to-zarr experiments/configs/examples/DRIFTERS/drifter_to_zarr_example.yml
+```
+
+Equivalent module form:
+
+```bash
+python -m kinematicparcels.tools.drifter_to_zarr experiments/configs/examples/DRIFTERS/drifter_to_zarr_example.yml
+```
+
+**CLI arguments**
+
+- `config`: path to the YAML configuration file
+
+**Configuration file structure**
+
+Supported top-level sections:
+
+- `input`
+- `output`
+- `columns`
+- `processing`
+
+#### `input`
+
+Controls which CSV files are read.
+
+Supported keys:
+
+- `csv_files`: explicit list of file paths
+- `csv_glob`: glob expression
+- `csv_dir`: input directory
+- `pattern`: filename pattern used with `csv_dir`
+
+#### `output`
+
+Supported keys:
+
+- `path`: output Zarr path
+
+#### `columns`
+
+Maps CSV columns to the internal names expected by the converter.
+
+Supported keys:
+
+- `platform_code`
+- `time`
+- `lat`
+- `lon`
+- `drogue_lost_time`
+- `drogue_length`
+
+#### `processing.drogue`
+
+Supported keys:
+
+- `clip_after_loss`
+- `minimum_length_m`
+- `min_length_m`: accepted alias for `minimum_length_m`
+
+#### `processing.segment`
+
+Controls segmentation of a platform trajectory from its nominal cadence.
+
+Supported keys:
+
+- `mode`: `ignore`, `longest`, or `split_as_new`
+- accepted `mode` aliases: `split` and `separate` map to `split_as_new`; `irregular` maps to `ignore`
+- `step_hours`
+- `time_step_hours`, `expected_step_hours`, `resolution_hours`: accepted aliases for `step_hours`
+- `tolerance_minutes`
+
+#### `processing.regions`
+
+Optional trajectory filtering by geographical region.
+
+Supported keys:
+
+- `names_or_labels`
+- `cut_from_first_entry`
+- `input_lon_mode`
+
+#### `processing.resample`
+
+Optional temporal resampling and interpolation.
+
+Supported keys:
+
+- `enabled`
+- `frequency`
+- `interpolate`
+- `reference_time`
+- `shared_time`
+- `shift_start_to_reference`
+- `align_start`
+
+#### `processing.resample.align_start`
+
+This uses the same alignment behavior as the ARGO converter because the drifter tool reuses the shared resampling pipeline.
+
+Supported keys:
+
+- `enabled`
+- `start_time`
+
+**Output**
+
+Typical variables written:
+
+- `time`
+- `lon`
+- `lat`
+- `z`
+- `platform_code`
+
+**Examples**
+
+- Example YAML: `experiments/configs/examples/DRIFTERS/drifter_to_zarr_example.yml`
+
+---
+
+### `couple-trajectories`
+
+**Purpose**
+
+Build grouped-entity pair trajectories from a Parcels-compatible input Zarr dataset.
+
+The tool:
+
+- reads an input trajectory Zarr
+- synchronizes candidate pairs on absolute `time`
+- computes pair distance on the shared time overlap
+- accepts pairs that satisfy the distance threshold, and optionally a minimum post-closest-approach lifetime
+- optionally requires the threshold crossing to occur inside one or more target regions
+- writes one grouped-entity trajectory per accepted pair with `group_size = 2`
+
+This tool is designed for datasets that have already been temporally regularized upstream when needed. It does not perform resampling itself.
+
+**Run**
+
+```bash
+couple-trajectories INPUT.zarr OUTPUT.zarr --threshold-km 50
+```
+
+Example with optional filters:
+
+```bash
+couple-trajectories INPUT.zarr OUTPUT.zarr --threshold-km 50 --minimum-life-days 15 --regions med_cpf sesc
+```
+
+Equivalent module form:
+
+```bash
+python -m kinematicparcels.tools.couple_trajectories INPUT.zarr OUTPUT.zarr --threshold-km 50
+```
+
+**CLI arguments**
+
+- `input_zarr`: input Parcels-compatible trajectory Zarr
+- `output_zarr`: output grouped-entity Zarr
+- `--threshold-km`: required maximum allowed closest-approach distance
+- `--minimum-life-days`: optional minimum duration after the selected closest-approach point
+- `--regions`: optional list of region labels or names
+
+**Acceptance logic without regions**
+
+If `--regions` is not provided, a pair is accepted when:
+
+- the two trajectories share absolute timestamps
+- at least two synchronized observations exist
+- the minimum pair distance over the overlap satisfies `min(distance) <= threshold_km`
+- if `--minimum-life-days` is set, the pair segment from closest approach onward lasts at least that long
+
+The output pair starts at the global closest-approach point.
+
+**Acceptance logic with regions**
+
+If `--regions` is provided, the rule becomes stricter:
+
+1. the tool first finds synchronized points where `distance <= threshold_km`
+2. only those points are checked against the requested regions
+3. the pair is accepted only if at least one of those below-threshold points lies inside one of the target regions
+4. if several points match, the pair starts at the one with minimum distance among the in-region matches
+
+The current region test is applied to the pair center, which is consistent with the grouped-entity output written by the tool.
+
+**Output**
+
+Each accepted pair becomes one grouped-entity trajectory with variables such as:
+
+- `time`
+- `lon`, `lat` as the pair center
+- `center_lon`, `center_lat`
+- `lon_1`, `lat_1`
+- `lon_2`, `lat_2`
+- `group_id`
+- `group_size`
+- `z`
+
+If the input dataset contains `platform_code`, the output also stores:
+
+- `platform_code_1`
+- `platform_code_2`
+
+**Metadata written to dataset attrs**
+
+- `source = "Trajectory pair coupling"`
+- `pair_threshold_km`
+- `minimum_life_days` when provided
+- `pair_regions` when regions are provided
+
+**Assumptions**
+
+- pair synchronization is done on absolute `time`, not on `obs`
+- if the input cadence should be regular, that resampling must already have happened upstream
+
+---
+
+## Internal Helper Modules
+
+These modules support the CLI tools but are not intended to be run directly by users.
+
+### `zarr_writer.py`
+
+Shared low-level helper for building Parcels-style `trajectory x obs` Zarr datasets from lists of trajectory tables.
+
+It currently provides:
+
+- `build_dataset_from_trajectories(...)`
+- `build_zarr_encoding(...)`
+
+This module exists to avoid duplicating the same writer logic in both `argo_to_zarr.py` and `couple_trajectories.py`.
+
+---
+
+## Development / Inspection Scripts
+
+These files are currently useful for quick checks, but they are not packaged as stable command-line tools.
+
+### `check_argo_data.py`
+
+Ad hoc plotting script for quick local inspection of raw ARGO CSV content.
+
+Current characteristics:
+
+- uses hardcoded local file paths
+- generates quick plots with `matplotlib`
+- is intended for manual inspection only
+
+It should not be considered part of the stable public tool interface in its current form.
+
+---
+
+## Current Tool Inventory
+
+Under `src/kinematicparcels/tools` the current files are:
+
+- `argo_to_zarr.py`: user-facing CLI tool
+- `drifter_to_zarr.py`: user-facing CLI tool
+- `couple_trajectories.py`: user-facing CLI tool
+- `zarr_writer.py`: internal shared helper
+- `check_argo_data.py`: development inspection script
+- `__init__.py`: package marker

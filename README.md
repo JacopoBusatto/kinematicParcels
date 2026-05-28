@@ -846,6 +846,8 @@ Possible future developments:
 - integration with HPC batch systems
 - additional command-line tools
 
+Current tool documentation is collected in `TOOLS.md`.
+
 ---
 
 # Author

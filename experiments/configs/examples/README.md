@@ -13,6 +13,7 @@ This folder contains self-contained YAML examples for the main experiment config
 - 07_lkm_grouped_2d.yml
 - 08_circle_multistart_2d.yml
 - ARGO/argo_to_zarr_example.yml
+- DRIFTERS/drifter_to_zarr_example.yml
 - postprocessing/README.md
 
 ## Notes
@@ -22,4 +23,5 @@ This folder contains self-contained YAML examples for the main experiment config
 - Prefer test_fields/ for reproducible examples in this repository.
 - Region-grid examples use `region_label: med_cpf`.
 - The ARGO example documents an external-data workflow, so its input path is a placeholder that should be adjusted locally.
+- The drifter example documents an external-data workflow, so its input path is a placeholder that should be adjusted locally.
 - The `postprocessing/` subfolder is intentionally more exhaustive: it is a reference set for available postprocessing options, not a minimal experiment example set.

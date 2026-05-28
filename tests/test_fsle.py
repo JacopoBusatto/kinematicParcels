@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import math
+from textwrap import dedent
 
 import pandas as pd
 import pytest
@@ -10,6 +11,7 @@ from kinematicparcels.postprocessing.analyses.fsle import (
     build_fsle_pair_trajectories,
     compute_fsle,
 )
+from kinematicparcels.postprocessing.config import load_postprocess_config
 from kinematicparcels.postprocessing.plotting.fsle import _build_reference_lines, plot_fsle_spectrum
 
 
@@ -79,6 +81,41 @@ def test_build_fsle_pair_trajectories_respects_pair_mode() -> None:
     assert set(all_pairs["pair_id"].unique()) == {"1_m1_m2", "1_m1_m3", "1_m2_m3"}
 
 
+def test_build_fsle_pair_trajectories_can_ignore_zonal_separation() -> None:
+    df = pd.DataFrame(
+        [
+            {
+                "trajectory": "1_m1",
+                "group_id": 1,
+                "group_member": 1,
+                "group_size": 2,
+                "obs": 0,
+                "time": pd.Timestamp("2026-01-01"),
+                "lon": 0.0,
+                "lat": 10.0,
+            },
+            {
+                "trajectory": "1_m2",
+                "group_id": 1,
+                "group_member": 2,
+                "group_size": 2,
+                "obs": 0,
+                "time": pd.Timestamp("2026-01-01"),
+                "lon": 1.0,
+                "lat": 11.0,
+            },
+        ]
+    )
+
+    default_pairs = build_fsle_pair_trajectories(df)
+    meridional_pairs = build_fsle_pair_trajectories(df, meridional_only=True)
+
+    expected_meridional = EARTH_RADIUS_KM * math.radians(1.0)
+
+    assert default_pairs.loc[0, "distance_km"] > meridional_pairs.loc[0, "distance_km"]
+    assert meridional_pairs.loc[0, "distance_km"] == pytest.approx(expected_meridional)
+
+
 def test_compute_fsle_rejects_single_trajectory_output() -> None:
     df = pd.DataFrame(
         {
@@ -95,6 +132,119 @@ def test_compute_fsle_rejects_single_trajectory_output() -> None:
 
     with pytest.raises(ValueError, match="group_size > 1"):
         compute_fsle(df)
+
+
+def test_compute_fsle_can_use_meridional_distance_only() -> None:
+    df = pd.DataFrame(
+        [
+            {
+                "trajectory": "1_m1",
+                "group_id": 1,
+                "group_member": 1,
+                "group_size": 2,
+                "obs": 0,
+                "time": pd.Timestamp("2026-01-01"),
+                "lon": 0.0,
+                "lat": 0.0,
+            },
+            {
+                "trajectory": "1_m2",
+                "group_id": 1,
+                "group_member": 2,
+                "group_size": 2,
+                "obs": 0,
+                "time": pd.Timestamp("2026-01-01"),
+                "lon": _lon_offset_for_distance_km(3.0),
+                "lat": 0.0,
+            },
+            {
+                "trajectory": "1_m1",
+                "group_id": 1,
+                "group_member": 1,
+                "group_size": 2,
+                "obs": 1,
+                "time": pd.Timestamp("2026-01-02"),
+                "lon": 0.0,
+                "lat": 0.0,
+            },
+            {
+                "trajectory": "1_m2",
+                "group_id": 1,
+                "group_member": 2,
+                "group_size": 2,
+                "obs": 1,
+                "time": pd.Timestamp("2026-01-02"),
+                "lon": _lon_offset_for_distance_km(3.0),
+                "lat": math.degrees(2.0 / EARTH_RADIUS_KM),
+            },
+            {
+                "trajectory": "1_m1",
+                "group_id": 1,
+                "group_member": 1,
+                "group_size": 2,
+                "obs": 2,
+                "time": pd.Timestamp("2026-01-03"),
+                "lon": 0.0,
+                "lat": 0.0,
+            },
+            {
+                "trajectory": "1_m2",
+                "group_id": 1,
+                "group_member": 2,
+                "group_size": 2,
+                "obs": 2,
+                "time": pd.Timestamp("2026-01-03"),
+                "lon": _lon_offset_for_distance_km(3.0),
+                "lat": math.degrees(4.0 / EARTH_RADIUS_KM),
+            },
+        ]
+    )
+
+    default_result = compute_fsle(
+        df,
+        min_scale=1.0,
+        max_scale=3.0,
+        rho_increment=2.0,
+    )
+    meridional_result = compute_fsle(
+        df,
+        meridional_only=True,
+        min_scale=1.0,
+        max_scale=3.0,
+        rho_increment=2.0,
+    )
+
+    assert default_result.crossing_events.empty
+    assert len(meridional_result.crossing_events) == 1
+    assert meridional_result.spectrum.iloc[0]["fsle"] == pytest.approx(math.log(2.0))
+
+
+def test_load_postprocess_config_parses_fsle_meridional_only_flag(tmp_path) -> None:
+    cfg_path = tmp_path / "postprocess_fsle.yml"
+    cfg_path.write_text(
+        dedent(
+            """
+            dataset:
+              input_path: ./dummy.zarr
+            analysis:
+              types:
+                - fsle
+            fsle:
+              pair_mode: all_pairs
+              meridional_only: true
+              min_scale: 0.01
+              max_scale: 5.0
+              rho_increment: 1.4142135623730951
+            """
+        ),
+        encoding="utf-8",
+    )
+
+    cfg = load_postprocess_config(cfg_path)
+
+    assert cfg.analysis.types == ("fsle",)
+    assert cfg.fsle.pair_mode == "all_pairs"
+    assert cfg.fsle.meridional_only is True
 
 
 def test_compute_fsle_uses_overshoot_lambda_and_configurable_error_factor() -> None:
