@@ -441,6 +441,39 @@ Solutions:
 
 ---
 
+# Release Scheduling And Max Age
+
+For scheduled releases, `simulation.runtime_days` controls the total simulation window,
+while `release.continuous.max_age` can optionally cap the lifetime of each emitted
+particle or grouped entity.
+
+Example for region-grid or point-list scheduling:
+
+```yaml
+release:
+  mode: region_grid
+
+  continuous:
+    enabled: true
+    release_interval: 12H
+    release_period: 4D
+    max_age: 1D
+```
+
+Behavior:
+
+- `release_interval` sets the emission cadence.
+- `release_period` sets how long new releases are emitted.
+- `max_age` sets the maximum lifetime of each release relative to its own release time.
+- If `max_age` is omitted, particles live until the run ends or another delete condition fires.
+- When grouped release is active, the cap applies to the whole grouped entity.
+
+The same `release.continuous.max_age` key is also used for scheduled
+`release.mode: circle` runs, even though circle timing lives under `release.circle`.
+This keeps the lifetime cap shared across all scheduled release modes.
+
+---
+
 # Multi-Level Particle Release
 
 Particles can be released at multiple depths.
@@ -503,6 +536,9 @@ release:
 
     out_of_domain_policy: retry  # retry, drop, error
     bathymetry_policy: drop      # drop, clip_to_depth_axis, ignore
+
+  continuous:
+    max_age: 1D                  # optional per-release lifetime cap
 ```
 
 ## Parameters
@@ -534,6 +570,14 @@ Time cadence and total release window length.
 
 In backward simulations (`simulation.dt_hours < 0`), the schedule runs backward from
 `start_time` to `start_time - release_period`.
+
+**release.continuous.max_age**
+Optional maximum lifetime for each scheduled emission.
+
+- Applies to region-grid/point-list continuous releases and to scheduled circle releases.
+- Uses the same duration syntax as `release_interval` and `release_period`.
+- Deletes the whole grouped entity when grouped release is active.
+- In backward runs, the same elapsed-age cap is applied relative to each release time.
 
 **sampling**
 Sampling law inside the geometry:
@@ -571,6 +615,9 @@ release:
     release_period: [2D, 1D]
     dimension: 2D
     sampling: uniform
+
+  continuous:
+    max_age: 1D
 ```
 
 Each circle gets its own `circle_id`, starting at `1`. If grouped release is enabled,
@@ -812,6 +859,10 @@ Interpretation depends on integration direction:
 
 For `release.mode: circle`, this can be overridden per circle with
 `release.circle.start_time`.
+
+When scheduled releases are used, `release.continuous.max_age` is always interpreted
+relative to each particle's or group's own release time rather than the global
+simulation start.
 
 ---
 

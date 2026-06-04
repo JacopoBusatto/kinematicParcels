@@ -10,6 +10,7 @@ from .models import (
     CleaningConfig,
     DatasetConfig,
     DatasetCoordinatesConfig,
+    BeachingTimesPlottingConfig,
     DensityConfig,
     ExportsConfig,
     FSLEConfig,
@@ -24,6 +25,7 @@ from .models import (
     TransitionProbabilityConfig,
     MeridionalCrossingConfig,
     MeridionalCrossingCrossingConfig,
+    MeridionalCrossingMapPlottingConfig,
     MeridionalCrossingOutputConfig,
     MeridionalCrossingPlottingConfig,
     MeridionalCrossingSegmentationConfig,
@@ -55,6 +57,12 @@ def _require_number(value: Any, name: str) -> float:
     if not isinstance(value, (int, float)):
         raise ValueError(f"'{name}' must be a number.")
     return float(value)
+
+
+def _parse_optional_number(value: Any, name: str) -> float | None:
+    if value is None:
+        return None
+    return _require_number(value, name)
 
 
 def _parse_coordinates(section: dict[str, Any] | None) -> DatasetCoordinatesConfig:
@@ -363,13 +371,32 @@ def _parse_beaching_times(section: dict[str, Any] | None) -> BeachingTimesConfig
         section.get("statistic", "min"),
         "beaching_times.statistic",
     )
-    plot = bool(section.get("plot", False))
+
+    plotting_section = section.get("plotting", None)
+    if plotting_section is None:
+        plotting = BeachingTimesPlottingConfig(
+            enabled=bool(section.get("plot", False)),
+        )
+    else:
+        plotting_section = _require_dict(plotting_section, "beaching_times.plotting")
+        plotting = BeachingTimesPlottingConfig(
+            enabled=bool(plotting_section.get("enabled", section.get("plot", False))),
+            vmin=_parse_optional_number(
+                plotting_section.get("vmin", None),
+                "beaching_times.plotting.vmin",
+            ),
+            vmax=_parse_optional_number(
+                plotting_section.get("vmax", None),
+                "beaching_times.plotting.vmax",
+            ),
+        )
+
     return BeachingTimesConfig(
         lon_col=lon_col,
         lat_col=lat_col,
         value_col=value_col,
         statistic=statistic,
-        plot=plot,
+        plotting=plotting,
     )
 
 
@@ -749,31 +776,21 @@ def _parse_start_end_regions(section: dict[str, Any] | None) -> StartEndRegionsC
     )
 
 
-def _parse_transition_probability(
-    section: dict[str, Any] | None,
-) -> TransitionProbabilityConfig:
-    """
-    Parse the optional transition_probability section.
-    """
+def _parse_transition_probability(section: dict[str, Any] | None) -> TransitionProbabilityConfig:
     if section is None:
-        return TransitionProbabilityConfig()
+        return TransitionProbabilityConfig(region_labels=("sesc-mod", "sesc-sir"))
 
     section = _require_dict(section, "transition_probability")
 
     region_labels_raw = section.get("region_labels", None)
     if not isinstance(region_labels_raw, list) or len(region_labels_raw) == 0:
         raise ValueError("'transition_probability.region_labels' must be a non-empty list.")
-
-    region_labels: list[str] = []
-    for i, item in enumerate(region_labels_raw):
-        if not isinstance(item, str) or not item.strip():
-            raise ValueError(
-                f"transition_probability.region_labels[{i}] must be a non-empty string."
-            )
-        region_labels.append(item.strip())
+    region_labels = tuple(
+        _require_nonempty_string(item, f"transition_probability.region_labels[{i}]")
+        for i, item in enumerate(region_labels_raw)
+    )
 
     time_step_stride_raw = section.get("time_step_stride", 1)
-
     if not isinstance(time_step_stride_raw, int) or time_step_stride_raw < 1:
         raise ValueError("'transition_probability.time_step_stride' must be an integer >= 1.")
 
@@ -781,15 +798,6 @@ def _parse_transition_probability(
         section.get("how_many", "priority_max"),
         "transition_probability.how_many",
     )
-    priority_mode = _require_nonempty_string(
-        section.get("priority_mode", "exact"),
-        "transition_probability.priority_mode",
-    )
-    input_lon_mode = _require_nonempty_string(
-        section.get("input_lon_mode", "-180_180"),
-        "transition_probability.input_lon_mode",
-    )
-
     priority_level_raw = section.get("priority_level", None)
     if priority_level_raw is None:
         priority_level = None
@@ -798,34 +806,37 @@ def _parse_transition_probability(
             raise ValueError("'transition_probability.priority_level' must be an integer or null.")
         priority_level = priority_level_raw
 
-    min_life_days_raw = section.get("min_life_days", 0)
-    min_life_days = _require_number(min_life_days_raw, "transition_probability.min_life_days")
-    if min_life_days < 0:
-        raise ValueError("'transition_probability.min_life_days' must be >= 0.")
-
-    trimming_age_days_raw = section.get("trimming_age_days", None)
-    if trimming_age_days_raw is None:
-        trimming_age_days = None
-    else:
-        trimming_age_days = _require_number(
-            trimming_age_days_raw,
-            "transition_probability.trimming_age_days",
-        )
-        if trimming_age_days < 0:
-            raise ValueError("'transition_probability.trimming_age_days' must be >= 0 or null.")
+    priority_mode = _require_nonempty_string(
+        section.get("priority_mode", "exact"),
+        "transition_probability.priority_mode",
+    )
+    input_lon_mode = _require_nonempty_string(
+        section.get("input_lon_mode", "-180_180"),
+        "transition_probability.input_lon_mode",
+    )
+    min_life_days = _require_number(
+        section.get("min_life_days", 0),
+        "transition_probability.min_life_days",
+    )
+    trimming_age_days = _parse_optional_number(
+        section.get("trimming_age_days", None),
+        "transition_probability.trimming_age_days",
+    )
 
     max_group_member_raw = section.get("max_group_member", None)
     if max_group_member_raw is None:
         max_group_member = None
     else:
-        if not isinstance(max_group_member_raw, int) or max_group_member_raw < 1:
-            raise ValueError("'transition_probability.max_group_member' must be an integer > 0 or null.")
+        if not isinstance(max_group_member_raw, int) or max_group_member_raw <= 0:
+            raise ValueError(
+                "'transition_probability.max_group_member' must be an integer > 0 or null."
+            )
         max_group_member = max_group_member_raw
 
     filter_isolated = bool(section.get("filter_isolated", False))
 
     return TransitionProbabilityConfig(
-        region_labels=tuple(region_labels),
+        region_labels=region_labels,
         time_step_stride=time_step_stride_raw,
         how_many=how_many,
         priority_level=priority_level,
@@ -946,13 +957,71 @@ def _parse_meridional_crossing(section: dict[str, Any] | None) -> MeridionalCros
 
     plotting_section = section.get("plotting", None)
     if plotting_section is None:
-        plotting = MeridionalCrossingPlottingConfig()
+        plotting = MeridionalCrossingPlottingConfig(
+            probability=MeridionalCrossingMapPlottingConfig(
+                enabled=bool(section.get("show_probability", True))
+            ),
+            count=MeridionalCrossingMapPlottingConfig(
+                enabled=bool(section.get("show_counts", False))
+            ),
+        )
     else:
         plotting_section = _require_dict(plotting_section, "meridional_crossing.plotting")
+        probability_section = plotting_section.get("probability", None)
+        if probability_section is None:
+            probability = MeridionalCrossingMapPlottingConfig(
+                enabled=bool(plotting_section.get("show_probability", True)),
+            )
+        else:
+            probability_section = _require_dict(
+                probability_section,
+                "meridional_crossing.plotting.probability",
+            )
+            probability = MeridionalCrossingMapPlottingConfig(
+                enabled=bool(
+                    probability_section.get(
+                        "enabled",
+                        plotting_section.get("show_probability", True),
+                    )
+                ),
+                vmin=_parse_optional_number(
+                    probability_section.get("vmin", None),
+                    "meridional_crossing.plotting.probability.vmin",
+                ),
+                vmax=_parse_optional_number(
+                    probability_section.get("vmax", None),
+                    "meridional_crossing.plotting.probability.vmax",
+                ),
+            )
+
+        count_section = plotting_section.get("count", None)
+        if count_section is None:
+            count = MeridionalCrossingMapPlottingConfig(
+                enabled=bool(plotting_section.get("show_counts", False)),
+            )
+        else:
+            count_section = _require_dict(count_section, "meridional_crossing.plotting.count")
+            count = MeridionalCrossingMapPlottingConfig(
+                enabled=bool(
+                    count_section.get(
+                        "enabled",
+                        plotting_section.get("show_counts", False),
+                    )
+                ),
+                vmin=_parse_optional_number(
+                    count_section.get("vmin", None),
+                    "meridional_crossing.plotting.count.vmin",
+                ),
+                vmax=_parse_optional_number(
+                    count_section.get("vmax", None),
+                    "meridional_crossing.plotting.count.vmax",
+                ),
+            )
+
         plotting = MeridionalCrossingPlottingConfig(
             enabled=bool(plotting_section.get("enabled", True)),
-            show_probability=bool(plotting_section.get("show_probability", True)),
-            show_counts=bool(plotting_section.get("show_counts", False)),
+            probability=probability,
+            count=count,
         )
 
     return MeridionalCrossingConfig(
@@ -994,15 +1063,8 @@ def load_postprocess_config(path: str | Path) -> PostprocessConfig:
     trajectories = _parse_trajectories(raw.get("trajectories"))
     plotting = _parse_plotting(raw.get("plotting"))
     start_end_regions = _parse_start_end_regions(raw.get("start_end_regions"))
+    transition_probability = _parse_transition_probability(raw.get("transition_probability"))
     meridional_crossing = _parse_meridional_crossing(raw.get("meridional_crossing"))
-    transition_probability_raw = raw.get("transition_probability")
-    transition_probability = _parse_transition_probability(transition_probability_raw)
-
-    if "transition_probability" in analysis.types and len(transition_probability.region_labels) == 0:
-        raise ValueError(
-            "The 'transition_probability' analysis requires a non-empty "
-            "'transition_probability.region_labels' list."
-        )
 
     return PostprocessConfig(
         dataset=dataset,
@@ -1018,6 +1080,6 @@ def load_postprocess_config(path: str | Path) -> PostprocessConfig:
         trajectories=trajectories,
         plotting=plotting,
         start_end_regions=start_end_regions,
-        meridional_crossing=meridional_crossing,
         transition_probability=transition_probability,
+        meridional_crossing=meridional_crossing,
     )

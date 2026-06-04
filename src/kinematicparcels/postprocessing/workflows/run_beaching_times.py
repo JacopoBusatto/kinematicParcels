@@ -53,7 +53,7 @@ def run_beaching_times(cfg: PostprocessConfig, context: dict) -> None:
     print("Saving beaching times dataset:", nc_path)
     save_dataset_netcdf(ds, nc_path)
 
-    if cfg.beaching_times.plot:
+    if cfg.beaching_times.plotting.enabled:
         plot_path = outdir / "beaching_times.png"
         print("Saving beaching times plot:", plot_path)
         ds["beaching_time_days"] = ds["beaching_time_seconds"] / 86400.
@@ -63,4 +63,6 @@ def run_beaching_times(cfg: PostprocessConfig, context: dict) -> None:
             outpath=plot_path,
             title="Beaching time",
             projection=cfg.plotting.projection,
+            vmin=cfg.beaching_times.plotting.vmin,
+            vmax=cfg.beaching_times.plotting.vmax,
         )

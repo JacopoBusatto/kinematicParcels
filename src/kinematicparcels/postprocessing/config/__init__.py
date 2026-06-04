@@ -15,6 +15,7 @@ from .models import (
     PostprocessConfig,
     StartEndRegionsConfig,
     TrajectoriesConfig,
+    TransitionProbabilityConfig,
 )
 
 __all__ = [
@@ -34,4 +35,5 @@ __all__ = [
     "TrajectoriesConfig",
     "StartEndRegionsConfig",
     "PlottingConfig",
+    "TransitionProbabilityConfig",
 ]

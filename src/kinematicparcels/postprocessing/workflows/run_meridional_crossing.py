@@ -58,7 +58,7 @@ def run_meridional_crossing(cfg: PostprocessConfig, context: dict) -> None:
     if not cfg.meridional_crossing.output.save_figures or not cfg.meridional_crossing.plotting.enabled:
         return
 
-    if cfg.meridional_crossing.plotting.show_probability:
+    if cfg.meridional_crossing.plotting.probability.enabled:
         for direction in ("northward", "southward"):
             var_name = f"crossing_probability_{direction}"
             if not _has_finite_values(result.dataset, var_name):
@@ -71,9 +71,11 @@ def run_meridional_crossing(cfg: PostprocessConfig, context: dict) -> None:
                 outpath=plot_path,
                 projection=cfg.plotting.projection,
                 title=f"Meridional crossing probability ({direction})",
+                vmin=cfg.meridional_crossing.plotting.probability.vmin,
+                vmax=cfg.meridional_crossing.plotting.probability.vmax,
             )
 
-    if cfg.meridional_crossing.plotting.show_counts:
+    if cfg.meridional_crossing.plotting.count.enabled:
         for direction in ("northward", "southward"):
             var_name = f"crossing_count_{direction}"
             if not _has_finite_values(result.dataset, var_name):
@@ -86,4 +88,6 @@ def run_meridional_crossing(cfg: PostprocessConfig, context: dict) -> None:
                 outpath=plot_path,
                 projection=cfg.plotting.projection,
                 title=f"Meridional crossing count ({direction})",
+                vmin=cfg.meridional_crossing.plotting.count.vmin,
+                vmax=cfg.meridional_crossing.plotting.count.vmax,
             )

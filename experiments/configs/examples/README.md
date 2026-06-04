@@ -22,6 +22,7 @@ This folder contains self-contained YAML examples for the main experiment config
 - Use explicit comments only where behavior is non-obvious.
 - Prefer test_fields/ for reproducible examples in this repository.
 - Region-grid examples use `region_label: med_cpf`.
+- Scheduled-release examples show `release.continuous.max_age` both for classic continuous releases and for scheduled circle releases.
 - The ARGO example documents an external-data workflow, so its input path is a placeholder that should be adjusted locally.
 - The drifter example documents an external-data workflow, so its input path is a placeholder that should be adjusted locally.
 - The `postprocessing/` subfolder is intentionally more exhaustive: it is a reference set for available postprocessing options, not a minimal experiment example set.

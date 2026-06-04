@@ -52,7 +52,10 @@ beaching_times:
   lat_col: lat0
   value_col: lifetime_seconds
   statistic: min
-  plot: true
+  plotting:
+    enabled: true
+    vmin: null
+    vmax: null
 
 trajectories:
   plot: false

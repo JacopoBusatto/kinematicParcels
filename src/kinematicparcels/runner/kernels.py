@@ -184,6 +184,19 @@ def BoundaryHaloKill(particle, fieldset, time):
             particle.delete()
 
 
+def DeleteParticleIfTooOld(particle, fieldset, time):
+    """Delete particle when its elapsed lifetime exceeds the configured max age.
+
+    The same kernel works for singleton particles and grouped-entity particles,
+    because both store one immutable release_time value per Parcels particle.
+    """
+    age = time - particle.release_time
+    if age < 0.0:
+        age = -age
+    if age > fieldset.kp_max_age_seconds:
+        particle.delete()
+
+
 def WrapLongitudePeriodic(particle, fieldset, time):
     """Wrap particle longitude back into the original zonal domain when periodic."""
     if fieldset.bh_periodic < 0.5:

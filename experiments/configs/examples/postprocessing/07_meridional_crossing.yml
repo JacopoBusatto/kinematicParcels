@@ -65,5 +65,11 @@ meridional_crossing:
 
   plotting:
     enabled: true
-    show_probability: true
-    show_counts: false
+    probability:
+      enabled: true
+      vmin: null
+      vmax: null
+    count:
+      enabled: false
+      vmin: null
+      vmax: null

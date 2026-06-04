@@ -32,6 +32,9 @@ release:
     out_of_domain_policy: retry
     bathymetry_policy: drop
 
+  continuous:
+    max_age: 1D
+
   group:
     size: 1
 

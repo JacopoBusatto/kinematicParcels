@@ -52,7 +52,11 @@ from kinematicparcels.utilities.group_expansion import expand_groups
 from kinematicparcels.utilities.lkm import build_lkm_modes
 from kinematicparcels.utilities.group_dynamics import update_group_centers_and_relative_coords
 from kinematicparcels.runner.kernels_lkm_inline import make_AdvectionRK4_with_LKM
-from kinematicparcels.runner.kernels import BoundaryHaloKill, WrapLongitudePeriodic
+from kinematicparcels.runner.kernels import (
+    BoundaryHaloKill,
+    DeleteParticleIfTooOld,
+    WrapLongitudePeriodic,
+)
 from kinematicparcels.runner.grouped_kernels import (
     make_grouped_rk4_lkm_kernel,
     BoundaryHaloKill_GroupedEntity,
@@ -69,6 +73,7 @@ class ScipyParticleGrouped(ScipyParticle):
     group_member = Variable('group_member', dtype=np.int32, initial=1)
     group_size = Variable('group_size', dtype=np.int32, initial=1)
     circle_id = Variable('circle_id', dtype=np.int32, initial=1)
+    release_time = Variable('release_time', dtype=np.float64, initial=0.0, to_write=False)
 
     # LKM-related variables: relative coordinates (kernel computes velocities)
     x_rel_m = Variable('x_rel_m', dtype=np.float32, initial=0.0)
@@ -83,6 +88,7 @@ class JITParticleGrouped(JITParticle):
     group_member = Variable('group_member', dtype=np.int32, initial=1)
     group_size = Variable('group_size', dtype=np.int32, initial=1)
     circle_id = Variable('circle_id', dtype=np.int32, initial=1)
+    release_time = Variable('release_time', dtype=np.float64, initial=0.0, to_write=False)
 
     # LKM-related variables: relative coordinates (kernel computes velocities)
     x_rel_m = Variable('x_rel_m', dtype=np.float32, initial=0.0)
@@ -96,6 +102,7 @@ class ScipyGroupEntityParticle(ScipyParticle):
     group_id = Variable('group_id', dtype=np.int32, initial=0)
     group_size = Variable('group_size', dtype=np.int32, initial=1)
     circle_id = Variable('circle_id', dtype=np.int32, initial=1)
+    release_time = Variable('release_time', dtype=np.float64, initial=0.0, to_write=False)
     center_lon = Variable('center_lon', dtype=np.float32, initial=0.0)
     center_lat = Variable('center_lat', dtype=np.float32, initial=0.0)
 
@@ -500,6 +507,37 @@ def _build_continuous_release_schedule(sim_cfg: dict, continuous_cfg: dict) -> n
         release_period=release_period,
         backward=_is_backward_simulation(sim_cfg),
     )
+
+
+def _get_scheduled_release_max_age_seconds(
+    cfg: dict,
+    *,
+    has_release_schedule: bool | None = None,
+) -> float | None:
+    rel_cfg = cfg["release"]
+    continuous_cfg = rel_cfg.get("continuous", {})
+    raw_max_age = continuous_cfg.get("max_age")
+
+    if raw_max_age is None:
+        return None
+
+    release_mode = rel_cfg.get("mode", "region_grid")
+    if release_mode != "circle" and not continuous_cfg.get("enabled", False):
+        raise ValueError(
+            "release.continuous.max_age requires release.continuous.enabled=true "
+            "for non-circle releases"
+        )
+
+    max_age = parse_timedelta_like(raw_max_age)
+    if max_age.total_seconds() <= 0:
+        raise ValueError("release.continuous.max_age must be > 0")
+
+    if has_release_schedule is False:
+        raise ValueError(
+            "release.continuous.max_age requires a scheduled release with per-particle times"
+        )
+
+    return float(max_age.total_seconds())
 
 
 def _build_circle_release(
@@ -1054,6 +1092,10 @@ def build_particleset(
     release_times=None,
 ):
     sim_cfg = cfg["simulation"]
+    max_age_seconds = _get_scheduled_release_max_age_seconds(
+        cfg,
+        has_release_schedule=release_times is not None,
+    )
     pclass = get_particle_class(
         sim_cfg.get("particle_type", "scipy"),
         grouped_entity_mode=_is_group_entity_mode(cfg),
@@ -1082,6 +1124,11 @@ def build_particleset(
         kwargs["time"] = np.full(len(lons), np.datetime64(dt0))
 
     pset = ParticleSet.from_list(**kwargs)
+
+    if max_age_seconds is not None:
+        for particle in pset:
+            particle.release_time = particle.time
+
     print(f"ParticleSet created with {len(lons)} particles")
 
     if release_times is not None:
@@ -1168,8 +1215,16 @@ def run_simulation(cfg: dict, pset: ParticleSet, fieldset: FieldSet, lkm_modes=N
     dt_integration_hours = sim_cfg["dt_hours"]
     dt_output_hours = sim_cfg["outputdt_hours"]
     runtime_days = sim_cfg["runtime_days"]
+    max_age_seconds = _get_scheduled_release_max_age_seconds(cfg)
 
     grouped_entity_mode = _is_group_entity_mode(cfg)
+
+    if max_age_seconds is not None:
+        fieldset.add_constant("kp_max_age_seconds", max_age_seconds)
+        print(
+            "Max particle age enabled: "
+            f"{max_age_seconds / 86400.0:.4g} days ({max_age_seconds:.0f} s)"
+        )
 
     output_file = pset.ParticleFile(
         name=str(zarr_path),
@@ -1186,9 +1241,11 @@ def run_simulation(cfg: dict, pset: ParticleSet, fieldset: FieldSet, lkm_modes=N
             print("LKM disabled in grouped-entity mode")
 
         grouped_kernel = make_grouped_rk4_lkm_kernel(group_size)
-        kernels = (
-            pset.Kernel(WrapLongitudePeriodic_GroupedEntity)
-            + pset.Kernel(BoundaryHaloKill_GroupedEntity)
+        kernels = pset.Kernel(WrapLongitudePeriodic_GroupedEntity)
+        if max_age_seconds is not None:
+            kernels += pset.Kernel(DeleteParticleIfTooOld)
+        kernels += (
+            pset.Kernel(BoundaryHaloKill_GroupedEntity)
             + pset.Kernel(grouped_kernel)
         )
 
@@ -1207,11 +1264,10 @@ def run_simulation(cfg: dict, pset: ParticleSet, fieldset: FieldSet, lkm_modes=N
 
         # Member-based custom kernel with synchronized group updates
         kernel_func = make_AdvectionRK4_with_LKM(lkm_modes)
-        kernels = (
-            pset.Kernel(WrapLongitudePeriodic)
-            + pset.Kernel(BoundaryHaloKill)
-            + pset.Kernel(kernel_func)
-        )
+        kernels = pset.Kernel(WrapLongitudePeriodic)
+        if max_age_seconds is not None:
+            kernels += pset.Kernel(DeleteParticleIfTooOld)
+        kernels += pset.Kernel(BoundaryHaloKill) + pset.Kernel(kernel_func)
         print(f"LKM enabled: {lkm_modes.n_modes} modes, update every {update_freq} steps")
 
         total_steps = int(abs(runtime_days * 24 / dt_sync_hours))
@@ -1227,11 +1283,10 @@ def run_simulation(cfg: dict, pset: ParticleSet, fieldset: FieldSet, lkm_modes=N
                 output_file=output_file,
             )
     else:
-        kernels = (
-            pset.Kernel(WrapLongitudePeriodic)
-            + pset.Kernel(BoundaryHaloKill)
-            + pset.Kernel(AdvectionRK4)
-        )
+        kernels = pset.Kernel(WrapLongitudePeriodic)
+        if max_age_seconds is not None:
+            kernels += pset.Kernel(DeleteParticleIfTooOld)
+        kernels += pset.Kernel(BoundaryHaloKill) + pset.Kernel(AdvectionRK4)
         print("LKM disabled: using standard advection")
         pset.execute(
             kernels,

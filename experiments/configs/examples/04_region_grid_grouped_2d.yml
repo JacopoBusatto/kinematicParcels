@@ -25,7 +25,8 @@ release:
   continuous:
     enabled: true
     release_interval: 12H
-    release_period: 1D
+    release_period: 4D
+    max_age: 1D
 
   group:
     size: 3
@@ -38,7 +39,7 @@ release:
 
 simulation:
   start_time: "2026-04-01 00:00"
-  runtime_days: 2.0
+  runtime_days: 6.0
   dt_hours: 0.1
   outputdt_hours: 1.0
   particle_type: scipy

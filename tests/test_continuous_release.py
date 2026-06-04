@@ -10,10 +10,11 @@ from parcels import FieldSet
 
 from kinematicparcels.runner.run_experiment import (
     _build_release_points_from_region,
+    build_particleset,
     build_fieldset,
     build_release,
 )
-from kinematicparcels.runner.kernels import WrapLongitudePeriodic
+from kinematicparcels.runner.kernels import DeleteParticleIfTooOld, WrapLongitudePeriodic
 from kinematicparcels.utilities.init_checks import filter_inside_domain
 
 
@@ -198,6 +199,53 @@ def test_region_grid_continuous_release_repeats_all_depth_layers(tmp_path: Path)
     assert len(np.unique(metadata["group_id"])) == n_base * expected_steps
 
 
+def test_build_particleset_copies_internal_release_time_when_max_age_is_enabled():
+    cfg = _base_cfg(str(ROOT / "test_fields" / "zero_velocity_april_2026.nc"))
+    cfg["release"]["mode"] = "point_list"
+    cfg["release"]["points"] = [{"lon": 15.0, "lat": 36.0}]
+    cfg["release"]["continuous"]["max_age"] = "12H"
+
+    fieldset = build_fieldset(cfg)
+    lons, lats, depths, metadata, release_times = build_release(cfg, fieldset)
+    pset = build_particleset(
+        cfg,
+        fieldset,
+        lons,
+        lats,
+        depths=depths,
+        metadata_dict=metadata,
+        release_times=release_times,
+    )
+
+    particle_times = np.array([particle.time for particle in pset], dtype=float)
+    release_time_values = np.array([particle.release_time for particle in pset], dtype=float)
+
+    np.testing.assert_allclose(release_time_values, particle_times)
+    assert set(np.unique(release_time_values).tolist()) == {0.0, 43200.0, 86400.0}
+
+
+def test_region_grid_non_continuous_max_age_requires_scheduled_release():
+    cfg = _base_cfg(str(ROOT / "test_fields" / "zero_velocity_april_2026.nc"))
+    cfg["release"]["continuous"] = {"enabled": False, "max_age": "12H"}
+
+    fieldset = build_fieldset(cfg)
+    lons, lats, depths, metadata, release_times = build_release(cfg, fieldset)
+
+    with np.testing.assert_raises_regex(
+        ValueError,
+        r"release\.continuous\.max_age requires release\.continuous\.enabled=true",
+    ):
+        build_particleset(
+            cfg,
+            fieldset,
+            lons,
+            lats,
+            depths=depths,
+            metadata_dict=metadata,
+            release_times=release_times,
+        )
+
+
 def test_circle_release_assigns_circle_id_to_all_group_members(tmp_path: Path):
     field_path = tmp_path / "synthetic_circle.nc"
 
@@ -330,3 +378,92 @@ def test_circle_release_uses_per_circle_start_times_in_backward_mode(tmp_path: P
             dtype="datetime64[ns]",
         ),
     )
+
+
+def test_circle_release_accepts_continuous_max_age_for_scheduled_particles(tmp_path: Path):
+    field_path = tmp_path / "synthetic_circle_max_age.nc"
+
+    lon = np.array([14.0, 14.5, 15.0, 15.5, 16.0], dtype=np.float32)
+    lat = np.array([35.0, 35.5, 36.0, 36.5, 37.0], dtype=np.float32)
+    time = np.array(
+        [
+            np.datetime64("2026-04-01T00:00:00", "ns"),
+            np.datetime64("2026-04-01T12:00:00", "ns"),
+            np.datetime64("2026-04-02T00:00:00", "ns"),
+        ],
+        dtype="datetime64[ns]",
+    )
+
+    shape = (len(time), len(lat), len(lon))
+    ds = xr.Dataset(
+        {
+            "x_sea_water_velocity": (("time", "lat", "lon"), np.zeros(shape, dtype=np.float32)),
+            "y_sea_water_velocity": (("time", "lat", "lon"), np.zeros(shape, dtype=np.float32)),
+        },
+        coords={"time": time, "lat": lat, "lon": lon},
+    )
+    ds.to_netcdf(field_path)
+
+    cfg = _base_cfg(str(field_path))
+    cfg["release"] = {
+        "mode": "circle",
+        "circle": {
+            "lat": 35.6,
+            "lon": 14.6,
+            "dimension": "2D",
+            "radius_km": 0.1,
+            "count_per_timestep": 1,
+            "release_interval": "12H",
+            "release_period": "1D",
+            "sampling": "uniform",
+            "seed": 42,
+            "out_of_domain_policy": "retry",
+            "bathymetry_policy": "drop",
+        },
+        "continuous": {
+            "max_age": "12H",
+        },
+        "group": {"size": 1},
+        "depth": {
+            "enabled": False,
+            "values": [0],
+        },
+    }
+
+    fieldset = build_fieldset(cfg)
+    lons, lats, depths, metadata, release_times = build_release(cfg, fieldset)
+    pset = build_particleset(
+        cfg,
+        fieldset,
+        lons,
+        lats,
+        depths=depths,
+        metadata_dict=metadata,
+        release_times=release_times,
+    )
+
+    particle_times = np.array([particle.time for particle in pset], dtype=float)
+    release_time_values = np.array([particle.release_time for particle in pset], dtype=float)
+
+    np.testing.assert_allclose(release_time_values, particle_times)
+    assert set(np.unique(release_time_values).tolist()) == {0.0, 43200.0, 86400.0}
+
+
+def test_delete_particle_if_too_old_uses_absolute_elapsed_time():
+    particle = SimpleNamespace(release_time=43200.0, deleted=False)
+
+    def _delete() -> None:
+        particle.deleted = True
+
+    particle.delete = _delete
+    fieldset = SimpleNamespace(kp_max_age_seconds=43200.0)
+
+    DeleteParticleIfTooOld(particle, fieldset, 86400.0)
+    assert not particle.deleted
+
+    DeleteParticleIfTooOld(particle, fieldset, 86401.0)
+    assert particle.deleted
+
+    particle.deleted = False
+    DeleteParticleIfTooOld(particle, fieldset, -1.0)
+    assert particle.deleted

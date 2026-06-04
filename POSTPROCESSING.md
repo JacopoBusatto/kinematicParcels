@@ -400,7 +400,10 @@ analysis:
     - summary
     - density
     - beaching_times
+    - fsle
+    - meridional_crossing
     - start_end_regions
+    - transition_probability
     - trajectories
 ```
 
@@ -460,6 +463,7 @@ analyses/
     Scientific diagnostics
     - density
     - beaching_times
+  - meridional_crossing
     - start_end_regions
     - transition_probability
 
@@ -478,9 +482,11 @@ workflows/
     - run_summary
     - run_density
     - run_beaching_times
-  - run_fsle
+    - run_fsle
+    - run_meridional_crossing
     - run_start_end_regions
     - run_trajectories
+    - run_transition_probability
     - base_products
 ```
 
@@ -494,6 +500,7 @@ The currently supported analysis types are:
 - density
 - beaching_times
 - fsle
+- meridional_crossing
 - start_end_regions
 - transition_probability
 - trajectories
@@ -507,10 +514,60 @@ analysis:
     - density
     - beaching_times
     - fsle
+    - meridional_crossing
     - start_end_regions
     - transition_probability
     - trajectories
 ```
+
+------------------------------------------------------------
+COMMON YAML SECTIONS
+------------------------------------------------------------
+
+All analyses share the same top-level configuration structure.
+
+`dataset`
+
+- `input_path`: path to the input Parcels Zarr dataset
+- `coordinates.trajectory`, `coordinates.obs`, `coordinates.time`, `coordinates.lon`, `coordinates.lat`: override variable and dimension names when the dataset does not use the Parcels defaults
+- `coordinates.z`: depth variable name, or `null` for purely 2D datasets
+
+`analysis`
+
+- `types`: ordered list of analyses to execute; supported values are `summary`, `density`, `beaching_times`, `fsle`, `meridional_crossing`, `start_end_regions`, `transition_probability`, and `trajectories`
+
+`output`
+
+- `output_dir`: directory where all analysis products are written
+
+`exports`
+
+- `save_trajectory_table`: export the cleaned trajectory table when the `summary` workflow is run
+- `save_particle_summary`: export the particle summary when the `summary` workflow is run
+- `table_format`: tabular export format, currently `parquet` or `csv`
+
+`cleaning`
+
+- `truncate_stagnant`: truncate trajectories before stagnant segments
+- `stagnant_tol`: tolerance used to compare consecutive longitude and latitude increments
+- `stagnant_min_consecutive`: minimum number of consecutive stagnant steps before truncation is triggered
+
+`grid`
+
+- `mode`: `explicit_edges` or `from_initial_centers`
+- `lon_min`, `lon_max`, `lat_min`, `lat_max`: domain bounds for the regular grid
+- `dlon`, `dlat`: grid spacing in degrees
+
+If the `grid` section is present, all bounds and spacings must be provided, even when `mode: from_initial_centers` is used.
+
+`release`
+
+- `mode`: release layout used by the simulation, such as `point_list`, `region_grid`, `circle`, or `lkm`
+- `continuous`: whether the release was time-continuous; some grid-based outputs are only meaningful when this is `false`
+
+`plotting`
+
+- `projection`: Cartopy projection name used by map products, for example `PlateCarree`
 
 ------------------------------------------------------------
 SUMMARY
@@ -559,11 +616,13 @@ density:
   normalize_active: true
   normalize_total: true
   fill_ever_active_empty_with_zero: true
+  group_member: null
 
   animate: true
   animation_var: particle_fraction_total
   animation_label: "density [%]"
   animation_fps: 6
+  animation_every_n: 1
   animation_vmin: 0
   animation_vmax: 0.05
   show_time_bar: true
@@ -572,11 +631,13 @@ density:
 - `time_col`, `lon_col`  and `lat_col` string name of coordinates
 - `normalize_active` and `normalize_total` calculate the fraction of trajectory in each pixel with respect to the active or total number
 - `fill_ever_active_empty_with_zero` set to 0 empty (but explored at least once) pixels
+- `group_member` optionally keeps only one grouped-particle member before binning; use `null` to keep all members
 - `animate` plot an animation
-- `animatioon_var` which variable to plot
+- `animation_var` which variable to plot
 - `animation_label` colorbar label
 - `animation_fps` fps of the gif
-- `animation_vmin` and `animation_vmin` min and max values for the colorbar. setting them clips smaller than `vmin` and higher than `vmax` values
+- `animation_every_n` use every Nth time slice in the animation
+- `animation_vmin` and `animation_vmax` min and max values for the colorbar. Setting them clips values outside the chosen range
 - `show_time_bar` draw a time progression bar
 
 ------------------------------------------------------------
@@ -607,13 +668,19 @@ beaching_times:
   lat_col: lat0
   value_col: lifetime_seconds
   statistic: min
-  plot: true
+  plotting:
+    enabled: true
+    vmin: null
+    vmax: null
 ```
 
 - `lon_col` and `lat_col` column names of the coordinates to use
 - `value_col` name of the variable
 - `statistic` in case of overlapping values, which statistics to use. Available options: mean, count, sum, min, max, median, std,
-- `plot` draw a plot
+- `plotting.enabled` draw a plot
+- `plotting.vmin` and `plotting.vmax` optionally constrain the map color scale
+
+For backward compatibility, the loader also accepts the legacy shorthand `plot: true`, which maps to `plotting.enabled`.
 
 ------------------------------------------------------------
 FSLE
@@ -679,6 +746,74 @@ Example config:
 - `experiments/configs/postprocessing/postprocess_pairs_fsle.yml`
 
 ------------------------------------------------------------
+MERIDIONAL CROSSING
+------------------------------------------------------------
+
+Computes directional meridional-crossing statistics on a regular grid.
+
+Input:
+- trajectory_table
+
+Outputs:
+- meridional crossing grid table
+- meridional crossing NetCDF
+- optional northward and southward probability plots
+- optional northward and southward count plots
+
+The workflow segments trajectories into coherent northward or southward motion,
+detects crossings of grid latitudes, and aggregates the results per release grid cell.
+
+Options:
+```yaml
+meridional_crossing:
+  direction: both
+
+  segmentation:
+    lat_filter: rolling_mean
+    filter_window: 5
+    direction_threshold_deg: auto
+    min_segment_duration_days: 1.5
+    min_segment_displacement_deg: auto
+    valid_if: duration_or_displacement
+
+  crossing:
+    crossing_latitude_reference: center
+    count_once_per_segment_per_lat_bin: true
+
+  output:
+    save_netcdf: true
+    save_grid_table: true
+    save_figures: true
+
+  plotting:
+    enabled: true
+    probability:
+      enabled: true
+      vmin: null
+      vmax: null
+    count:
+      enabled: false
+      vmin: null
+      vmax: null
+```
+
+- `direction` selects which crossing directions are considered: `northward`, `southward`, or `both`
+- `segmentation.lat_filter` smooths the latitude signal before segment detection; available values are `rolling_mean`, `rolling_median`, and `none`
+- `segmentation.filter_window` sets the smoothing window length in samples
+- `segmentation.direction_threshold_deg` is the minimum signed latitudinal displacement used to classify motion direction; `auto` derives it from the data
+- `segmentation.min_segment_duration_days` requires each accepted segment to last at least this many days
+- `segmentation.min_segment_displacement_deg` requires each accepted segment to span at least this many degrees of latitude; `auto` derives it from the data
+- `segmentation.valid_if` currently supports `duration_or_displacement`
+- `crossing.crossing_latitude_reference` chooses whether crossings are tested against latitude-bin centers or edges
+- `crossing.count_once_per_segment_per_lat_bin` prevents multiple counts from the same segment within the same latitude bin when `true`
+- `output.save_netcdf`, `output.save_grid_table`, and `output.save_figures` control which artifacts are written
+- `plotting.enabled` enables figure generation globally for this analysis
+- `plotting.probability.enabled` and `plotting.count.enabled` control the probability and count maps separately
+- `plotting.probability.vmin`, `plotting.probability.vmax`, `plotting.count.vmin`, and `plotting.count.vmax` optionally constrain the map color scales
+
+The preferred keys are the nested `plotting.probability.enabled` and `plotting.count.enabled`. The loader also accepts the older aliases `show_probability` and `show_counts` for backward compatibility.
+
+------------------------------------------------------------
 START / END REGIONS
 ------------------------------------------------------------
 
@@ -707,24 +842,54 @@ Outputs include:
 - start region map
 - end region map
 - optional plots
+- optional connectivity plots and animations
 
 Options:
 ```yaml
 start_end_regions:
   region_labels: null
-  how_many: last
-  priority_level: 6
-  priority_mode: atleast
+  how_many: priority_max
+  priority_level: null
+  priority_mode: exact
   input_lon_mode: "-180_180"
-  plot: true
+  plot: false
+
+  plot_connectivity: false
+  animate_connectivity: false
+  connectivity_segments: true
+  connectivity_color_by: start_region
+  connectivity_label: region
+  connectivity_title: "Trajectories by region"
+  connectivity_show_start: true
+  connectivity_show_end: true
+  connectivity_alpha: null
+  connectivity_max_group_member: null
+  connectivity_animation_fps: null
+  connectivity_animation_show_tracer: null
+  connectivity_trail: null
+  connectivity_trail_steps: null
 ```
 
-- `region_labels` regions to inglude, null includes all regions avalilable
+- `region_labels` regions to include; `null` includes all available regions
 - `priority_level` priority level to choose, behave together with `how_many` and `priority_mode`
-- `how_many` which region to choose in case of multiple possibilities. Avaliabe: first (min), last (max), all, priority_min (all with min priority) or priority_max (all with max priority)
+- `how_many` which region to choose in case of multiple possibilities. Available: first (min), last (max), all, priority_min (all with min priority), or priority_max (all with max priority)
 - `priority_mode` which priority level to choose. Available: exact, atleast, atmost
 - `input_lon_mode` format of the longitude. Available: "-180_180", "0_360"
-- `plot` draw a plot
+- `plot` draw the start-region and end-region maps when grid outputs are meaningful
+- `plot_connectivity` save connectivity PNGs coloured by the selected region label
+- `animate_connectivity` save a connectivity animation using the full trajectory table
+- `connectivity_segments` use straight start-to-end segments instead of full trajectories for the static connectivity plot
+- `connectivity_color_by` choose which classified field colors the connectivity products, typically `start_region` or `end_region`
+- `connectivity_label` colorbar label for connectivity products
+- `connectivity_title` title used for the region-coloured trajectory products
+- `connectivity_show_start` and `connectivity_show_end` mark start and end points in the connectivity plot
+- `connectivity_alpha` optionally overrides the trajectory alpha used by connectivity plots
+- `connectivity_max_group_member` optionally overrides the grouped-particle member filter for connectivity plots and animations
+- `connectivity_animation_fps` optionally overrides the default trajectory animation frame rate
+- `connectivity_animation_show_tracer` controls whether the moving tracer marker is drawn in the connectivity animation
+- `connectivity_trail` and `connectivity_trail_steps` optionally override the trail settings used in the connectivity animation
+
+The gridded start/end maps are only produced when `release.mode: region_grid` and `release.continuous: false`.
 
 ------------------------------------------------------------
 TRANSITION PROBABILITY
@@ -803,32 +968,49 @@ as a diagnostic visualisation of the simulated particle paths.
 Options:
 ```yaml
 trajectories:
-  plot: false
+  plot: true
+  alpha: 0.7
+  plot_color_by: null
+  plot_cmap: null
+  plot_cmap_mode: auto
+
   animate: true
   title: "Trajectories"
   show_start: true
-  show_end: false
+  show_end: true
 
   animation_fps: 6
+  animation_every_n: 1
   animation_color_by: lat0
+  animation_cmap: null
+  animation_cmap_mode: auto
   animation_vmin: -52.5
   animation_vmax: -51.3
   animation_label: "initial latitude"
   show_time_bar: true
   trail: true
   trail_steps: 20
+  max_group_member: null
 ```
 
-- `plot` draw string plot
+- `plot` draw a static trajectory plot
 - `animate` draw the animation
 - `title` string title of the plot
 - `show_start` and `show_end` mark start and end point
+- `alpha` line transparency used by the static plot
+- `plot_color_by` selects the summary or trajectory column used to color the static plot; `null` enables automatic grouped-member coloring when available
+- `plot_cmap` explicitly chooses the static-plot colormap
+- `plot_cmap_mode` controls whether the static coloring is treated as `auto`, `categorical`, or `numeric`
 - `animation_fps`
+- `animation_every_n` use every Nth frame in the animation
 - `animation_color_by` and `animation_label` variable to plot as color and colorbar label
 - `animation_color_by` can use summary metadata such as `circle_id`, `group_member`, or `group_id` when available
-- `animation_vmin` and `animation_vmax` 
+- `animation_cmap` explicitly chooses the animation colormap
+- `animation_cmap_mode` controls whether the animation coloring is treated as `auto`, `categorical`, or `numeric`
+- `animation_vmin` and `animation_vmax` optionally constrain the animation color scale
 - `show_time_bar`
-- `trail` and `trail_steps` plot a trail behind trajectories and its lenght
+- `trail` and `trail_steps` plot a trail behind trajectories and its length
+- `max_group_member` keeps only grouped members up to the selected index; `null` keeps all members
 - `show_time_bar` draw a time progression bar
 
 ------------------------------------------------------------
@@ -844,9 +1026,17 @@ analysis:
     - density
     - beaching_times
     - fsle
+    - meridional_crossing
     - start_end_regions
     - transition_probability
     - trajectories
+
+output:
+  output_dir: outputs/postprocessing/example
+
+release:
+  mode: region_grid
+  continuous: false
 
 exports:
   save_trajectory_table: true
@@ -874,13 +1064,19 @@ density:
   normalize_active: true
   normalize_total: true
   fill_ever_active_empty_with_zero: false
+  group_member: null
+  animate: false
+  animation_every_n: 1
 
 beaching_times:
   lon_col: lon0
   lat_col: lat0
   value_col: lifetime_seconds
   statistic: min
-  plot: true
+  plotting:
+    enabled: true
+    vmin: null
+    vmax: null
 
 fsle:
   pair_mode: center_pairs
@@ -891,6 +1087,33 @@ fsle:
   save_crossing_events: false
   plot: true
 
+meridional_crossing:
+  direction: both
+  segmentation:
+    lat_filter: rolling_mean
+    filter_window: 5
+    direction_threshold_deg: auto
+    min_segment_duration_days: 1.5
+    min_segment_displacement_deg: auto
+    valid_if: duration_or_displacement
+  crossing:
+    crossing_latitude_reference: center
+    count_once_per_segment_per_lat_bin: true
+  output:
+    save_netcdf: true
+    save_grid_table: true
+    save_figures: true
+  plotting:
+    enabled: true
+    probability:
+      enabled: true
+      vmin: null
+      vmax: null
+    count:
+      enabled: false
+      vmin: null
+      vmax: null
+
 start_end_regions:
   region_labels: null
   how_many: priority_max
@@ -898,6 +1121,9 @@ start_end_regions:
   priority_mode: exact
   input_lon_mode: "-180_180"
   plot: true
+  plot_connectivity: false
+  animate_connectivity: false
+  connectivity_segments: true
 
 transition_probability:
   region_labels:
@@ -916,8 +1142,24 @@ transition_probability:
 trajectories:
   plot: true
   title: "Trajectories"
+  alpha: 0.7
   show_start: true
   show_end: true
+  plot_color_by: null
+  plot_cmap: null
+  plot_cmap_mode: auto
+  animate: false
+  animation_every_n: 1
+  animation_color_by: lat0
+  animation_cmap: null
+  animation_cmap_mode: auto
+  animation_vmin: null
+  animation_vmax: null
+  animation_label: value
+  show_time_bar: true
+  trail: true
+  trail_steps: null
+  max_group_member: null
 
 plotting:
   projection: PlateCarree

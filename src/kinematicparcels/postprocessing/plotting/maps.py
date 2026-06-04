@@ -20,6 +20,8 @@ def plot_grid_map(
     projection: str = "PlateCarree",
     title: str = "",
     figsize: tuple[float, float] = (12, 8),
+    vmin: float | None = None,
+    vmax: float | None = None,
     add_land: bool = True,
     add_coastlines: bool = True,
     add_gridlines: bool = True,
@@ -40,6 +42,15 @@ def plot_grid_map(
         raise ValueError(
             f"Variable '{var_name}' must have dimensions ('lat', 'lon') or include both lat and lon."
         )
+
+    if vmin is not None and vmax is not None and vmin > vmax:
+        raise ValueError("vmin must be less than or equal to vmax.")
+
+    values = da.values
+    if vmin is not None or vmax is not None:
+        clip_min = vmin if vmin is not None else -np.inf
+        clip_max = vmax if vmax is not None else np.inf
+        values = np.clip(values, clip_min, clip_max)
 
     outpath = Path(outpath)
     outpath.parent.mkdir(parents=True, exist_ok=True)
@@ -70,9 +81,11 @@ def plot_grid_map(
     mesh = ax.pcolormesh(
         ds["lon"].values,
         ds["lat"].values,
-        da.values,
+        values,
         transform=ccrs.PlateCarree(),
         shading="auto",
+        vmin=vmin,
+        vmax=vmax,
     )
 
     cbar = plt.colorbar(mesh, ax=ax, shrink=0.9, pad=0.03)

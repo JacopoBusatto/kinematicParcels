@@ -48,4 +48,7 @@ beaching_times:
   lat_col: lat0
   value_col: lifetime_seconds
   statistic: min  # mean | count | sum | min | max | median | std
-  plot: false
+  plotting:
+    enabled: false
+    vmin: null
+    vmax: null

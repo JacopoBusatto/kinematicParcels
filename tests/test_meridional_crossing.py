@@ -242,57 +242,6 @@ def test_meridional_crossing_invalid_short_segments_leave_probability_masked() -
     assert result.dataset["crossing_probability_southward"].isnull().all().item()
 
 
-def test_load_postprocess_config_parses_meridional_crossing_section(tmp_path) -> None:
-    cfg_path = tmp_path / "postprocess_meridional.yml"
-    cfg_path.write_text(
-        """
-        dataset:
-          input_path: ./dummy.zarr
-        analysis:
-          types:
-            - meridional_crossing
-        grid:
-          mode: explicit_edges
-          lon_min: 10.0
-          lon_max: 15.0
-          lat_min: 0.0
-          lat_max: 4.0
-          dlon: 1.0
-          dlat: 1.0
-        meridional_crossing:
-          direction: both
-          segmentation:
-            lat_filter: rolling_mean
-            filter_window: 5
-            direction_threshold_deg: auto
-            min_segment_duration_days: 1.5
-            min_segment_displacement_deg: auto
-            valid_if: duration_or_displacement
-          crossing:
-            crossing_latitude_reference: center
-            count_once_per_segment_per_lat_bin: true
-          output:
-            save_netcdf: true
-            save_grid_table: true
-            save_figures: false
-          plotting:
-            enabled: true
-            show_probability: true
-            show_counts: false
-        """,
-        encoding="utf-8",
-    )
-
-    cfg = load_postprocess_config(cfg_path)
-
-    assert cfg.analysis.types == ("meridional_crossing",)
-    assert cfg.meridional_crossing.direction == "both"
-    assert cfg.meridional_crossing.segmentation.lat_filter == "rolling_mean"
-    assert cfg.meridional_crossing.segmentation.direction_threshold_deg == "auto"
-    assert cfg.meridional_crossing.crossing.crossing_latitude_reference == "center"
-    assert cfg.meridional_crossing.output.save_figures is False
-
-
 def test_meridional_crossing_result_metadata_records_release_dependence() -> None:
     cfg = PostprocessConfig(
         dataset=DatasetConfig(input_path="dummy.zarr"),

@@ -3,6 +3,11 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 
 
+def _validate_plot_limits(name: str, vmin: float | None, vmax: float | None) -> None:
+    if vmin is not None and vmax is not None and vmin > vmax:
+        raise ValueError(f"{name}.vmin must be less than or equal to {name}.vmax.")
+
+
 @dataclass(frozen=True)
 class DatasetCoordinatesConfig:
     trajectory: str = "trajectory"
@@ -94,12 +99,22 @@ class DensityConfig:
 
 
 @dataclass(frozen=True)
+class BeachingTimesPlottingConfig:
+    enabled: bool = False
+    vmin: float | None = None
+    vmax: float | None = None
+
+    def __post_init__(self) -> None:
+        _validate_plot_limits("beaching_times.plotting", self.vmin, self.vmax)
+
+
+@dataclass(frozen=True)
 class BeachingTimesConfig:
     lon_col: str = "lon0"
     lat_col: str = "lat0"
     value_col: str = "lifetime_seconds"
     statistic: str = "min"
-    plot: bool = False
+    plotting: BeachingTimesPlottingConfig = field(default_factory=BeachingTimesPlottingConfig)
 
 
 @dataclass(frozen=True)
@@ -215,7 +230,7 @@ class StartEndRegionsConfig:
 
 @dataclass(frozen=True)
 class TransitionProbabilityConfig:
-    region_labels: tuple[str, ...] = field(default_factory=tuple)
+    region_labels: tuple[str, ...] = ()
     time_step_stride: int = 1
     how_many: str = "priority_max"
     priority_level: int | None = None
@@ -227,8 +242,28 @@ class TransitionProbabilityConfig:
     filter_isolated: bool = False
 
     def __post_init__(self) -> None:
+        if len(self.region_labels) == 0:
+            raise ValueError("transition_probability.region_labels cannot be empty.")
+
         if self.time_step_stride < 1:
-            raise ValueError("transition_probability.time_step_stride must be an integer >= 1.")
+            raise ValueError("transition_probability.time_step_stride must be >= 1.")
+
+        if self.how_many not in {"first", "last", "all", "priority_min", "priority_max"}:
+            raise ValueError(
+                "transition_probability.how_many must be one of: "
+                "'first', 'last', 'all', 'priority_min', 'priority_max'."
+            )
+
+        if self.priority_mode not in {"exact", "atleast", "atmost"}:
+            raise ValueError(
+                "transition_probability.priority_mode must be one of: "
+                "'exact', 'atleast', 'atmost'."
+            )
+
+        if self.input_lon_mode not in {"-180_180", "0_360"}:
+            raise ValueError(
+                "transition_probability.input_lon_mode must be '-180_180' or '0_360'."
+            )
 
         if self.min_life_days < 0:
             raise ValueError("transition_probability.min_life_days must be >= 0.")
@@ -236,8 +271,10 @@ class TransitionProbabilityConfig:
         if self.trimming_age_days is not None and self.trimming_age_days < 0:
             raise ValueError("transition_probability.trimming_age_days must be >= 0 or null.")
 
-        if self.max_group_member is not None and self.max_group_member < 1:
-            raise ValueError("transition_probability.max_group_member must be an integer > 0 or null.")
+        if self.max_group_member is not None and self.max_group_member <= 0:
+            raise ValueError(
+                "transition_probability.max_group_member must be an integer > 0 or null."
+            )
 
 
 @dataclass(frozen=True)
@@ -311,10 +348,24 @@ class MeridionalCrossingOutputConfig:
 
 
 @dataclass(frozen=True)
+class MeridionalCrossingMapPlottingConfig:
+    enabled: bool = True
+    vmin: float | None = None
+    vmax: float | None = None
+
+    def __post_init__(self) -> None:
+        _validate_plot_limits("meridional_crossing.plotting", self.vmin, self.vmax)
+
+
+@dataclass(frozen=True)
 class MeridionalCrossingPlottingConfig:
     enabled: bool = True
-    show_probability: bool = True
-    show_counts: bool = False
+    probability: MeridionalCrossingMapPlottingConfig = field(
+        default_factory=MeridionalCrossingMapPlottingConfig
+    )
+    count: MeridionalCrossingMapPlottingConfig = field(
+        default_factory=lambda: MeridionalCrossingMapPlottingConfig(enabled=False)
+    )
 
 
 @dataclass(frozen=True)
@@ -381,8 +432,10 @@ class PostprocessConfig:
     trajectories: TrajectoriesConfig = field(default_factory=TrajectoriesConfig)
     plotting: PlottingConfig = field(default_factory=PlottingConfig)
     start_end_regions: StartEndRegionsConfig = field(default_factory=StartEndRegionsConfig)
+    transition_probability: TransitionProbabilityConfig = field(
+        default_factory=lambda: TransitionProbabilityConfig(region_labels=("sesc-mod", "sesc-sir"))
+    )
     meridional_crossing: MeridionalCrossingConfig = field(default_factory=MeridionalCrossingConfig)
-    transition_probability: TransitionProbabilityConfig = field(default_factory=TransitionProbabilityConfig)
 
 
 @dataclass(frozen=True)
