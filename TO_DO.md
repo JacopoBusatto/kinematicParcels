@@ -134,3 +134,64 @@ If my reasoning is correct, these case should be accounted:
 - putting min and max the same, we would have segments of trajectories exactly of that value of length
 
 Let's clarify all your doubts before writing any code
+
+**TRANSIZIONI**
+max: null, basta normalizzare su quanti ne ho
+
+**FRONTI**
+minima latitudine ad ogni longitudine cosi localizzo barriere
+max escursione su posizione iniziale
+
+**FSLE and FTLE map**
+We need to create the next postprocessing tool. FSLE (finite-scale lyapunov exponent) and FTLE (finite time lyapunov exponent) map. The legacy scripts are separate but maybe we can merge them into a single one.
+The idea is to have the output mapped on a grid originated by the gridded regional release, working within a group entity environment.
+Initializing initially spatially close groups it is possible to assess the geographical properties of relative dispersion
+In foreward simulations they map areas of strong and weak horizontal divergence.
+In backward simulations, vice versa, they measure convergence areas. 
+Foreward simulation:
+For every starting location we calculate the FSLE by calculating how much time the members of the same group take to separate of a certain distance (or a list of distances, imposed in yml) from the central one. If the group has more than 2 member we take the minimum time. If the group fails to separate at least of that distance, then the value on the central point will be 0 or NaN, depending on a yml parameter (for example mask_0_fsle or a suitable name). Then we calculate the lyapunov exponent and we assign it to the initial position of the group.
+The FTLE is similarely calculated, but we give a fixed time (or a list of times, imposed in yml) from the release date, then we calculate the distance (or the maximum distance reached in that time window? what would you do? what is done in the legacy script? maybe is more correct to take the poits precisely after that window, or the closest previous one) from the central trajectory of each group member and we take the maximum of those. Then we calculate the lyapunov exponent and we assign it to the initial position of the group.
+If it is a simulation obtained with a continuous release, we will have a lat-lon map for every time of release,performing the calculations on each release.
+
+Similarely, in backward simulations, the same rules apply but the starting time is actually the time-wise end (so it should be the first obs and maximum time, i.e. the time when the particles are initialized).
+
+The script needs then to assess if the simulation is a backward or a foreward one.
+
+The distances can be both geodedical (haversine) or meridional at the moment
+I would have a yaml structure like
+```yaml
+exponents_maps:
+  distance: geodedical # geodedical - meridional
+  fsle:
+    enable: true
+    scale: [] #float or list of floats, here in km
+    mask_zeros: false #if zeros of exponent i.e. groups do not separate of that scale in their life have a 0 value (if false) or nan (if true)
+    plot:
+      enable: true
+      average_on_time: true # performs the average along the release time dimension before plotting, otherwise plots one map per release time
+      vmin: null
+      vmax: null
+      min_mask_value: null #set a min threshold of exponent value to mask value smaller than that
+      log_scale: false # the colorbar is logscale?
+      cmap: viridis # the colormap label
+  ftle:
+    enable: true
+    scale: [] #float or list of floats, here in days
+    plot:
+      enable: true
+      average_on_time: true # performs the average along the release time dimension before plotting, otherwise plots one map per release time
+      vmin: null
+      vmax: null
+      min_mask_value: null #set a min threshold of exponent value to mask value smaller than that
+      log_scale: false # the colorbar is logscale?
+      cmap: viridis # the colormap label
+```
+Any modification or add-up is welcome.
+
+The output will be
+- netcdf for fsle with the distance type distinction and the scales included, one for the fsle and one for the ftle
+- plots, if any
+
+Let's first plan the workflow, checking the agreement with this plan and the legacy scripts.
+Ask me any uncertainties you might have and any ambiguity you might rise.
+keep the code modular and in line with the already existing postprocessing models. Don't write code yet. 

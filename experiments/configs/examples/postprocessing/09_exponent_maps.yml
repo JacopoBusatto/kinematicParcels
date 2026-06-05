@@ -1,0 +1,67 @@
+# Example postprocessing config for the `summary` analysis.
+# `summary` has no dedicated YAML section: its behavior is controlled by the
+# shared sections below.
+
+dataset:
+  input_path: ./outputs/one_trajectory_test.zarr
+  coordinates:
+    trajectory: trajectory
+    obs: obs
+    time: time
+    lon: lon
+    lat: lat
+    z: z  # Set to null for 2D datasets without a depth coordinate.
+
+analysis:
+  types:
+    - summary  # You can list multiple analyses here; they run in order.
+    - exponent_maps
+
+output:
+  output_dir: ./outputs/postprocessing/examples/summary
+
+exports:
+  save_trajectory_table: false
+  save_particle_summary: true
+  table_format: parquet  # parquet | csv
+
+cleaning:
+  truncate_stagnant: true
+  stagnant_tol: 1.0e-6
+  stagnant_min_consecutive: 2
+
+release:
+  mode: region_grid
+  continuous: false
+
+plotting:
+  projection: PlateCarree
+  
+exponent_maps:
+  distance: geodesical # geodesical | meridional
+  require_grouped_regular_grid: true
+  fsle:
+    enable: true
+    scale: [5.0, 10.0, 20.0]
+    mask_zeros: false
+    plot:
+      enable: true
+      average_on_time: true
+      vmin: null
+      vmax: null
+      min_mask_value: null
+      log_scale: false
+      cmap: viridis
+  ftle:
+    enable: true
+    scale: [5.0, 10.0]
+    sampling_mode: last_before_or_at # max_within_window | last_before_or_at
+    mask_short_windows: true
+    plot:
+      enable: true
+      average_on_time: true
+      vmin: null
+      vmax: null
+      min_mask_value: null
+      log_scale: false
+      cmap: viridis

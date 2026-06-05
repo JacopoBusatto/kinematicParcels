@@ -171,6 +171,79 @@ class FSLEConfig:
 
 
 @dataclass(frozen=True)
+class ExponentMapPlotConfig:
+    enabled: bool = False
+    average_on_time: bool = True
+    vmin: float | None = None
+    vmax: float | None = None
+    min_mask_value: float | None = None
+    log_scale: bool = False
+    cmap: str = "viridis"
+
+    def __post_init__(self) -> None:
+        _validate_plot_limits("exponent_maps.plot", self.vmin, self.vmax)
+
+        if self.min_mask_value is not None and self.log_scale and self.min_mask_value <= 0:
+            raise ValueError(
+                "exponent_maps plot min_mask_value must be > 0 when log_scale is enabled."
+            )
+
+
+@dataclass(frozen=True)
+class ExponentMapsFSLEConfig:
+    enabled: bool = False
+    scales_km: tuple[float, ...] = ()
+    mask_zeros: bool = False
+    plot: ExponentMapPlotConfig = field(default_factory=ExponentMapPlotConfig)
+
+    def __post_init__(self) -> None:
+        if any(scale <= 0 for scale in self.scales_km):
+            raise ValueError("exponent_maps.fsle.scales_km must contain only positive values.")
+
+
+@dataclass(frozen=True)
+class ExponentMapsFTLEConfig:
+    enabled: bool = False
+    scales_days: tuple[float, ...] = ()
+    sampling_mode: str = "last_before_or_at"
+    mask_short_windows: bool = True
+    mask_zeros: bool = False
+    plot: ExponentMapPlotConfig = field(default_factory=ExponentMapPlotConfig)
+
+    def __post_init__(self) -> None:
+        if any(scale <= 0 for scale in self.scales_days):
+            raise ValueError("exponent_maps.ftle.scales_days must contain only positive values.")
+
+        if self.sampling_mode not in {"last_before_or_at", "max_within_window"}:
+            raise ValueError(
+                "exponent_maps.ftle.sampling_mode must be 'last_before_or_at' or 'max_within_window'."
+            )
+
+
+@dataclass(frozen=True)
+class ExponentMapsConfig:
+    distance: str = "geodesical"
+    require_grouped_regular_grid: bool = True
+    fsle: ExponentMapsFSLEConfig = field(default_factory=ExponentMapsFSLEConfig)
+    ftle: ExponentMapsFTLEConfig = field(default_factory=ExponentMapsFTLEConfig)
+
+    def __post_init__(self) -> None:
+        if self.distance not in {"geodesical", "meridional"}:
+            raise ValueError(
+                "exponent_maps.distance must be 'geodesical' or 'meridional'."
+            )
+
+        if self.fsle.enabled and len(self.fsle.scales_km) == 0:
+            raise ValueError("exponent_maps.fsle.scales_km cannot be empty when FSLE is enabled.")
+
+        if self.ftle.enabled and len(self.ftle.scales_days) == 0:
+            raise ValueError("exponent_maps.ftle.scales_days cannot be empty when FTLE is enabled.")
+
+        if not self.fsle.enabled and not self.ftle.enabled:
+            raise ValueError("At least one of exponent_maps.fsle or exponent_maps.ftle must be enabled.")
+
+
+@dataclass(frozen=True)
 class TrajectoriesConfig:
     plot: bool = True
     title: str = "Trajectories"
@@ -429,6 +502,7 @@ class PostprocessConfig:
     cleaning: CleaningConfig = field(default_factory=CleaningConfig)
     beaching_times: BeachingTimesConfig = field(default_factory=BeachingTimesConfig)
     fsle: FSLEConfig = field(default_factory=FSLEConfig)
+    exponent_maps: ExponentMapsConfig | None = None
     trajectories: TrajectoriesConfig = field(default_factory=TrajectoriesConfig)
     plotting: PlottingConfig = field(default_factory=PlottingConfig)
     start_end_regions: StartEndRegionsConfig = field(default_factory=StartEndRegionsConfig)

@@ -478,24 +478,50 @@ def infer_regular_spacing_from_centers(
     if values.size == 0:
         raise ValueError("Cannot infer spacing from an empty array.")
 
-    unique_vals = np.unique(values[~np.isnan(values)])
-    if unique_vals.size < 2:
+    finite = values[~np.isnan(values)]
+    if finite.size < 2:
         raise ValueError("Need at least two unique points to infer spacing.")
 
-    diffs = np.diff(np.sort(unique_vals))
-    diffs = diffs[diffs > 0]
+    best_spacing: float | None = None
+    best_score = -np.inf
 
-    if diffs.size == 0:
-        raise ValueError("Could not infer spacing from repeated coordinates only.")
+    # Search across multiple precisions and prefer the spacing with the
+    # strongest weighted support (count * distance), which suppresses jitter.
+    min_decimals = 1
+    for decimals in range(int(round_decimals), min_decimals - 1, -1):
+        rounded_vals = np.unique(np.round(finite, decimals))
+        if rounded_vals.size < 2:
+            continue
 
-    diffs_rounded = np.round(diffs, round_decimals)
-    positive = diffs_rounded[diffs_rounded > 0]
+        diffs = np.diff(np.sort(rounded_vals))
+        diffs = diffs[diffs > 0]
+        if diffs.size == 0:
+            continue
 
-    if positive.size == 0:
-        raise ValueError("Could not infer positive spacing after rounding.")
+        rounded_diffs = np.round(diffs, decimals)
+        rounded_diffs = rounded_diffs[rounded_diffs > 0]
+        if rounded_diffs.size == 0:
+            continue
 
-    spacing = float(np.min(positive))
-    return spacing
+        candidates, counts = np.unique(rounded_diffs, return_counts=True)
+        mask = counts >= 2
+        if mask.any():
+            candidates = candidates[mask]
+            counts = counts[mask]
+
+        scores = candidates * counts
+        idx = int(np.argmax(scores))
+        score = float(scores[idx])
+        spacing = float(candidates[idx])
+
+        if score > best_score:
+            best_score = score
+            best_spacing = spacing
+
+    if best_spacing is None or best_spacing <= 0:
+        raise ValueError("Could not infer positive spacing from coordinates.")
+
+    return best_spacing
 
 
 def _select_release_centers(

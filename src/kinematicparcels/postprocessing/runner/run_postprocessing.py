@@ -40,6 +40,10 @@ def _run_single_analysis(
         from ..workflows.run_fsle import run_fsle
         run_fsle(cfg, context)
 
+    elif analysis_name == "exponent_maps":
+        from ..workflows.run_exponent_maps import run_exponent_maps
+        run_exponent_maps(cfg, context)
+
     elif analysis_name == "trajectories":
         from ..workflows.run_trajectories import run_trajectories
         run_trajectories(cfg, context)

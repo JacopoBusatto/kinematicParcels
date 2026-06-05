@@ -12,6 +12,10 @@ from .models import (
     DatasetCoordinatesConfig,
     BeachingTimesPlottingConfig,
     DensityConfig,
+    ExponentMapPlotConfig,
+    ExponentMapsConfig,
+    ExponentMapsFSLEConfig,
+    ExponentMapsFTLEConfig,
     ExportsConfig,
     FSLEConfig,
     GridConfig,
@@ -472,6 +476,102 @@ def _parse_fsle(section: dict[str, Any] | None) -> FSLEConfig:
         x_max=x_max,
         y_min=y_min,
         y_max=y_max,
+    )
+
+
+def _parse_exponent_map_plot(
+    section: dict[str, Any] | None,
+    *,
+    name: str,
+) -> ExponentMapPlotConfig:
+    if section is None:
+        return ExponentMapPlotConfig()
+
+    section = _require_dict(section, name)
+
+    cmap = _require_nonempty_string(
+        section.get("cmap", "viridis"),
+        f"{name}.cmap",
+    )
+
+    return ExponentMapPlotConfig(
+        enabled=bool(section.get("enable", section.get("enabled", False))),
+        average_on_time=bool(section.get("average_on_time", True)),
+        vmin=_parse_optional_number(section.get("vmin", None), f"{name}.vmin"),
+        vmax=_parse_optional_number(section.get("vmax", None), f"{name}.vmax"),
+        min_mask_value=_parse_optional_number(
+            section.get("min_mask_value", None),
+            f"{name}.min_mask_value",
+        ),
+        log_scale=bool(section.get("log_scale", False)),
+        cmap=cmap,
+    )
+
+
+def _parse_positive_number_list(value: Any, name: str) -> tuple[float, ...]:
+    if value is None:
+        return ()
+
+    if not isinstance(value, list):
+        raise ValueError(f"'{name}' must be a list.")
+
+    parsed: list[float] = []
+    for i, item in enumerate(value):
+        parsed.append(_require_number(item, f"{name}[{i}]"))
+    return tuple(parsed)
+
+
+def _parse_exponent_maps(section: dict[str, Any] | None) -> ExponentMapsConfig | None:
+    if section is None:
+        return None
+
+    section = _require_dict(section, "exponent_maps")
+
+    distance = _require_nonempty_string(
+        section.get("distance", "geodesical"),
+        "exponent_maps.distance",
+    )
+    require_grouped_regular_grid = bool(section.get("require_grouped_regular_grid", True))
+
+    fsle_section = _require_dict(section.get("fsle", {}), "exponent_maps.fsle")
+    ftle_section = _require_dict(section.get("ftle", {}), "exponent_maps.ftle")
+
+    fsle = ExponentMapsFSLEConfig(
+        enabled=bool(fsle_section.get("enable", fsle_section.get("enabled", False))),
+        scales_km=_parse_positive_number_list(
+            fsle_section.get("scale", fsle_section.get("scales_km", [])),
+            "exponent_maps.fsle.scale",
+        ),
+        mask_zeros=bool(fsle_section.get("mask_zeros", False)),
+        plot=_parse_exponent_map_plot(
+            fsle_section.get("plot", None),
+            name="exponent_maps.fsle.plot",
+        ),
+    )
+
+    ftle = ExponentMapsFTLEConfig(
+        enabled=bool(ftle_section.get("enable", ftle_section.get("enabled", False))),
+        scales_days=_parse_positive_number_list(
+            ftle_section.get("scale", ftle_section.get("scales_days", [])),
+            "exponent_maps.ftle.scale",
+        ),
+        sampling_mode=_require_nonempty_string(
+            ftle_section.get("sampling_mode", "last_before_or_at"),
+            "exponent_maps.ftle.sampling_mode",
+        ),
+        mask_short_windows=bool(ftle_section.get("mask_short_windows", True)),
+        mask_zeros=bool(ftle_section.get("mask_zeros", False)),
+        plot=_parse_exponent_map_plot(
+            ftle_section.get("plot", None),
+            name="exponent_maps.ftle.plot",
+        ),
+    )
+
+    return ExponentMapsConfig(
+        distance=distance,
+        require_grouped_regular_grid=require_grouped_regular_grid,
+        fsle=fsle,
+        ftle=ftle,
     )
 
 
@@ -1060,6 +1160,7 @@ def load_postprocess_config(path: str | Path) -> PostprocessConfig:
     cleaning = _parse_cleaning(raw.get("cleaning"))
     beaching_times = _parse_beaching_times(raw.get("beaching_times"))
     fsle = _parse_fsle(raw.get("fsle"))
+    exponent_maps = _parse_exponent_maps(raw.get("exponent_maps"))
     trajectories = _parse_trajectories(raw.get("trajectories"))
     plotting = _parse_plotting(raw.get("plotting"))
     start_end_regions = _parse_start_end_regions(raw.get("start_end_regions"))
@@ -1077,6 +1178,7 @@ def load_postprocess_config(path: str | Path) -> PostprocessConfig:
         cleaning=cleaning,
         beaching_times=beaching_times,
         fsle=fsle,
+        exponent_maps=exponent_maps,
         trajectories=trajectories,
         plotting=plotting,
         start_end_regions=start_end_regions,

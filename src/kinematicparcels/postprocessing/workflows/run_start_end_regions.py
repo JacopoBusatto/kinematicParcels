@@ -11,7 +11,7 @@ from ..analyses import (
 )
 from ..animations import animate_trajectories
 from ..config.models import PostprocessConfig
-from ..core import build_release_grid_from_summary
+from ..core import build_grid_from_config
 from ..io import save_dataset_netcdf, save_grid_table
 from ..plotting import plot_connectivity_map, plot_discrete_grid_map, plot_trajectories_map
 from .base_products import get_particle_summary, get_trajectory_table
@@ -146,7 +146,8 @@ def run_start_end_regions(cfg: PostprocessConfig, context: dict) -> None:
     if _is_grid_mode(cfg):
         print("Building release grid from classified summary")
         if "grid" not in context:
-            context["grid"] = build_release_grid_from_summary(
+            context["grid"] = build_grid_from_config(
+                cfg,
                 classified_summary,
                 lon_col="lon0",
                 lat_col="lat0",

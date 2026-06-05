@@ -16,6 +16,7 @@ Typical diagnostics produced include:
 - transition probability matrices
 - trajectory visualisation
 - FSLE spectra
+- FSLE and FTLE exponent maps
 
 Future extensions may include:
 
@@ -463,6 +464,7 @@ analyses/
     Scientific diagnostics
     - density
     - beaching_times
+    - exponent_maps
   - meridional_crossing
     - start_end_regions
     - transition_probability
@@ -482,6 +484,7 @@ workflows/
     - run_summary
     - run_density
     - run_beaching_times
+  - run_exponent_maps
     - run_fsle
     - run_meridional_crossing
     - run_start_end_regions
@@ -499,6 +502,7 @@ The currently supported analysis types are:
 - summary
 - density
 - beaching_times
+- exponent_maps
 - fsle
 - meridional_crossing
 - start_end_regions
@@ -513,6 +517,7 @@ analysis:
     - summary
     - density
     - beaching_times
+    - exponent_maps
     - fsle
     - meridional_crossing
     - start_end_regions
@@ -535,6 +540,7 @@ All analyses share the same top-level configuration structure.
 `analysis`
 
 - `types`: ordered list of analyses to execute; supported values are `summary`, `density`, `beaching_times`, `fsle`, `meridional_crossing`, `start_end_regions`, `transition_probability`, and `trajectories`
+- `types`: ordered list of analyses to execute; supported values are `summary`, `density`, `beaching_times`, `exponent_maps`, `fsle`, `meridional_crossing`, `start_end_regions`, `transition_probability`, and `trajectories`
 
 `output`
 
@@ -688,6 +694,8 @@ FSLE
 
 Computes the first-kind finite-size Lyapunov exponent from grouped trajectories.
 
+This analysis produces the FSLE spectrum as a function of separation scale. If you want gridded FSLE/FTLE maps on the release grid, use `exponent_maps` instead.
+
 Input:
 - trajectory_table
 
@@ -744,6 +752,77 @@ fsle:
 
 Example config:
 - `experiments/configs/postprocessing/postprocess_pairs_fsle.yml`
+
+------------------------------------------------------------
+EXPONENT MAPS
+------------------------------------------------------------
+
+Computes gridded FSLE and FTLE products on the native grouped release grid.
+
+Input:
+- trajectory_table
+- particle_summary
+
+Requirements:
+- grouped outputs only (`group_size > 1`)
+- member 1 must be the central trajectory of each group
+- release centers must form a regular lon/lat grid at each release time
+
+Behavior:
+- FSLE uses member 1 versus the other group members, takes the first crossing of each requested target separation, then keeps the minimum valid crossing time across members for each group.
+- FTLE uses member 1 versus the other group members, samples each requested target age with a configurable rule, then keeps the maximum valid member separation for each group.
+- Backward simulations are detected from the obs/time ordering and the saved exponents are sign-adjusted to preserve the backward-time convergence interpretation used by the legacy scripts.
+
+Outputs:
+- one FSLE NetCDF with dimensions `time`, `scale_km`, `lat`, `lon`
+- one FTLE NetCDF with dimensions `time`, `scale_days`, `lat`, `lon`
+- optional PNG maps for each selected scale, either averaged on release time or one figure per release time
+
+Options:
+```yaml
+exponent_maps:
+  distance: geodesical
+  require_grouped_regular_grid: true
+  fsle:
+    enable: true
+    scale: [5.0, 10.0, 20.0]
+    mask_zeros: false
+    plot:
+      enable: true
+      average_on_time: true
+      vmin: null
+      vmax: null
+      min_mask_value: null
+      log_scale: false
+      cmap: viridis
+  ftle:
+    enable: true
+    scale: [5.0, 10.0]
+    sampling_mode: last_before_or_at
+    mask_short_windows: true
+    plot:
+      enable: true
+      average_on_time: true
+      vmin: null
+      vmax: null
+      min_mask_value: null
+      log_scale: false
+      cmap: viridis
+```
+
+- `distance` chooses the pair-distance metric. Available: `geodesical`, `meridional`
+- `require_grouped_regular_grid` fails early if the input is not a grouped regular release map product
+- `fsle.scale` target separations in km
+- `fsle.mask_zeros` stores `NaN` instead of `0` when a group never reaches the requested scale
+- `ftle.scale` target ages in days
+- `ftle.sampling_mode` selects the FTLE time-window rule. Available: `last_before_or_at`, `max_within_window`
+- `ftle.mask_short_windows` stores `NaN` instead of `0` when a group does not live long enough to cover the requested window
+- `plot.average_on_time` averages the release-time dimension before plotting; otherwise the workflow writes one map per release time and scale
+- `plot.min_mask_value` masks small absolute exponent values before plotting
+- `plot.log_scale` uses a logarithmic color scale and therefore requires strictly positive plotted values
+
+Example config:
+- `experiments/configs/postprocessing/postprocess_exponent_maps.yml`
 
 ------------------------------------------------------------
 MERIDIONAL CROSSING
