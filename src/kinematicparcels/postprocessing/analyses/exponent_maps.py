@@ -176,7 +176,11 @@ def _finalize_group_scale_points(
     simulation_direction: str,
 ) -> pd.DataFrame:
     base = _cross_join_with_scales(centers, scale_values=scale_values, scale_col=scale_col)
-    merged = base.merge(candidates, on=["group_id", scale_col], how="left", suffixes=("", "_candidate"))
+    if candidates.empty:
+        merged = base.copy()
+        merged[value_col] = np.nan
+    else:
+        merged = base.merge(candidates, on=["group_id", scale_col], how="left", suffixes=("", "_candidate"))
     merged["is_valid"] = merged[value_col].notna()
 
     if not mask_missing_as_nan:
@@ -255,12 +259,23 @@ def _compute_fsle_points(
 
 
 def _select_ftle_row(pair_data: pd.DataFrame, *, target_age_days: float, sampling_mode: str) -> pd.Series | None:
+    if sampling_mode == "last_before_or_at":
+        exact = pair_data.loc[np.isclose(pair_data["age_days"], target_age_days)].copy()
+        if not exact.empty:
+            return exact.sort_values("obs").iloc[-1]
+
+        if not (pair_data["age_days"] > target_age_days).any():
+            return None
+
+        valid = pair_data.loc[(pair_data["age_days"] > 0) & (pair_data["age_days"] < target_age_days)].copy()
+        if valid.empty:
+            return None
+
+        return valid.sort_values("obs").iloc[-1]
+
     valid = pair_data.loc[(pair_data["age_days"] > 0) & (pair_data["age_days"] <= target_age_days)].copy()
     if valid.empty:
         return None
-
-    if sampling_mode == "last_before_or_at":
-        return valid.sort_values("obs").iloc[-1]
 
     max_idx = valid["distance_km"].idxmax()
     return valid.loc[max_idx]

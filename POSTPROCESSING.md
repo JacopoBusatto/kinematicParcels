@@ -800,6 +800,7 @@ exponent_maps:
     scale: [5.0, 10.0]
     sampling_mode: last_before_or_at
     mask_short_windows: true
+    mask_zeros: false
     plot:
       enable: true
       average_on_time: true
@@ -815,8 +816,9 @@ exponent_maps:
 - `fsle.scale` target separations in km
 - `fsle.mask_zeros` stores `NaN` instead of `0` when a group never reaches the requested scale
 - `ftle.scale` target ages in days
-- `ftle.sampling_mode` selects the FTLE time-window rule. Available: `last_before_or_at`, `max_within_window`
+- `ftle.sampling_mode` chooses how the age-window sample is selected: `last_before_or_at` uses an exact hit at the target age when available, otherwise the last observation before the target age only if the trajectory also extends beyond the target; `max_within_window` uses the maximum separation within the window
 - `ftle.mask_short_windows` stores `NaN` instead of `0` when a group does not live long enough to cover the requested window
+- `ftle.mask_zeros` stores `NaN` instead of `0` when the sampled separation does not exceed the initial separation
 - `plot.average_on_time` averages the release-time dimension before plotting; otherwise the workflow writes one map per release time and scale
 - `plot.min_mask_value` masks small absolute exponent values before plotting
 - `plot.log_scale` uses a logarithmic color scale and therefore requires strictly positive plotted values

@@ -244,6 +244,30 @@ def test_compute_exponent_maps_ftle_respects_sampling_mode() -> None:
     assert max_result.ftle_points.iloc[0]["ftle"] == pytest.approx(math.log(5.0) / 1.0)
 
 
+def test_compute_exponent_maps_ftle_last_before_or_at_requires_later_sample() -> None:
+    df = pd.DataFrame(
+        _build_group_rows(
+            group_id=1,
+            center_lon=0.0,
+            center_lat=0.0,
+            release_time="2026-01-01",
+            member_distances_km={2: [1.0, 2.0, 4.0]},
+            day_offsets=[0, 1, 2],
+        )
+    )
+
+    result = compute_exponent_maps(
+        df,
+        meridional_only=True,
+        ftle_scales_days=(3.0,),
+        ftle_sampling_mode="last_before_or_at",
+    )
+
+    row = result.ftle_points.iloc[0]
+    assert not bool(row["is_valid"])
+    assert pd.isna(row["ftle"])
+
+
 def test_compute_exponent_maps_clamps_nonstretching_points_to_zero() -> None:
     df = pd.DataFrame(
         _build_group_rows(
