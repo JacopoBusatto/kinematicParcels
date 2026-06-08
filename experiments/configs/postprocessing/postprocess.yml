@@ -90,3 +90,6 @@ start_end_regions:
   plot_connectivity: false
   animate_connectivity: false
   connectivity_segments: true
+  discrete_cmap: null
+  colorbar_label_mode: numeric
+  show_region_labels: false

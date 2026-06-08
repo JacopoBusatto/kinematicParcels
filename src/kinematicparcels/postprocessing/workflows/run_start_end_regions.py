@@ -19,7 +19,7 @@ from .base_products import get_particle_summary, get_trajectory_table
 
 def _is_grid_mode(cfg: PostprocessConfig) -> bool:
     """Return True when grid-based outputs (maps, NetCDF) are meaningful."""
-    return cfg.release.mode == "region_grid" and not cfg.release.continuous
+    return cfg.release.mode == "region_grid"
 
 
 def _build_segment_df(classified_summary: pd.DataFrame) -> pd.DataFrame:
@@ -116,6 +116,15 @@ def run_start_end_regions(cfg: PostprocessConfig, context: dict) -> None:
     print("Getting particle summary")
     summary = get_particle_summary(cfg, context)
 
+    required_summary_cols = ["lon0", "lat0", "lonf", "latf"]
+    missing_summary_cols = [c for c in required_summary_cols if c not in summary.columns]
+    if summary.empty or missing_summary_cols:
+        print(
+            "Skipping start_end_regions: particle summary is empty "
+            f"or missing required columns {missing_summary_cols}."
+        )
+        return
+
     print("Building region manager")
     region_manager = build_region_manager(
         region_labels=cfg.start_end_regions.region_labels,
@@ -142,7 +151,8 @@ def run_start_end_regions(cfg: PostprocessConfig, context: dict) -> None:
         format=cfg.exports.table_format,
     )
 
-    # Grid-based outputs are only meaningful for region_grid + non-continuous releases.
+    # Grid-based outputs are meaningful for region_grid releases.
+    # In continuous mode, per-cell labels are chosen by modal class (random tie break).
     if _is_grid_mode(cfg):
         print("Building release grid from classified summary")
         if "grid" not in context:
@@ -161,6 +171,7 @@ def run_start_end_regions(cfg: PostprocessConfig, context: dict) -> None:
             grid=grid,
             lon_col="lon0",
             lat_col="lat0",
+            use_mode=cfg.release.continuous,
         )
 
         start_table_path = outdir / f"start_regions_table.{cfg.exports.table_format}"
@@ -183,6 +194,10 @@ def run_start_end_regions(cfg: PostprocessConfig, context: dict) -> None:
         if cfg.start_end_regions.plot:
             start_plot_path = outdir / "start_regions.png"
             end_plot_path = outdir / "end_regions.png"
+            category_label_map = {
+                int(r.NumericLabel): {"label": str(r.label), "name": str(r.name)}
+                for r in region_manager.get_regions()
+            }
 
             print("Saving start region plot:", start_plot_path)
             plot_discrete_grid_map(
@@ -191,6 +206,10 @@ def run_start_end_regions(cfg: PostprocessConfig, context: dict) -> None:
                 outpath=start_plot_path,
                 projection=cfg.plotting.projection,
                 title="Start regions",
+                cmap_name=cfg.start_end_regions.discrete_cmap,
+                colorbar_label_mode=cfg.start_end_regions.colorbar_label_mode,
+                category_label_map=category_label_map,
+                show_labels=cfg.start_end_regions.show_region_labels,
             )
 
             print("Saving end region plot:", end_plot_path)
@@ -200,11 +219,14 @@ def run_start_end_regions(cfg: PostprocessConfig, context: dict) -> None:
                 outpath=end_plot_path,
                 projection=cfg.plotting.projection,
                 title="End regions",
+                cmap_name=cfg.start_end_regions.discrete_cmap,
+                colorbar_label_mode=cfg.start_end_regions.colorbar_label_mode,
+                category_label_map=category_label_map,
+                show_labels=False,
             )
     else:
         print(
-            f"Skipping grid outputs (release.mode={cfg.release.mode!r}, "
-            f"release.continuous={cfg.release.continuous})."
+            f"Skipping grid outputs (release.mode={cfg.release.mode!r})."
         )
 
     # Connectivity outputs: available for all release modes.

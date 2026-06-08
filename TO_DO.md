@@ -195,3 +195,192 @@ The output will be
 Let's first plan the workflow, checking the agreement with this plan and the legacy scripts.
 Ask me any uncertainties you might have and any ambiguity you might rise.
 keep the code modular and in line with the already existing postprocessing models. Don't write code yet. 
+
+
+
+**drf drifters converter**
+This is the header of one of the files:
+```
+*2021/12/06 11:39:36.28
+*IOS HEADER VERSION 2.0      2016/04/28 2016/06/13 MATLAB
+
+*FILE
+    START TIME          : UTC 2015/07/27 18:21:36.000
+    END TIME            : UTC 2015/08/15 08:34:48.000
+    TIME INCREMENT      : 0 0 5 0 0  ! (day hr min sec ms)
+    TIME UNITS          : Minutes
+    NUMBER OF RECORDS   : 2214
+    DATA DESCRIPTION    : Drifting Buoy
+    NUMBER OF CHANNELS  : 6
+
+    $TABLE: CHANNELS
+    ! No Name            Units        Minimum      Maximum   
+    !--- --------------- ------------ ------------ ----------
+       1 Record_Number   n/a          1            2214      
+       2 Date            YYYY/MM/DD   n/a          n/a       
+       3 Time            HH:MM:SS     n/a          n/a       
+       4 Latitude        degrees      53.27857     53.58016  
+       5 Longitude       degrees      -129.13622   -128.88232
+       6 Flag:At_Sea     n/a          1            3         
+    $END
+
+    $TABLE: CHANNEL DETAIL
+    ! No  Pad        Start  Width  Format      Type  Decimal_Places
+    !---  ---------  -----  -----  ----------  ----  --------------
+       1  ' '        ' '        8  F           R4      1           
+       2  ' '        ' '    ' '    YYYY/MM/DD  D     ' '           
+       3  ' '        ' '    ' '    HH:MM:SS    T     ' '           
+       4  999.00000  ' '       10  F           R4      5           
+       5  999.00000  ' '       11  F           R4      5           
+       6  9          ' '        2  D           I       0           
+    $END
+    $REMARKS
+        At_Sea flags have the following significance:
+        -------------------------------------------------------------------------
+        0 = Not classified.
+        1 = Good - at sea, freely floating (valid).
+        2 = Bad - at sea but trapped in rocky intertidal (floating but not free).
+        3 = Bad - on land (grounded, test data, etc.).
+        4 = Bad - at sea (large GPS error, on ship, etc.).
+        5 = Bad - land travel.
+        -------------------------------------------------------------------------
+    $END
+
+*ADMINISTRATION
+    MISSION             : 2015-046
+    AGENCY              : IOS, Ocean Sciences Division, Sidney, B.C.
+    COUNTRY             : Canada
+    PROJECT             : WCVI - WCDC Moorings
+    SCIENTIST           : Johannessen S.
+    PLATFORM            : John P. Tully
+    $REMARKS
+        For information about the IOS drifter program see https://www.waterproperties.ca/drifters
+    $END
+
+*LOCATION
+    GEOGRAPHIC AREA     : B.C. Coast and Inlets
+    LATITUDE            :  53  16.71420 N  ! (deg min)
+    LONGITUDE           : 129   8.17320 W  ! (deg min)
+    LATITUDE 2          :  53  34.80960 N  ! (deg min)
+    LONGITUDE 2         : 128  52.93920 W  ! (deg min)
+
+*RECOVERY
+    TIME FOUND          : UTC 0000/01/00
+    LATITUDE FOUND      :   0   0.00000 N  ! (deg min)
+    LONGITUDE FOUND     :   0   0.00000 E  ! (deg min)
+
+*INSTRUMENT
+    TYPE                : Oceanetic Measurement
+    MODEL               : Surface Circulation Tracker
+    ID                  : 277
+    DEVICE ID           : 2544364
+    $REMARKS
+        http://www.oceanetic.com.
+        SCT buoy hull:
+          Height 50 cm.
+          Beam 25 cm.
+          Draft 33 cm.
+          Dry Weight 1.1 kg.
+          Saturated Weight ~3.0 kg.
+          Freeboard ~0.3 cm.
+          Ratio of Cross-section Area ~1 : 15 (above water : below water).
+          Materials cellulose sponge, cork, aluminum, zinc, steel.
+          Deployment by hand from ship.
+        SPOT Trace transmitter:
+          https://www.findmespot.com.
+          Waterproofing IPX7, 1 m for up to 30 minutes, if USB port is
+            sealed with manufacturer supplied cover.
+          Temperature range -30 C to +60 C.
+          Dimensions L= 8.7 cm x W= 5.1 cm x H= 2.1 cm.
+          Weight 0.1 kg (negatively buoyant).
+          Batteries 4 x standard L92 batteries.
+          Tracking interval 5, 10, 30, 60 minutes (option for 2.5 minutes).
+          Operating lifetime 10-11 days typical with 5 minute rate,
+            under ideal conditions.
+          Position accuracy 7.8 m with 95% confidence level.
+        See also:
+          Hourston, R.A.S., Martens, P.S., Juhasz, T., Page, S.J. and Blanken, H. 2021.
+            Surface ocean circulation tracking drifter data from the Northeastern Pacific and
+            Western Arctic Oceans, 2014-2020. Can. Data Rep. Hydrogr. Ocean Sci. 215: vi + 36 p.
+            https://waves-vagues.dfo-mpo.gc.ca/Library/40986500.pdf
+          Page, S.J., Hannah, C., Juhasz, T., Spear, D., and Blanken, H. 2019.
+            Surface circulation tracking drifter data for the Kitimat Fjord system
+            in northern British Columbia and adjacent continental shelf for April,
+            2014 to July, 2016. Can. Data. Report. Hydrog. Ocean.Sci. 328: vi + 33 p.
+            https://waves-vagues.dfo-mpo.gc.ca/Library/40789676.pdf
+    $END
+
+*HISTORY
+
+    $TABLE: PROGRAMS
+    !   Name       Vers  Date       Time     Recs In   Recs Out
+    !   ---------- ----  ---------- -------- --------- ---------
+        DRIFTS2IOS 1.0   2021/12/06 11:39:36      2214      2214
+    $END
+    $REMARKS
+        -DRIFTS2IOS processing: 2021/12/06 11:39:36
+         All atSea=4,5 locations were removed.
+    $END
+
+*COMMENTS
+    Data processed using drifteval software provided by R.Pawlowicz, see:
+      Pawlowicz, R., Hannah, C. and Rosenberger, A., 2019. Lagrangian
+      observations of estuarine residence times, dispersion, and
+      trapping in the Salish Sea. Estuarine, Coastal and Shelf Science,
+      225, p.106246.
+      http://www.sciencedirect.com/science/article/pii/S0272771419302719
+
+*END OF HEADER
+     1.0 2015/07/27 18:21:36  53.53889 -129.01738 1
+     2.0 2015/07/27 18:25:56  53.53818 -129.01799 1
+     3.0 2015/07/27 18:30:58  53.53726 -129.01865 1
+     4.0 2015/07/27 18:35:56  53.53650 -129.01944 1
+     5.0 2015/07/27 18:40:57  53.53611 -129.02071 1
+     6.0 2015/07/27 18:45:56  53.53586 -129.02255 1
+     7.0 2015/07/27 18:50:57  53.53545 -129.02449 1
+```
+
+Following what happens in the drifter_to_zarr.py script, we have to convert all of the trajectories in a certain folder into a zarr file
+the files are stored here:
+ls "C:\Users\Jacopo\OneDrive - CNR\BC_DATA\DRIFTERS\gribbell_island_drifters_IOS\drf"
+
+
+    Directory: C:\Users\Jacopo\OneDrive - CNR\BC_DATA\DRIFTERS\gribbell_island_drifters_IOS\drf
+
+Mode                 LastWriteTime         Length Name                                                                                                                     
+----                 -------------         ------ ----                                                                                                                     
+-a---l        05/06/2026     13:25         477860 codedavis534060166740_20200803_20201002.drf                                                                              
+-a---l        05/06/2026     13:25           6808 sct0008_20140415_20140425.drf                                                                                            
+-a---l        05/06/2026     13:25          62447 sct0175_20150310_20150323.drf                                                                                            
+-a---l        05/06/2026     13:25          78877 sct0176_20150310_20150405.drf                                                                                            
+-a---l        05/06/2026     13:25          48401 sct0178_20150310_20150316.drf                                                                                            
+-a---l        05/06/2026     13:25          63242 sct0179_20150310_20150323.drf                                                                                            
+-a---l        05/06/2026     13:25          64514 sct0184_20150311_20150325.drf                                                                                            
+-a---l        05/06/2026     13:25         123113 sct0277_20150727_20150815.drf                                                                                            
+-a---l        05/06/2026     13:25         117018 sct0278_20150727_20150902.drf                                                                                            
+-a---l        05/06/2026     13:25          61103 sct0279_20150727_20150830.drf                                                                                            
+-a---l        05/06/2026     13:25          38895 sct0280_20150727_20150807.drf                                                                                            
+-a---l        05/06/2026     13:25         156379 sct0327_20151020_20151104.drf                                                                                            
+-a---l        05/06/2026     13:25          74123 sct0328_20151020_20151129.drf                                                                                            
+-a---l        05/06/2026     13:25          66597 sct0330_20151020_20151116.drf                                                                                            
+-a---l        05/06/2026     13:25          53982 sct0331_20151020_20151024.drf                                                                                            
+-a---l        05/06/2026     13:25          31613 sct0511_20160707_20160713.drf                                                                                            
+-a---l        05/06/2026     13:25          22625 sct1124_20200803_20200820.drf                                                                                            
+-a---l        05/06/2026     13:25          85007 sct1128_20200803_20200820.drf                                                                                            
+-a---l        05/06/2026     13:25          56227 sct1136_20200803_20200917.drf                                                                                            
+-a---l        05/06/2026     13:25          15470 sct1143_20200803_20200804.drf                                                                                            
+-a---l        05/06/2026     13:25          33871 sct1202_20201014_20201023.drf                                                                                            
+-a---l        05/06/2026     13:25          19773 sct1212_20201015_20201117.drf                                                                                            
+-a---l        05/06/2026     13:25           6804 sct1695_202507271626_202507280151.drf                                                                                    
+-a---l        05/06/2026     13:25           8283 sct1695_202508100850_202508110710.drf                                                                                    
+-a---l        05/06/2026     13:25           6135 sct1695_202508271853_202508280046.drf                                                                                    
+-a---l        05/06/2026     13:25           7075 sct1700_202507271543_202507280310.drf                                                                                    
+-a---l        05/06/2026     13:25           6401 sct1700_202507280803_202507281203.drf                                                                                    
+-a---l        05/06/2026     13:25           7279 sct1700_202507302200_202507311355.drf     
+
+
+we can maintain the same structure of the yml input parameter file drifter_to_zarr.yml
+
+What do you think it's necessary?
+I see that the time resolution here is 5 minutes, so we can have a very high resolution dataset. when converting can we check the different time resolutions?
+Let's plan the new workflow and the output structure.

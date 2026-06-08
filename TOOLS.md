@@ -306,6 +306,101 @@ Typical variables written:
 
 ---
 
+### `convert-drf-to-zarr`
+
+**Purpose**
+
+Convert IOS `.drf` drifter files into a Parcels-compatible trajectory Zarr dataset.
+
+The converter:
+
+- parses IOS header/body DRF text format
+- derives `platform_code` from instrument `ID` (with filename fallback)
+- filters rows by `At_Sea` flag policy (default keeps only `1`)
+- optionally segments irregular trajectories by expected cadence
+- optionally filters by region and resamples/interpolates the time axis
+- reports input cadence diagnostics and stores summary metadata in dataset attrs
+
+**Run**
+
+```bash
+convert-drf-to-zarr experiments/configs/examples/DRIFTERS/drf_to_zarr_example.yml
+```
+
+Equivalent module form:
+
+```bash
+python -m kinematicparcels.tools.drf_to_zarr experiments/configs/examples/DRIFTERS/drf_to_zarr_example.yml
+```
+
+**CLI arguments**
+
+- `config`: path to the YAML configuration file
+
+**Configuration file structure**
+
+Supported top-level sections:
+
+- `input`
+- `output`
+- `processing`
+
+#### `input`
+
+Controls which DRF files are read.
+
+Supported keys:
+
+- `drf_files`: explicit list of file paths
+- `drf_glob`: glob expression
+- `drf_dir`: input directory
+- `pattern`: filename pattern used with `drf_dir` (default `*.drf`)
+
+#### `processing.quality`
+
+Supported keys:
+
+- `keep_at_sea_flags`: list of integer flags to keep (default `[1]`)
+
+#### `processing.segment`
+
+Supported keys:
+
+- `mode`: `ignore`, `longest`, or `split_as_new`
+- `step_hours`
+- `tolerance_minutes`
+
+#### `processing.regions`
+
+Same behavior and keys as `convert-argo-to-zarr` / `convert-drifter-to-zarr`.
+
+#### `processing.resample`
+
+Same behavior and keys as `convert-argo-to-zarr` / `convert-drifter-to-zarr`.
+
+**Output**
+
+Typical variables written:
+
+- `time`
+- `lon`
+- `lat`
+- `z`
+- `platform_code`
+
+Cadence diagnostics are persisted in attrs including:
+
+- `cadence_n_trajectories`
+- `cadence_mode_step_seconds`
+- `cadence_common_steps_seconds`
+- `cadence_step_histogram`
+
+**Examples**
+
+- Example YAML: `experiments/configs/examples/DRIFTERS/drf_to_zarr_example.yml`
+
+---
+
 ### `couple-trajectories`
 
 **Purpose**
@@ -444,6 +539,7 @@ Under `src/kinematicparcels/tools` the current files are:
 
 - `argo_to_zarr.py`: user-facing CLI tool
 - `drifter_to_zarr.py`: user-facing CLI tool
+- `drf_to_zarr.py`: user-facing CLI tool
 - `couple_trajectories.py`: user-facing CLI tool
 - `zarr_writer.py`: internal shared helper
 - `check_argo_data.py`: development inspection script

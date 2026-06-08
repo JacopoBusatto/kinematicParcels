@@ -300,6 +300,11 @@ class StartEndRegionsConfig:
     connectivity_trail: bool | None = None
     connectivity_trail_steps: int | None = None
 
+    # Discrete start/end map styling
+    discrete_cmap: str | None = None
+    colorbar_label_mode: str = "numeric"  # "numeric" | "region_label" | "region_name"
+    show_region_labels: bool = False
+
 
 @dataclass(frozen=True)
 class TransitionProbabilityConfig:

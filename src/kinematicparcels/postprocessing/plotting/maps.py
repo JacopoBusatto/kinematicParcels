@@ -112,6 +112,10 @@ def plot_discrete_grid_map(
     add_land: bool = True,
     add_coastlines: bool = True,
     add_gridlines: bool = True,
+    cmap_name: str | None = None,
+    colorbar_label_mode: str = "numeric",
+    category_label_map: dict[int, dict[str, str]] | None = None,
+    show_labels: bool = False,
 ) -> None:
     """
     Plot a 2D gridded discrete variable from an xarray.Dataset.
@@ -137,7 +141,7 @@ def plot_discrete_grid_map(
     categories = np.unique(valid_values.astype(int))
     ncat = len(categories)
 
-    cmap = plt.get_cmap("tab20", ncat)
+    cmap = plt.get_cmap(cmap_name or "tab20", ncat)
     bounds = np.arange(ncat + 1) - 0.5
     norm = mcolors.BoundaryNorm(bounds, cmap.N)
 
@@ -149,6 +153,21 @@ def plot_discrete_grid_map(
 
     for idx, cat in enumerate(categories):
         remapped[values_int == cat] = idx
+
+    if colorbar_label_mode not in {"numeric", "region_label", "region_name"}:
+        raise ValueError(
+            "colorbar_label_mode must be one of: 'numeric', 'region_label', 'region_name'."
+        )
+
+    def _display_label(cat: int) -> str:
+        if colorbar_label_mode == "numeric":
+            return str(cat)
+        if category_label_map is None:
+            return str(cat)
+        meta = category_label_map.get(int(cat), {})
+        if colorbar_label_mode == "region_label":
+            return str(meta.get("label", cat))
+        return str(meta.get("name", cat))
 
     outpath = Path(outpath)
     outpath.parent.mkdir(parents=True, exist_ok=True)
@@ -193,8 +212,38 @@ def plot_discrete_grid_map(
         pad=0.03,
         ticks=np.arange(ncat),
     )
-    cbar.ax.set_yticklabels([str(v) for v in categories])
+    cbar.ax.set_yticklabels([_display_label(int(v)) for v in categories])
     cbar.set_label(var_name)
+
+    if show_labels:
+        lon_vals = ds["lon"].values
+        lat_vals = ds["lat"].values
+
+        # Draw one annotation per category using the median cell center.
+        for cat in categories:
+            valid_mask = np.isfinite(values)
+            values_int_safe = np.full(values.shape, -1, dtype=int)
+            values_int_safe[valid_mask] = values[valid_mask].astype(int)
+            mask = valid_mask & (values_int_safe == int(cat))
+            if not np.any(mask):
+                continue
+
+            jj, ii = np.where(mask)
+            label_lon = float(np.median(lon_vals[ii]))
+            label_lat = float(np.median(lat_vals[jj]))
+
+            ax.text(
+                label_lon,
+                label_lat,
+                _display_label(int(cat)),
+                transform=ccrs.PlateCarree(),
+                ha="center",
+                va="center",
+                fontsize=9,
+                color="black",
+                alpha=0.9,
+                zorder=6,
+            )
 
     if title:
         ax.set_title(title)

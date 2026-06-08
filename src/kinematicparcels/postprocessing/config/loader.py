@@ -844,6 +844,27 @@ def _parse_start_end_regions(section: dict[str, Any] | None) -> StartEndRegionsC
             raise ValueError("'start_end_regions.connectivity_trail_steps' must be an integer > 0 or null.")
         connectivity_trail_steps = connectivity_trail_steps_raw
 
+    discrete_cmap_raw = section.get("discrete_cmap", None)
+    if discrete_cmap_raw is None:
+        discrete_cmap = None
+    else:
+        discrete_cmap = _require_nonempty_string(
+            discrete_cmap_raw,
+            "start_end_regions.discrete_cmap",
+        )
+
+    colorbar_label_mode = _require_nonempty_string(
+        section.get("colorbar_label_mode", "numeric"),
+        "start_end_regions.colorbar_label_mode",
+    )
+    if colorbar_label_mode not in {"numeric", "region_label", "region_name"}:
+        raise ValueError(
+            "'start_end_regions.colorbar_label_mode' must be one of: "
+            "'numeric', 'region_label', 'region_name'."
+        )
+
+    show_region_labels = bool(section.get("show_region_labels", False))
+
     priority_level_raw = section.get("priority_level", None)
     if priority_level_raw is None:
         priority_level = None
@@ -873,6 +894,9 @@ def _parse_start_end_regions(section: dict[str, Any] | None) -> StartEndRegionsC
         connectivity_animation_show_tracer=connectivity_animation_show_tracer,
         connectivity_trail=connectivity_trail,
         connectivity_trail_steps=connectivity_trail_steps,
+        discrete_cmap=discrete_cmap,
+        colorbar_label_mode=colorbar_label_mode,
+        show_region_labels=show_region_labels,
     )
 
 

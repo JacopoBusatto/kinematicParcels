@@ -65,3 +65,6 @@ start_end_regions:
   connectivity_animation_show_tracer: null
   connectivity_trail: null
   connectivity_trail_steps: null
+  discrete_cmap: null
+  colorbar_label_mode: numeric
+  show_region_labels: false

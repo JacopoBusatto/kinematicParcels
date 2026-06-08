@@ -1,5 +1,6 @@
 [console_scripts]
 convert-argo-to-zarr = kinematicparcels.tools.argo_to_zarr:main
+convert-drf-to-zarr = kinematicparcels.tools.drf_to_zarr:main
 convert-drifter-to-zarr = kinematicparcels.tools.drifter_to_zarr:main
 couple-trajectories = kinematicparcels.tools.couple_trajectories:main
 run-parcels-experiment = kinematicparcels.runner.run_experiment:main

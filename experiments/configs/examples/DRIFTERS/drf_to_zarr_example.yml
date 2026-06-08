@@ -1,0 +1,25 @@
+# Example configuration for converting IOS .drf files into a Parcels-compatible Zarr dataset.
+# Update input/output paths to your local DRF archive before running.
+
+input:
+  drf_dir: C:/Users/Jacopo/OneDrive - CNR/BC_DATA/DRIFTERS/gribbell_island_drifters_IOS/drf
+  pattern: "*.drf"
+
+processing:
+  quality:
+    keep_at_sea_flags: [1]
+
+  segment:
+    mode: split_as_new
+    step_hours: 0.0833333333 # 5 minutes
+    tolerance_minutes: 1.0
+
+  resample:
+    enabled: true
+    frequency: 10min
+    interpolate: time
+    # reference_time: 2020-01-01T00:00:00Z
+    # shared_time: false
+
+output:
+  path: ./outputs/drifters/gribbell_ios_drf.zarr

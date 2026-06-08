@@ -73,6 +73,7 @@ def _aggregate_region_grid(
     lon_col: str,
     lat_col: str,
     output_col: str,
+    use_mode: bool = False,
 ) -> pd.DataFrame:
     binned = grid.assign_bins(
         classified_summary_df,
@@ -87,6 +88,30 @@ def _aggregate_region_grid(
         )
 
     group_cols = ["lon_bin", "lat_bin", "lon_center", "lat_center"]
+
+    if use_mode:
+        counts = (
+            binned[group_cols + [value_col]]
+            .dropna(subset=[value_col])
+            .groupby(group_cols + [value_col], as_index=False)
+            .size()
+        )
+
+        if counts.empty:
+            return pd.DataFrame(
+                columns=["lon_bin", "lat_bin", "lon_center", "lat_center", output_col]
+            )
+
+        max_size = counts.groupby(group_cols)["size"].transform("max")
+        tied = counts.loc[counts["size"] == max_size].copy()
+
+        # Break ties by random choice among equally frequent labels.
+        chosen = (
+            tied.sample(frac=1.0)
+            .drop_duplicates(subset=group_cols, keep="first")
+            .reset_index(drop=True)
+        )
+        return chosen[group_cols + [value_col]].rename(columns={value_col: output_col})
 
     if priority_col in binned.columns:
         chosen = (
@@ -116,6 +141,7 @@ def compute_start_end_region_maps(
     grid: RegularGrid,
     lon_col: str = "lon0",
     lat_col: str = "lat0",
+    use_mode: bool = False,
 ) -> tuple[pd.DataFrame, xr.Dataset, pd.DataFrame, xr.Dataset]:
     """
     Build start and end region maps on the release grid.
@@ -139,6 +165,7 @@ def compute_start_end_region_maps(
         lon_col=lon_col,
         lat_col=lat_col,
         output_col="start_numericLabel",
+        use_mode=use_mode,
     )
     start_ds = grid.to_xarray(
         start_grid_table,
@@ -154,6 +181,7 @@ def compute_start_end_region_maps(
         lon_col=lon_col,
         lat_col=lat_col,
         output_col="end_numericLabel",
+        use_mode=use_mode,
     )
     end_ds = grid.to_xarray(
         end_grid_table,

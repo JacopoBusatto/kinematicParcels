@@ -949,6 +949,9 @@ start_end_regions:
   connectivity_animation_show_tracer: null
   connectivity_trail: null
   connectivity_trail_steps: null
+  discrete_cmap: null
+  colorbar_label_mode: numeric
+  show_region_labels: false
 ```
 
 - `region_labels` regions to include; `null` includes all available regions
@@ -969,8 +972,11 @@ start_end_regions:
 - `connectivity_animation_fps` optionally overrides the default trajectory animation frame rate
 - `connectivity_animation_show_tracer` controls whether the moving tracer marker is drawn in the connectivity animation
 - `connectivity_trail` and `connectivity_trail_steps` optionally override the trail settings used in the connectivity animation
+- `discrete_cmap` optionally sets the colormap used by start/end discrete region maps (for example `Set3`, `tab20b`); `null` uses the default
+- `colorbar_label_mode` controls how start/end map colorbar ticks are named: `numeric`, `region_label`, or `region_name`
+- `show_region_labels` draws text labels inside cells on the start-region map; the end-region map remains unannotated
 
-The gridded start/end maps are only produced when `release.mode: region_grid` and `release.continuous: false`.
+The gridded start/end maps are produced when `release.mode: region_grid`; in continuous runs, per-cell classes use modal aggregation.
 
 ------------------------------------------------------------
 TRANSITION PROBABILITY

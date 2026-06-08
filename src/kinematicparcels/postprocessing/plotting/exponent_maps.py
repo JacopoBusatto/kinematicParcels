@@ -67,12 +67,40 @@ def plot_exponent_map(
         "cmap": cmap,
     }
     if log_scale:
-        positive_values = finite_values[finite_values > 0]
-        if positive_values.size == 0:
-            raise ValueError("Log-scale exponent-map plots require strictly positive values.")
-        norm_vmin = vmin if vmin is not None else float(np.nanmin(positive_values))
-        norm_vmax = vmax if vmax is not None else float(np.nanmax(positive_values))
-        mesh_kwargs["norm"] = mcolors.LogNorm(vmin=norm_vmin, vmax=norm_vmax)
+        nonzero_values = finite_values[finite_values != 0]
+        if nonzero_values.size == 0:
+            raise ValueError("Log-scale exponent-map plots require at least one finite non-zero value.")
+
+        has_negative = bool(np.any(nonzero_values < 0))
+        has_positive = bool(np.any(nonzero_values > 0))
+
+        if has_negative and has_positive and cmap == "viridis":
+            mesh_kwargs["cmap"] = "RdBu_r"
+
+        if has_negative:
+            abs_nonzero = np.abs(nonzero_values)
+            auto_vmax = float(np.nanmax(abs_nonzero))
+            auto_vmin = float(np.nanmin(abs_nonzero))
+
+            if vmax is None and vmin is None:
+                norm_vmin = -auto_vmax if has_positive else float(np.nanmin(nonzero_values))
+                norm_vmax = auto_vmax if has_positive else float(np.nanmax(nonzero_values))
+            else:
+                norm_vmin = float(vmin) if vmin is not None else (-auto_vmax if has_positive else float(np.nanmin(nonzero_values)))
+                norm_vmax = float(vmax) if vmax is not None else (auto_vmax if has_positive else float(np.nanmax(nonzero_values)))
+
+            linthresh = max(auto_vmin, auto_vmax * 1.0e-6)
+            mesh_kwargs["norm"] = mcolors.SymLogNorm(
+                linthresh=linthresh,
+                vmin=norm_vmin,
+                vmax=norm_vmax,
+                base=10,
+            )
+        else:
+            positive_values = nonzero_values
+            norm_vmin = float(vmin) if vmin is not None else float(np.nanmin(positive_values))
+            norm_vmax = float(vmax) if vmax is not None else float(np.nanmax(positive_values))
+            mesh_kwargs["norm"] = mcolors.LogNorm(vmin=norm_vmin, vmax=norm_vmax)
     else:
         mesh_kwargs["vmin"] = vmin
         mesh_kwargs["vmax"] = vmax

@@ -18,6 +18,7 @@ from kinematicparcels.postprocessing.plotting.trajectories import (
     _split_longitude_wrapped_path,
     plot_trajectories_map,
 )
+from kinematicparcels.postprocessing.plotting.maps import plot_discrete_grid_map
 from kinematicparcels.postprocessing.workflows.run_start_end_regions import _prepare_region_trajectory_inputs
 from kinematicparcels.postprocessing.workflows.run_summary import run_summary
 
@@ -486,6 +487,56 @@ def test_load_postprocess_config_parses_connectivity_alpha(tmp_path: Path) -> No
     assert cfg.start_end_regions.connectivity_animation_show_tracer is False
 
 
+def test_load_postprocess_config_parses_start_end_region_map_styling(tmp_path: Path) -> None:
+    cfg_path = tmp_path / "post.yml"
+    cfg_path.write_text(
+                """
+                dataset:
+                    input_path: ./dummy.zarr
+                start_end_regions:
+                    discrete_cmap: Set3
+                    colorbar_label_mode: region_label
+                    show_region_labels: true
+                """,
+        encoding="utf-8",
+    )
+
+    cfg = load_postprocess_config(cfg_path)
+
+    assert cfg.start_end_regions.discrete_cmap == "Set3"
+    assert cfg.start_end_regions.colorbar_label_mode == "region_label"
+    assert cfg.start_end_regions.show_region_labels is True
+
+
+def test_plot_discrete_grid_map_accepts_label_modes_and_annotations(tmp_path: Path) -> None:
+    ds = xr.Dataset(
+        {
+            "start_numericLabel": (("lat", "lon"), np.array([[1.0, 2.0], [2.0, np.nan]]))
+        },
+        coords={
+            "lat": np.array([36.9, 37.0]),
+            "lon": np.array([14.3, 14.4]),
+        },
+    )
+
+    outpath = tmp_path / "discrete_start_regions.png"
+    plot_discrete_grid_map(
+        ds,
+        var_name="start_numericLabel",
+        outpath=outpath,
+        cmap_name="Set3",
+        colorbar_label_mode="region_name",
+        category_label_map={
+            1: {"label": "sic", "name": "Sicily Channel"},
+            2: {"label": "sesc", "name": "South East Sicily"},
+        },
+        show_labels=True,
+    )
+
+    assert outpath.exists()
+    assert outpath.stat().st_size > 0
+
+
 
 def test_compute_start_end_region_maps_prefers_highest_priority() -> None:
     classified = pd.DataFrame(
@@ -516,3 +567,67 @@ def test_compute_start_end_region_maps_prefers_highest_priority() -> None:
 
     assert float(start_table["start_numericLabel"].iloc[0]) == 30.0
     assert float(end_table["end_numericLabel"].iloc[0]) == 99.0
+
+
+def test_compute_start_end_region_maps_mode_for_continuous() -> None:
+    classified = pd.DataFrame(
+        {
+            "lon0": [14.3, 14.3, 14.3],
+            "lat0": [36.9, 36.9, 36.9],
+            "start_numericLabel": [10.0, 10.0, 20.0],
+            "start_priority": [1.0, 1.0, 9.0],
+            "end_numericLabel": [90.0, 80.0, 90.0],
+            "end_priority": [2.0, 2.0, 2.0],
+        }
+    )
+    grid = RegularGrid(
+        lon_min=14.25,
+        lon_max=14.35,
+        lat_min=36.85,
+        lat_max=36.95,
+        dlon=0.1,
+        dlat=0.1,
+    )
+
+    start_table, _, end_table, _ = compute_start_end_region_maps(
+        classified,
+        grid=grid,
+        lon_col="lon0",
+        lat_col="lat0",
+        use_mode=True,
+    )
+
+    assert float(start_table["start_numericLabel"].iloc[0]) == 10.0
+    assert float(end_table["end_numericLabel"].iloc[0]) == 90.0
+
+
+def test_compute_start_end_region_maps_mode_tie_returns_tied_value() -> None:
+    classified = pd.DataFrame(
+        {
+            "lon0": [14.3, 14.3, 14.3, 14.3],
+            "lat0": [36.9, 36.9, 36.9, 36.9],
+            "start_numericLabel": [10.0, 10.0, 20.0, 20.0],
+            "start_priority": [1.0, 1.0, 9.0, 9.0],
+            "end_numericLabel": [80.0, 90.0, 80.0, 90.0],
+            "end_priority": [2.0, 2.0, 2.0, 2.0],
+        }
+    )
+    grid = RegularGrid(
+        lon_min=14.25,
+        lon_max=14.35,
+        lat_min=36.85,
+        lat_max=36.95,
+        dlon=0.1,
+        dlat=0.1,
+    )
+
+    start_table, _, end_table, _ = compute_start_end_region_maps(
+        classified,
+        grid=grid,
+        lon_col="lon0",
+        lat_col="lat0",
+        use_mode=True,
+    )
+
+    assert float(start_table["start_numericLabel"].iloc[0]) in {10.0, 20.0}
+    assert float(end_table["end_numericLabel"].iloc[0]) in {80.0, 90.0}
