@@ -959,6 +959,26 @@ def _parse_transition_probability(section: dict[str, Any] | None) -> TransitionP
 
     filter_isolated = bool(section.get("filter_isolated", False))
 
+    plotting_section = section.get("plotting", None)
+    if plotting_section is None:
+        plotting = TransitionProbabilityConfig.PlottingConfig()
+    else:
+        plotting_section = _require_dict(plotting_section, "transition_probability.plotting")
+        colormap_raw = plotting_section.get("colormap", None)
+        if colormap_raw is None:
+            colormap = None
+        else:
+            colormap = _require_nonempty_string(
+                colormap_raw,
+                "transition_probability.plotting.colormap",
+            )
+        plotting = TransitionProbabilityConfig.PlottingConfig(
+            enabled=bool(plotting_section.get("enabled", False)),
+            x_log_scale=bool(plotting_section.get("x_log_scale", False)),
+            y_log_scale=bool(plotting_section.get("y_log_scale", False)),
+            colormap=colormap,
+        )
+
     return TransitionProbabilityConfig(
         region_labels=region_labels,
         time_step_stride=time_step_stride_raw,
@@ -970,6 +990,7 @@ def _parse_transition_probability(section: dict[str, Any] | None) -> TransitionP
         trimming_age_days=trimming_age_days,
         max_group_member=max_group_member,
         filter_isolated=filter_isolated,
+        plotting=plotting,
     )
 
 

@@ -1021,6 +1021,11 @@ transition_probability:
   trimming_age_days: null
   max_group_member: null
   filter_isolated: false
+  plotting:
+    enabled: false
+    x_log_scale: false
+    y_log_scale: false
+    colormap: null
 ```
 
 - `region_labels` list of regions to include in the matrix; required
@@ -1030,6 +1035,9 @@ transition_probability:
 - `trimming_age_days` discard samples whose particle age exceeds this value; no interpolation is performed at the cutoff
 - `max_group_member` when grouped trajectories are present, include members up to this index; `null` keeps all members
 - `filter_isolated` replace isolated symbolic labels when previous and next labels are equal and non-null
+- `plotting.enabled` saves the original comprehensive transition plot and additional plots decomposed by starting region
+- `plotting.x_log_scale` and `plotting.y_log_scale` switch the corresponding axes to log scale; non-positive values are masked on log axes
+- `plotting.colormap` optionally selects the Matplotlib categorical colormap used for the starting-region colors, for example `Paired`, `tab10`, `Dark2`, or `Set1`
 
 The normalization denominator is still the number of particles that started in each
 origin region. Setting `trimming_age_days` alone does not force a constant denominator
@@ -1038,6 +1046,8 @@ across all exported ages; use `min_life_days = trimming_age_days` when that is d
 Output:
 
 - `transition_probability.csv`
+- `transition_probability_plot.png` when `transition_probability.plotting.enabled` is `true`
+- `transition_probability_<origin>_plot.png` when `transition_probability.plotting.enabled` is `true`
 
 ------------------------------------------------------------
 TRAJECTORIES

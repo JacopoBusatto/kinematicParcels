@@ -47,3 +47,8 @@ transition_probability:
   trimming_age_days: null  # Keep all ages, or set a maximum particle age in days.
   max_group_member: null  # Set an integer to keep only members <= this value.
   filter_isolated: true   # Replace isolated symbolic labels when neighbors agree.
+  plotting:
+    enabled: true
+    x_log_scale: true
+    y_log_scale: true
+    colormap: Paired  # e.g. Paired | tab10 | Dark2 | Set1 | Set2 | tab20

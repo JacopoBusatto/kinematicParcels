@@ -308,6 +308,13 @@ class StartEndRegionsConfig:
 
 @dataclass(frozen=True)
 class TransitionProbabilityConfig:
+    @dataclass(frozen=True)
+    class PlottingConfig:
+        enabled: bool = False
+        x_log_scale: bool = False
+        y_log_scale: bool = False
+        colormap: str | None = None
+
     region_labels: tuple[str, ...] = ()
     time_step_stride: int = 1
     how_many: str = "priority_max"
@@ -318,6 +325,7 @@ class TransitionProbabilityConfig:
     trimming_age_days: float | None = None
     max_group_member: int | None = None
     filter_isolated: bool = False
+    plotting: PlottingConfig = field(default_factory=PlottingConfig)
 
     def __post_init__(self) -> None:
         if len(self.region_labels) == 0:

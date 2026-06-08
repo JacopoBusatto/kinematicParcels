@@ -8,6 +8,10 @@ import pytest
 from kinematicparcels.postprocessing.analyses.transition_probability import compute_transition_probability
 from kinematicparcels.postprocessing.config import load_postprocess_config
 from kinematicparcels.postprocessing.config.models import TransitionProbabilityConfig
+from kinematicparcels.postprocessing.plotting.transition_probability import (
+    plot_transition_probability_by_source,
+    plot_transition_probability_overview,
+)
 from kinematicparcels.regions import Region, RegionManager
 
 
@@ -34,6 +38,11 @@ def test_load_postprocess_config_parses_transition_probability_section(tmp_path)
                             trimming_age_days: 10
                             max_group_member: 2
                             filter_isolated: true
+                            plotting:
+                                enabled: true
+                                x_log_scale: true
+                                y_log_scale: true
+                                colormap: Paired
                         """
                 ),
         encoding="utf-8",
@@ -49,6 +58,46 @@ def test_load_postprocess_config_parses_transition_probability_section(tmp_path)
     assert cfg.transition_probability.trimming_age_days == 10
     assert cfg.transition_probability.max_group_member == 2
     assert cfg.transition_probability.filter_isolated is True
+    assert cfg.transition_probability.plotting.enabled is True
+    assert cfg.transition_probability.plotting.x_log_scale is True
+    assert cfg.transition_probability.plotting.y_log_scale is True
+    assert cfg.transition_probability.plotting.colormap == "Paired"
+
+
+def test_transition_probability_plotting_writes_overview_and_source_plots(tmp_path) -> None:
+    transition_table = pd.DataFrame(
+        {
+            "age_days": [0.0, 1.0, 2.0],
+            "p_r1__r1": [1.0, 0.5, 0.0],
+            "p_r1__r2": [0.0, 0.5, 1.0],
+            "p_r2__r1": [0.0, 0.0, 1.0],
+            "p_r2__r2": [1.0, 1.0, 0.0],
+        }
+    )
+
+    overview_path = plot_transition_probability_overview(
+        transition_table,
+        region_labels=["r1", "r2"],
+        outpath=tmp_path / "transition_probability_plot.png",
+        x_log_scale=True,
+        y_log_scale=True,
+        colormap="Paired",
+    )
+    source_paths = plot_transition_probability_by_source(
+        transition_table,
+        region_labels=["r1", "r2"],
+        outdir=tmp_path,
+        x_log_scale=True,
+        y_log_scale=True,
+        colormap="Paired",
+    )
+
+    assert overview_path.exists()
+    assert [path.name for path in source_paths] == [
+        "transition_probability_r1_plot.png",
+        "transition_probability_r2_plot.png",
+    ]
+    assert all(path.exists() for path in source_paths)
 
 
 def _region_manager(priority_r2: int = 1) -> RegionManager:
