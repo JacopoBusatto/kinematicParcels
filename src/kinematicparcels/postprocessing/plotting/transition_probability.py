@@ -70,6 +70,56 @@ def _mask_for_log_axes(
     return ages.loc[mask], values.loc[mask]
 
 
+def _compute_shared_y_limits(
+    transition_table: pd.DataFrame,
+    *,
+    region_labels: list[str],
+    x_log_scale: bool,
+    y_log_scale: bool,
+) -> tuple[float, float] | None:
+    ages = transition_table["age_days"]
+    plotted_values: list[np.ndarray] = []
+
+    for origin in region_labels:
+        for target in region_labels:
+            column_name = f"p_{origin}__{target}"
+            if column_name not in transition_table.columns:
+                raise KeyError(f"Missing transition probability column '{column_name}'.")
+
+            _, y_vals = _mask_for_log_axes(
+                ages,
+                transition_table[column_name],
+                x_log_scale=x_log_scale,
+                y_log_scale=y_log_scale,
+            )
+            if len(y_vals) > 0:
+                plotted_values.append(y_vals.to_numpy(dtype=float))
+
+    if len(plotted_values) == 0:
+        return None
+
+    values = np.concatenate(plotted_values)
+    values = values[np.isfinite(values)]
+    if len(values) == 0:
+        return None
+
+    if y_log_scale:
+        positive_values = values[values > 0]
+        if len(positive_values) == 0:
+            return 1.0e-6, 1.0
+
+        ymin = 10.0 ** float(np.floor(np.log10(float(positive_values.min()))))
+        ymax = 10.0 ** float(np.ceil(np.log10(float(positive_values.max()))))
+        if ymax <= ymin:
+            ymax = ymin * 10.0
+        return ymin, ymax
+
+    ymax = float(values.max())
+    if ymax <= 0:
+        ymax = 1.0
+    return 0.0, ymax
+
+
 def _add_log_note(ax, *, x_log_scale: bool, y_log_scale: bool) -> None:
     if x_log_scale or y_log_scale:
         ax.text(
@@ -105,6 +155,12 @@ def plot_transition_probability_overview(
     ages = transition_table["age_days"]
     start_colors = _build_palette(region_labels, colormap=colormap)
     target_styles = _target_style_map(region_labels)
+    shared_y_limits = _compute_shared_y_limits(
+        transition_table,
+        region_labels=region_labels,
+        x_log_scale=x_log_scale,
+        y_log_scale=y_log_scale,
+    )
 
     fig, ax = plt.subplots(figsize=(14, 8), dpi=150)
 
@@ -139,6 +195,8 @@ def plot_transition_probability_overview(
     ax.grid(True, which="major", color="#bfc7d5", alpha=0.8, linewidth=0.8)
     ax.grid(True, which="minor", color="#d7dde8", alpha=0.55, linewidth=0.5)
     _apply_axis_scales(ax, x_log_scale=x_log_scale, y_log_scale=y_log_scale)
+    if shared_y_limits is not None:
+        ax.set_ylim(*shared_y_limits)
     _add_log_note(ax, x_log_scale=x_log_scale, y_log_scale=y_log_scale)
 
     start_handles = [
@@ -189,6 +247,12 @@ def plot_transition_probability_by_source(
     ages = transition_table["age_days"]
     target_colors = _build_palette(region_labels, colormap=colormap)
     target_styles = _target_style_map(region_labels)
+    shared_y_limits = _compute_shared_y_limits(
+        transition_table,
+        region_labels=region_labels,
+        x_log_scale=x_log_scale,
+        y_log_scale=y_log_scale,
+    )
     outdir = Path(outdir)
     outdir.mkdir(parents=True, exist_ok=True)
     outputs: list[Path] = []
@@ -227,6 +291,8 @@ def plot_transition_probability_by_source(
         ax.grid(True, which="major", color="#bfc7d5", alpha=0.8, linewidth=0.8)
         ax.grid(True, which="minor", color="#d7dde8", alpha=0.55, linewidth=0.5)
         _apply_axis_scales(ax, x_log_scale=x_log_scale, y_log_scale=y_log_scale)
+        if shared_y_limits is not None:
+            ax.set_ylim(*shared_y_limits)
         _add_log_note(ax, x_log_scale=x_log_scale, y_log_scale=y_log_scale)
         ax.legend(
             title="Target region",

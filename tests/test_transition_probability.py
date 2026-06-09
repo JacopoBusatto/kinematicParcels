@@ -8,6 +8,7 @@ import pytest
 from kinematicparcels.postprocessing.analyses.transition_probability import compute_transition_probability
 from kinematicparcels.postprocessing.config import load_postprocess_config
 from kinematicparcels.postprocessing.config.models import TransitionProbabilityConfig
+from kinematicparcels.postprocessing.plotting import transition_probability as transition_probability_plotting
 from kinematicparcels.postprocessing.plotting.transition_probability import (
     plot_transition_probability_by_source,
     plot_transition_probability_overview,
@@ -98,6 +99,50 @@ def test_transition_probability_plotting_writes_overview_and_source_plots(tmp_pa
         "transition_probability_r2_plot.png",
     ]
     assert all(path.exists() for path in source_paths)
+
+
+def test_transition_probability_plotting_uses_shared_log_y_limits(tmp_path, monkeypatch) -> None:
+    transition_table = pd.DataFrame(
+        {
+            "age_days": [0.0, 1.0, 2.0, 3.0],
+            "p_r1__r1": [1.0, 0.25, 0.05, 0.0],
+            "p_r1__r2": [0.0, 0.75, 0.95, 1.0],
+            "p_r2__r1": [0.0, 0.02, 0.2, 0.5],
+            "p_r2__r2": [1.0, 0.98, 0.8, 0.5],
+        }
+    )
+    captured_limits: dict[str, tuple[float, float]] = {}
+    original_save = transition_probability_plotting._save_figure
+
+    def _capture_limits(fig, outpath) -> None:
+        captured_limits[outpath.name] = fig.axes[0].get_ylim()
+        original_save(fig, outpath)
+
+    monkeypatch.setattr(transition_probability_plotting, "_save_figure", _capture_limits)
+
+    overview_path = plot_transition_probability_overview(
+        transition_table,
+        region_labels=["r1", "r2"],
+        outpath=tmp_path / "transition_probability_plot.png",
+        x_log_scale=True,
+        y_log_scale=True,
+        colormap="Paired",
+    )
+    source_paths = plot_transition_probability_by_source(
+        transition_table,
+        region_labels=["r1", "r2"],
+        outdir=tmp_path,
+        x_log_scale=True,
+        y_log_scale=True,
+        colormap="Paired",
+    )
+
+    expected_limits = pytest.approx((1.0e-2, 1.0))
+    assert overview_path.exists()
+    assert all(path.exists() for path in source_paths)
+    assert captured_limits["transition_probability_plot.png"] == expected_limits
+    assert captured_limits["transition_probability_r1_plot.png"] == expected_limits
+    assert captured_limits["transition_probability_r2_plot.png"] == expected_limits
 
 
 def _region_manager(priority_r2: int = 1) -> RegionManager:
