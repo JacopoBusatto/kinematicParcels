@@ -239,7 +239,7 @@ def plot_discrete_grid_map(
                 transform=ccrs.PlateCarree(),
                 ha="center",
                 va="center",
-                fontsize=9,
+                fontsize=16,
                 color="black",
                 alpha=0.9,
                 zorder=6,

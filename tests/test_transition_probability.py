@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from textwrap import dedent
 
+import numpy as np
 import pandas as pd
 import pytest
 
@@ -145,6 +146,49 @@ def test_transition_probability_plotting_uses_shared_log_y_limits(tmp_path, monk
     assert captured_limits["transition_probability_r2_plot.png"] == expected_limits
 
 
+def test_transition_probability_plotting_adds_reference_fraction_lines(tmp_path, monkeypatch) -> None:
+    transition_table = pd.DataFrame(
+        {
+            "age_days": [0.0, 1.0, 2.0],
+            "represented_fraction_total": [1.0, 2.0 / 3.0, 2.0 / 3.0],
+            "n_r1": [2, 2, 2],
+            "n_r2": [1, 1, 1],
+            "p_r1__r1": [1.0, 0.5, 0.0],
+            "p_r1__r2": [0.0, 0.0, 0.5],
+            "p_r2__r1": [0.0, 0.0, 0.0],
+            "p_r2__r2": [1.0, 1.0, 1.0],
+        }
+    )
+    captured_lines: dict[str, list[np.ndarray]] = {}
+    original_save = transition_probability_plotting._save_figure
+
+    def _capture_lines(fig, outpath) -> None:
+        black_lines = []
+        for line in fig.axes[0].lines:
+            if line.get_color() == "black" and line.get_linestyle() == "-":
+                black_lines.append(np.asarray(line.get_ydata(), dtype=float))
+        captured_lines[outpath.name] = black_lines
+        original_save(fig, outpath)
+
+    monkeypatch.setattr(transition_probability_plotting, "_save_figure", _capture_lines)
+
+    plot_transition_probability_overview(
+        transition_table,
+        region_labels=["r1", "r2"],
+        outpath=tmp_path / "transition_probability_plot.png",
+    )
+    plot_transition_probability_by_source(
+        transition_table,
+        region_labels=["r1", "r2"],
+        outdir=tmp_path,
+    )
+
+    assert len(captured_lines["transition_probability_plot.png"]) == 1
+    assert captured_lines["transition_probability_plot.png"][0] == pytest.approx([1.0, 2.0 / 3.0, 2.0 / 3.0])
+    assert captured_lines["transition_probability_r1_plot.png"][0] == pytest.approx([1.0, 0.5, 0.5])
+    assert captured_lines["transition_probability_r2_plot.png"][0] == pytest.approx([1.0, 1.0, 1.0])
+
+
 def _region_manager(priority_r2: int = 1) -> RegionManager:
     return RegionManager(
         [
@@ -211,10 +255,35 @@ def test_compute_transition_probability_counts_and_excludes_outside_starts() -> 
     )
 
     assert result["age_days"].tolist() == [0.0, 1.0, 2.0]
+    assert result["represented_fraction_total"].tolist() == [1.0, 1.0, 1.0]
+    assert result["n_r1"].tolist() == [2, 2, 2]
+    assert result["n_r2"].tolist() == [1, 1, 1]
     assert result["p_r1__r1"].tolist() == [1.0, 0.5, 0.0]
     assert result["p_r1__r2"].tolist() == [0.0, 0.5, 1.0]
     assert result["p_r2__r1"].tolist() == [0.0, 0.0, 1.0]
     assert result["p_r2__r2"].tolist() == [1.0, 1.0, 0.0]
+
+
+def test_compute_transition_probability_exports_weighted_total_represented_fraction() -> None:
+    df = pd.DataFrame(
+        _trajectory_rows("a", [(0.5, 0.5), (0.5, 0.5), (2.5, 0.5)])
+        + _trajectory_rows("b", [(0.6, 0.5), (5.0, 5.0), (5.0, 5.0)])
+        + _trajectory_rows("c", [(2.5, 0.5), (2.5, 0.5), (2.5, 0.5)])
+    )
+
+    result = compute_transition_probability(
+        df,
+        cfg=_base_cfg(),
+        region_manager=_region_manager(),
+    )
+
+    assert result["age_days"].tolist() == [0.0, 1.0, 2.0]
+    assert result["n_r1"].tolist() == [2, 2, 2]
+    assert result["n_r2"].tolist() == [1, 1, 1]
+    assert result["represented_fraction_total"].tolist() == pytest.approx([1.0, 2.0 / 3.0, 2.0 / 3.0])
+    assert result["p_r1__r1"].tolist() == [1.0, 0.5, 0.0]
+    assert result["p_r1__r2"].tolist() == [0.0, 0.0, 0.5]
+    assert result["p_r2__r2"].tolist() == [1.0, 1.0, 1.0]
 
 
 def test_compute_transition_probability_aligns_unsynchronized_starts_on_age_axis() -> None:

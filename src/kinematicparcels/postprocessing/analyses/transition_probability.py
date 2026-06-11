@@ -41,7 +41,10 @@ def _apply_isolated_region_filter(labels: pd.Series) -> pd.Series:
 
 
 def _empty_transition_table(region_order: list[str]) -> pd.DataFrame:
-    columns = ["age_days"] + [
+    columns = ["age_days", "represented_fraction_total"] + [
+        f"n_{origin}"
+        for origin in region_order
+    ] + [
         f"p_{origin}__{target}"
         for origin in region_order
         for target in region_order
@@ -217,17 +220,41 @@ def compute_transition_probability(
     pivot = pivot.reindex(columns=ordered_columns, fill_value=0)
 
     probability = pd.DataFrame(index=sampled_ages)
+    represented_fraction_total = pd.Series(0.0, index=sampled_ages, dtype=float)
+    total_denominator = int(sum(int(denominators.get(origin, 0)) for origin in region_order))
+
     for origin in region_order:
         denominator = int(denominators.get(origin, 0))
+        origin_represented_fraction = pd.Series(0.0, index=sampled_ages, dtype=float)
         for target in region_order:
             column_name = f"p_{origin}__{target}"
             if denominator == 0:
                 probability[column_name] = np.nan
             else:
                 probability[column_name] = pivot[(origin, target)].astype(float) / float(denominator)
+                origin_represented_fraction = origin_represented_fraction + probability[column_name].fillna(0.0)
+
+        probability[f"n_{origin}"] = denominator
+        if denominator > 0:
+            represented_fraction_total = represented_fraction_total + float(denominator) * origin_represented_fraction
+
+    if total_denominator == 0:
+        probability["represented_fraction_total"] = np.nan
+    else:
+        probability["represented_fraction_total"] = represented_fraction_total / float(total_denominator)
 
     probability = probability.reset_index()
     probability["age_days"] = probability["age"].dt.total_seconds() / 86400.0
     probability = probability.drop(columns=["age"])
-    probability = probability[["age_days"] + [c for c in probability.columns if c != "age_days"]]
+    ordered_probability_columns = [
+        f"p_{origin}__{target}"
+        for origin in region_order
+        for target in region_order
+    ]
+    ordered_count_columns = [f"n_{origin}" for origin in region_order]
+    probability = probability[
+        ["age_days", "represented_fraction_total"]
+        + ordered_count_columns
+        + ordered_probability_columns
+    ]
     return probability

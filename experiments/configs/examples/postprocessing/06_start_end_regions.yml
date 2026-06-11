@@ -37,7 +37,7 @@ grid:
   dlat: 0.1
 
 release:
-  mode: region_grid  # point_list | region_grid | circle | lkm. Grid products are meaningful mainly for region_grid + continuous=false.
+  mode: region_grid  # point_list | region_grid | circle | lkm. Grid products are produced for region_grid.
   continuous: false
 
 plotting:
@@ -65,6 +65,10 @@ start_end_regions:
   connectivity_animation_show_tracer: null
   connectivity_trail: null
   connectivity_trail_steps: null
+  # Discrete map styling for start/end/mode maps.
   discrete_cmap: null
   colorbar_label_mode: numeric
+  # Draw in-map text labels only on the start map.
   show_region_labels: false
+
+# Outputs include start/end/mode region maps and corresponding table/NetCDF products.

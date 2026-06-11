@@ -902,9 +902,11 @@ Classifies each particle according to the region of:
 
 - initial position
 - final position
+- most visited position along each trajectory (mode region)
 
 Input:
 - particle_summary
+- trajectory_table (used internally to compute per-trajectory mode region)
 
 Region definitions are loaded from:
 
@@ -922,6 +924,7 @@ Outputs include:
 - classified particle summary
 - start region map
 - end region map
+- mode region map (most visited region over starting position)
 - optional plots
 - optional connectivity plots and animations
 
@@ -972,9 +975,17 @@ start_end_regions:
 - `connectivity_animation_fps` optionally overrides the default trajectory animation frame rate
 - `connectivity_animation_show_tracer` controls whether the moving tracer marker is drawn in the connectivity animation
 - `connectivity_trail` and `connectivity_trail_steps` optionally override the trail settings used in the connectivity animation
-- `discrete_cmap` optionally sets the colormap used by start/end discrete region maps (for example `Set3`, `tab20b`); `null` uses the default
-- `colorbar_label_mode` controls how start/end map colorbar ticks are named: `numeric`, `region_label`, or `region_name`
+- `discrete_cmap` optionally sets the colormap used by start/end/mode discrete region maps (for example `Set3`, `tab20b`); `null` uses the default
+- `colorbar_label_mode` controls how start/end/mode map colorbar ticks are named: `numeric`, `region_label`, or `region_name`
 - `show_region_labels` draws text labels inside cells on the start-region map; the end-region map remains unannotated
+
+The classified particle summary also includes:
+
+- `mode_region`
+- `mode_numericLabel`
+- `mode_priority`
+
+`mode_region` is computed per trajectory (or per trajectory-member key when grouped metadata is present) by classifying all trajectory points and selecting the most frequent visited region label. If multiple labels tie for highest frequency, one tied label is selected randomly.
 
 The gridded start/end maps are produced when `release.mode: region_grid`; in continuous runs, per-cell classes use modal aggregation.
 
@@ -996,11 +1007,12 @@ For each retained time step, the workflow:
 - counts how many particles that started in region `i` are in region `j`
 - normalizes by the number of particles that started in region `i`
 
-The exported CSV contains one row per sampled particle age and one probability
-column per ordered region pair:
+The exported CSV contains one row per sampled particle age, one weighted total
+represented-fraction column, one repeated origin-count column per origin region,
+and one probability column per ordered region pair:
 
 ```text
-age_days, p_<origin1>__<target1>, ..., p_<originN>__<targetN>
+age_days, represented_fraction_total, n_<origin1>, ..., n_<originN>, p_<origin1>__<target1>, ..., p_<originN>__<targetN>
 ```
 
 The analysis reuses the same region-selection options as `start_end_regions`
@@ -1043,11 +1055,20 @@ The normalization denominator is still the number of particles that started in e
 origin region. Setting `trimming_age_days` alone does not force a constant denominator
 across all exported ages; use `min_life_days = trimming_age_days` when that is desired.
 
+- `represented_fraction_total` is the weighted fraction of particles currently represented inside the selected region set across all origins
+- `n_<origin>` is the number of particles that started in each origin region, repeated on every row so the weighted total can be reproduced from the CSV alone
+
 Output:
 
 - `transition_probability.csv`
 - `transition_probability_plot.png` when `transition_probability.plotting.enabled` is `true`
 - `transition_probability_<origin>_plot.png` when `transition_probability.plotting.enabled` is `true`
+
+When plotting is enabled, the overview figure includes a thin black solid line for
+`represented_fraction_total`, and each origin-specific figure includes a thin black
+solid line for `sum_j P_{i,j}`. These curves track the fraction represented inside
+the selected region set, not necessarily the fraction of tracers still alive in the
+full domain.
 
 ------------------------------------------------------------
 TRAJECTORIES

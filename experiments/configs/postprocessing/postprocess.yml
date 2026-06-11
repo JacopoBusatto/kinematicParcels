@@ -86,10 +86,13 @@ start_end_regions:
   priority_level: 6
   priority_mode: atleast
   input_lon_mode: "-180_180"
+  # Produces start/end/mode region maps (plus tables and NetCDF) in region_grid runs.
   plot: true
   plot_connectivity: false
   animate_connectivity: false
   connectivity_segments: true
+  # Shared discrete styling for start/end/mode maps.
   discrete_cmap: null
   colorbar_label_mode: numeric
+  # In-map labels are applied only to the start map.
   show_region_labels: false

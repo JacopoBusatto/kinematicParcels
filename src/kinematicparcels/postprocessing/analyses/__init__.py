@@ -6,6 +6,8 @@ from .meridional_crossing import compute_meridional_crossing
 from ..core.regions import build_region_manager, classify_region_points
 from .start_end_regions import (
     classify_start_end_regions,
+    compute_mode_region_map,
+    compute_mode_region_summary,
     compute_start_end_region_maps,
 )
 from .transition_probability import compute_transition_probability
@@ -20,6 +22,8 @@ __all__ = [
     "build_region_manager",
     "classify_region_points",
     "classify_start_end_regions",
+    "compute_mode_region_summary",
     "compute_start_end_region_maps",
+    "compute_mode_region_map",
     "compute_transition_probability",
 ]

@@ -95,6 +95,31 @@ def _compute_shared_y_limits(
             if len(y_vals) > 0:
                 plotted_values.append(y_vals.to_numpy(dtype=float))
 
+        represented_origin = _represented_fraction_for_origin(
+            transition_table,
+            origin=origin,
+            region_labels=region_labels,
+        )
+        _, y_vals = _mask_for_log_axes(
+            ages,
+            represented_origin,
+            x_log_scale=x_log_scale,
+            y_log_scale=y_log_scale,
+        )
+        if len(y_vals) > 0:
+            plotted_values.append(y_vals.to_numpy(dtype=float))
+
+    represented_total = _represented_fraction_total(transition_table, region_labels=region_labels)
+    if represented_total is not None:
+        _, y_vals = _mask_for_log_axes(
+            ages,
+            represented_total,
+            x_log_scale=x_log_scale,
+            y_log_scale=y_log_scale,
+        )
+        if len(y_vals) > 0:
+            plotted_values.append(y_vals.to_numpy(dtype=float))
+
     if len(plotted_values) == 0:
         return None
 
@@ -118,6 +143,52 @@ def _compute_shared_y_limits(
     if ymax <= 0:
         ymax = 1.0
     return 0.0, ymax
+
+
+def _represented_fraction_for_origin(
+    transition_table: pd.DataFrame,
+    *,
+    origin: str,
+    region_labels: list[str],
+) -> pd.Series:
+    columns = [f"p_{origin}__{target}" for target in region_labels]
+    missing = [column_name for column_name in columns if column_name not in transition_table.columns]
+    if missing:
+        missing_str = ", ".join(missing)
+        raise KeyError(f"Missing transition probability columns for origin '{origin}': {missing_str}")
+    return transition_table[columns].sum(axis=1, min_count=1)
+
+
+def _represented_fraction_total(
+    transition_table: pd.DataFrame,
+    *,
+    region_labels: list[str],
+) -> pd.Series | None:
+    if "represented_fraction_total" in transition_table.columns:
+        return transition_table["represented_fraction_total"]
+
+    count_columns = [f"n_{origin}" for origin in region_labels]
+    if not all(column_name in transition_table.columns for column_name in count_columns):
+        return None
+
+    if transition_table.empty:
+        return pd.Series(dtype=float)
+
+    total_count = sum(float(transition_table.iloc[0][column_name]) for column_name in count_columns)
+    if total_count <= 0:
+        return pd.Series(np.nan, index=transition_table.index, dtype=float)
+
+    weighted_total = pd.Series(0.0, index=transition_table.index, dtype=float)
+    for origin in region_labels:
+        origin_count = float(transition_table.iloc[0][f"n_{origin}"])
+        if origin_count <= 0:
+            continue
+        weighted_total = weighted_total + origin_count * _represented_fraction_for_origin(
+            transition_table,
+            origin=origin,
+            region_labels=region_labels,
+        ).fillna(0.0)
+    return weighted_total / total_count
 
 
 def _add_log_note(ax, *, x_log_scale: bool, y_log_scale: bool) -> None:
@@ -188,6 +259,27 @@ def plot_transition_probability_overview(
                 alpha=0.95,
             )
 
+    represented_total = _represented_fraction_total(
+        transition_table,
+        region_labels=region_labels,
+    )
+    if represented_total is not None:
+        x_vals, y_vals = _mask_for_log_axes(
+            ages,
+            represented_total,
+            x_log_scale=x_log_scale,
+            y_log_scale=y_log_scale,
+        )
+        if len(x_vals) > 0:
+            ax.plot(
+                x_vals,
+                y_vals,
+                color="black",
+                linestyle="-",
+                linewidth=1.8,
+                alpha=0.95,
+            )
+
     ax.set_title("Transition fractions by source and target region", fontsize=28, pad=22)
     ax.set_xlabel("age (days)", fontsize=22)
     ax.set_ylabel("transition fraction", fontsize=22)
@@ -197,7 +289,7 @@ def plot_transition_probability_overview(
     _apply_axis_scales(ax, x_log_scale=x_log_scale, y_log_scale=y_log_scale)
     if shared_y_limits is not None:
         ax.set_ylim(*shared_y_limits)
-    _add_log_note(ax, x_log_scale=x_log_scale, y_log_scale=y_log_scale)
+    # _add_log_note(ax, x_log_scale=x_log_scale, y_log_scale=y_log_scale)
 
     start_handles = [
         Line2D([0], [0], color=start_colors[label], linewidth=4, label=label)
@@ -284,6 +376,27 @@ def plot_transition_probability_by_source(
                 label=target,
             )
 
+        represented_origin = _represented_fraction_for_origin(
+            transition_table,
+            origin=origin,
+            region_labels=region_labels,
+        )
+        x_vals, y_vals = _mask_for_log_axes(
+            ages,
+            represented_origin,
+            x_log_scale=x_log_scale,
+            y_log_scale=y_log_scale,
+        )
+        if len(x_vals) > 0:
+            ax.plot(
+                x_vals,
+                y_vals,
+                color="black",
+                linestyle="-",
+                linewidth=1.8,
+                alpha=0.95,
+            )
+
         ax.set_title(f"Transition fractions from source region {origin}", fontsize=28, pad=22)
         ax.set_xlabel("age (days)", fontsize=22)
         ax.set_ylabel("transition fraction", fontsize=22)
@@ -293,7 +406,7 @@ def plot_transition_probability_by_source(
         _apply_axis_scales(ax, x_log_scale=x_log_scale, y_log_scale=y_log_scale)
         if shared_y_limits is not None:
             ax.set_ylim(*shared_y_limits)
-        _add_log_note(ax, x_log_scale=x_log_scale, y_log_scale=y_log_scale)
+        # _add_log_note(ax, x_log_scale=x_log_scale, y_log_scale=y_log_scale)
         ax.legend(
             title="Target region",
             loc="upper left",

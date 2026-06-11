@@ -64,6 +64,74 @@ def classify_start_end_regions(
     return out
 
 
+def compute_mode_region_summary(
+    traj_df: pd.DataFrame,
+    *,
+    region_manager: RegionManager,
+    how_many: str = "priority_max",
+    priority_level: int | None = None,
+    priority_mode: str = "exact",
+    input_lon_mode: str = "-180_180",
+    trajectory_col: str = "trajectory",
+    group_member_col: str = "group_member",
+    lon_col: str = "lon",
+    lat_col: str = "lat",
+) -> pd.DataFrame:
+    """
+    Compute most-visited region per trajectory key from full trajectory points.
+
+    The mode is computed only on symbolic region labels. Numeric label and
+    priority are inferred afterwards from RegionManager metadata.
+    """
+    required = [trajectory_col, lon_col, lat_col]
+    missing = [c for c in required if c not in traj_df.columns]
+    if missing:
+        raise KeyError(f"Input trajectory dataframe missing required columns: {missing}")
+
+    key_cols = [trajectory_col] + ([group_member_col] if group_member_col in traj_df.columns else [])
+
+    classified_points = classify_region_points(
+        traj_df,
+        region_manager=region_manager,
+        how_many=how_many,
+        priority_level=priority_level,
+        priority_mode=priority_mode,
+        input_lon_mode=input_lon_mode,
+        lon_col=lon_col,
+        lat_col=lat_col,
+        region_col="mode_region_point",
+        numeric_col="_mode_numericLabel_point",
+        priority_col="_mode_priority_point",
+    )
+
+    def _choose_mode_region(labels: pd.Series) -> str | None:
+        labels = labels.dropna()
+        if labels.empty:
+            return None
+        counts = labels.value_counts()
+        max_count = counts.max()
+        tied = counts[counts == max_count].index.to_list()
+        if len(tied) == 1:
+            return str(tied[0])
+        return str(pd.Series(tied).sample(n=1).iloc[0])
+
+    mode_summary = (
+        classified_points.groupby(key_cols, dropna=False)["mode_region_point"]
+        .agg(_choose_mode_region)
+        .reset_index(name="mode_region")
+    )
+
+    label_to_numeric: dict[str, float] = {}
+    label_to_priority: dict[str, float] = {}
+    for region in region_manager.get_regions():
+        label_to_numeric[str(region.label)] = float(region.NumericLabel)
+        label_to_priority[str(region.label)] = float(region.priority)
+
+    mode_summary["mode_numericLabel"] = mode_summary["mode_region"].map(label_to_numeric)
+    mode_summary["mode_priority"] = mode_summary["mode_region"].map(label_to_priority)
+    return mode_summary
+
+
 def _aggregate_region_grid(
     classified_summary_df: pd.DataFrame,
     *,
@@ -190,3 +258,41 @@ def compute_start_end_region_maps(
     )
 
     return start_grid_table, start_ds, end_grid_table, end_ds
+
+
+def compute_mode_region_map(
+    classified_summary_df: pd.DataFrame,
+    *,
+    grid: RegularGrid,
+    lon_col: str = "lon0",
+    lat_col: str = "lat0",
+    use_mode: bool = False,
+) -> tuple[pd.DataFrame, xr.Dataset]:
+    """
+    Build most-visited (mode) region map on the release grid.
+
+    Returns:
+    - mode grid table
+    - mode dataset
+    """
+    required = [lon_col, lat_col, "mode_numericLabel"]
+    missing = [c for c in required if c not in classified_summary_df.columns]
+    if missing:
+        raise KeyError(f"Input classified summary missing required columns: {missing}")
+
+    mode_grid_table = _aggregate_region_grid(
+        classified_summary_df,
+        grid=grid,
+        value_col="mode_numericLabel",
+        priority_col="mode_priority",
+        lon_col=lon_col,
+        lat_col=lat_col,
+        output_col="mode_numericLabel",
+        use_mode=use_mode,
+    )
+    mode_ds = grid.to_xarray(
+        mode_grid_table,
+        value_col="mode_numericLabel",
+        dataset_name="mode_numericLabel",
+    )
+    return mode_grid_table, mode_ds

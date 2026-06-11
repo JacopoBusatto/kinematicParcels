@@ -5,9 +5,14 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 import xarray as xr
+import kinematicparcels.postprocessing.analyses.start_end_regions as start_end_regions_analysis
 
 from kinematicparcels.postprocessing.analyses.density import compute_time_density
-from kinematicparcels.postprocessing.analyses.start_end_regions import compute_start_end_region_maps
+from kinematicparcels.postprocessing.analyses.start_end_regions import (
+    compute_mode_region_map,
+    compute_mode_region_summary,
+    compute_start_end_region_maps,
+)
 from kinematicparcels.postprocessing.animations.trajectories import _resolve_trail_color, animate_trajectories
 from kinematicparcels.postprocessing.config import load_postprocess_config
 from kinematicparcels.postprocessing.config.models import DatasetConfig, DatasetCoordinatesConfig, ExportsConfig, GridConfig, OutputConfig, PostprocessConfig
@@ -631,3 +636,82 @@ def test_compute_start_end_region_maps_mode_tie_returns_tied_value() -> None:
 
     assert float(start_table["start_numericLabel"].iloc[0]) in {10.0, 20.0}
     assert float(end_table["end_numericLabel"].iloc[0]) in {80.0, 90.0}
+
+
+def test_compute_mode_region_summary_uses_label_mode_and_infers_metadata(monkeypatch) -> None:
+    traj = pd.DataFrame(
+        {
+            "trajectory": [1, 1, 1, 2, 2],
+            "obs": [0, 1, 2, 0, 1],
+            "lon": [0.0, 0.1, 0.2, 1.0, 1.1],
+            "lat": [0.0, 0.1, 0.2, 1.0, 1.1],
+        }
+    )
+
+    def _fake_classify_region_points(df: pd.DataFrame, **kwargs):
+        out = df.copy()
+        out["mode_region_point"] = ["A", "A", "B", "B", "C"]
+        out["_mode_numericLabel_point"] = [10.0, 10.0, 20.0, 20.0, 30.0]
+        out["_mode_priority_point"] = [1.0, 1.0, 2.0, 2.0, 3.0]
+        return out
+
+    monkeypatch.setattr(start_end_regions_analysis, "classify_region_points", _fake_classify_region_points)
+
+    class _FakeRegion:
+        def __init__(self, label: str, numeric: int, priority: int):
+            self.label = label
+            self.NumericLabel = numeric
+            self.priority = priority
+
+    class _FakeManager:
+        def get_regions(self):
+            return [
+                _FakeRegion("A", 10, 1),
+                _FakeRegion("B", 20, 2),
+                _FakeRegion("C", 30, 3),
+            ]
+
+    out = compute_mode_region_summary(
+        traj,
+        region_manager=_FakeManager(),
+    )
+
+    row_t1 = out.loc[out["trajectory"] == 1].iloc[0]
+    row_t2 = out.loc[out["trajectory"] == 2].iloc[0]
+
+    assert row_t1["mode_region"] == "A"
+    assert float(row_t1["mode_numericLabel"]) == 10.0
+    assert float(row_t1["mode_priority"]) == 1.0
+    assert row_t2["mode_region"] in {"B", "C"}
+    assert float(row_t2["mode_numericLabel"]) in {20.0, 30.0}
+    assert float(row_t2["mode_priority"]) in {2.0, 3.0}
+
+
+def test_compute_mode_region_map_builds_dataset() -> None:
+    classified = pd.DataFrame(
+        {
+            "lon0": [14.3, 14.3, 14.31],
+            "lat0": [36.9, 36.9, 36.91],
+            "mode_numericLabel": [50.0, 50.0, 70.0],
+            "mode_priority": [3.0, 3.0, 4.0],
+        }
+    )
+    grid = RegularGrid(
+        lon_min=14.25,
+        lon_max=14.35,
+        lat_min=36.85,
+        lat_max=36.95,
+        dlon=0.1,
+        dlat=0.1,
+    )
+
+    table, ds = compute_mode_region_map(
+        classified,
+        grid=grid,
+        lon_col="lon0",
+        lat_col="lat0",
+    )
+
+    assert not table.empty
+    assert "mode_numericLabel" in table.columns
+    assert "mode_numericLabel" in ds.data_vars

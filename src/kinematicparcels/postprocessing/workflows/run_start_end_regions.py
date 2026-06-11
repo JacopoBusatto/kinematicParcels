@@ -7,6 +7,8 @@ import pandas as pd
 from ..analyses import (
     build_region_manager,
     classify_start_end_regions,
+    compute_mode_region_map,
+    compute_mode_region_summary,
     compute_start_end_region_maps,
 )
 from ..animations import animate_trajectories
@@ -140,6 +142,23 @@ def run_start_end_regions(cfg: PostprocessConfig, context: dict) -> None:
         input_lon_mode=cfg.start_end_regions.input_lon_mode,
     )
 
+    print("Computing per-trajectory most-visited region")
+    traj_df_for_mode = get_trajectory_table(cfg, context)
+    mode_summary = compute_mode_region_summary(
+        traj_df_for_mode,
+        region_manager=region_manager,
+        how_many=cfg.start_end_regions.how_many,
+        priority_level=cfg.start_end_regions.priority_level,
+        priority_mode=cfg.start_end_regions.priority_mode,
+        input_lon_mode=cfg.start_end_regions.input_lon_mode,
+    )
+    merge_cols = ["trajectory"] + (["group_member"] if "group_member" in classified_summary.columns else [])
+    classified_summary = classified_summary.merge(
+        mode_summary,
+        on=merge_cols,
+        how="left",
+    )
+
     outdir = Path(cfg.output.output_dir)
     outdir.mkdir(parents=True, exist_ok=True)
 
@@ -165,8 +184,15 @@ def run_start_end_regions(cfg: PostprocessConfig, context: dict) -> None:
             )
         grid = context["grid"]
 
-        print("Computing start/end region maps")
+        print("Computing start/end/mode region maps")
         start_grid_table, start_ds, end_grid_table, end_ds = compute_start_end_region_maps(
+            classified_summary,
+            grid=grid,
+            lon_col="lon0",
+            lat_col="lat0",
+            use_mode=cfg.release.continuous,
+        )
+        mode_grid_table, mode_ds = compute_mode_region_map(
             classified_summary,
             grid=grid,
             lon_col="lon0",
@@ -176,8 +202,10 @@ def run_start_end_regions(cfg: PostprocessConfig, context: dict) -> None:
 
         start_table_path = outdir / f"start_regions_table.{cfg.exports.table_format}"
         end_table_path = outdir / f"end_regions_table.{cfg.exports.table_format}"
+        mode_table_path = outdir / f"mode_regions_table.{cfg.exports.table_format}"
         start_nc_path = outdir / "start_regions.nc"
         end_nc_path = outdir / "end_regions.nc"
+        mode_nc_path = outdir / "mode_regions.nc"
 
         print("Saving start region table:", start_table_path)
         save_grid_table(start_grid_table, start_table_path, format=cfg.exports.table_format)
@@ -185,15 +213,22 @@ def run_start_end_regions(cfg: PostprocessConfig, context: dict) -> None:
         print("Saving end region table:", end_table_path)
         save_grid_table(end_grid_table, end_table_path, format=cfg.exports.table_format)
 
+        print("Saving mode region table:", mode_table_path)
+        save_grid_table(mode_grid_table, mode_table_path, format=cfg.exports.table_format)
+
         print("Saving start region dataset:", start_nc_path)
         save_dataset_netcdf(start_ds, start_nc_path)
 
         print("Saving end region dataset:", end_nc_path)
         save_dataset_netcdf(end_ds, end_nc_path)
 
+        print("Saving mode region dataset:", mode_nc_path)
+        save_dataset_netcdf(mode_ds, mode_nc_path)
+
         if cfg.start_end_regions.plot:
             start_plot_path = outdir / "start_regions.png"
             end_plot_path = outdir / "end_regions.png"
+            mode_plot_path = outdir / "mode_regions.png"
             category_label_map = {
                 int(r.NumericLabel): {"label": str(r.label), "name": str(r.name)}
                 for r in region_manager.get_regions()
@@ -219,6 +254,19 @@ def run_start_end_regions(cfg: PostprocessConfig, context: dict) -> None:
                 outpath=end_plot_path,
                 projection=cfg.plotting.projection,
                 title="End regions",
+                cmap_name=cfg.start_end_regions.discrete_cmap,
+                colorbar_label_mode=cfg.start_end_regions.colorbar_label_mode,
+                category_label_map=category_label_map,
+                show_labels=False,
+            )
+
+            print("Saving mode region plot:", mode_plot_path)
+            plot_discrete_grid_map(
+                mode_ds,
+                var_name="mode_numericLabel",
+                outpath=mode_plot_path,
+                projection=cfg.plotting.projection,
+                title="Most visited regions",
                 cmap_name=cfg.start_end_regions.discrete_cmap,
                 colorbar_label_mode=cfg.start_end_regions.colorbar_label_mode,
                 category_label_map=category_label_map,
