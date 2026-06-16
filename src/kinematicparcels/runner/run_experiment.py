@@ -226,33 +226,91 @@ def _build_group_entity_release(
 
 
 def _needs_xarray_fieldset_fallback(sample_file: str, variables: dict, dims_cfg: dict) -> bool:
-    """Detect whether source variable order is non-standard for Parcels direct loading."""
-    lat_dim = dims_cfg["lat"]
-    lon_dim = dims_cfg["lon"]
+    """Detect whether xarray normalization is needed before building the fieldset."""
+    lat_name = dims_cfg["lat"]
+    lon_name = dims_cfg["lon"]
 
     with xr.open_dataset(sample_file) as ds:
+        lon_coord = ds[lon_name]
+        lat_coord = ds[lat_name]
+
+        if lon_coord.ndim != 1 or lat_coord.ndim != 1:
+            return True
+
         for var_name in variables.values():
             dims = tuple(ds[var_name].dims)
-            if lat_dim not in dims or lon_dim not in dims:
-                continue
-            if dims[-2:] != (lat_dim, lon_dim):
+            if lat_name not in dims or lon_name not in dims:
+                return True
+            if dims[-2:] != (lat_name, lon_name):
                 return True
     return False
 
 
+def _normalize_coordinate_axes(lon_coord: xr.DataArray, lat_coord: xr.DataArray):
+    """Return axes and spatial dimension order for regular or curvilinear coordinates."""
+    lon_vals = np.asarray(lon_coord.values)
+    lat_vals = np.asarray(lat_coord.values)
+
+    if lon_vals.ndim == 1 and lat_vals.ndim == 1:
+        return {
+            "lon": lon_vals,
+            "lat": lat_vals,
+            "lon_dim": lon_coord.dims[0],
+            "lat_dim": lat_coord.dims[0],
+            "curvilinear": False,
+        }
+
+    if lon_vals.ndim != 2 or lat_vals.ndim != 2 or lon_vals.shape != lat_vals.shape:
+        raise ValueError("Unsupported coordinate layout for fieldset lon/lat variables")
+
+    dims2d = lon_coord.dims
+
+    if np.allclose(lon_vals, lon_vals[:, [0]]) and np.allclose(lat_vals, lat_vals[[0], :]):
+        return {
+            "lon": lon_vals[:, 0],
+            "lat": lat_vals[0, :],
+            "lon_dim": dims2d[0],
+            "lat_dim": dims2d[1],
+            "curvilinear": False,
+        }
+
+    if np.allclose(lon_vals, lon_vals[[0], :]) and np.allclose(lat_vals, lat_vals[:, [0]]):
+        return {
+            "lon": lon_vals[0, :],
+            "lat": lat_vals[:, 0],
+            "lon_dim": dims2d[1],
+            "lat_dim": dims2d[0],
+            "curvilinear": False,
+        }
+
+    return {
+        "lon": lon_vals,
+        "lat": lat_vals,
+        "lon_dim": dims2d[1],
+        "lat_dim": dims2d[0],
+        "curvilinear": True,
+    }
+
+
 def _build_fieldset_via_xarray(files: list[str], variables: dict, dims_cfg: dict, mesh: str) -> FieldSet:
-    """Build a Parcels fieldset from xarray after reordering named dimensions explicitly."""
+    """Build a Parcels fieldset from xarray after normalizing coordinates and data order."""
     ds = xr.open_mfdataset(files, combine="by_coords")
     try:
-        lon_dim = dims_cfg["lon"]
-        lat_dim = dims_cfg["lat"]
+        lon_name = dims_cfg["lon"]
+        lat_name = dims_cfg["lat"]
         time_dim = dims_cfg["time"]
         depth_dim = dims_cfg.get("depth")
+
+        coord_info = _normalize_coordinate_axes(ds[lon_name], ds[lat_name])
+        lon_dim = coord_info["lon_dim"]
+        lat_dim = coord_info["lat_dim"]
 
         u = ds[variables["U"]]
         v = ds[variables["V"]]
 
-        target_dims = [time_dim]
+        target_dims = []
+        if time_dim and time_dim in u.dims:
+            target_dims.append(time_dim)
         if depth_dim and depth_dim in u.dims:
             target_dims.append(depth_dim)
         target_dims.extend([lat_dim, lon_dim])
@@ -265,12 +323,17 @@ def _build_fieldset_via_xarray(files: list[str], variables: dict, dims_cfg: dict
             "V": np.asarray(v.values),
         }
         dimensions = {
-            "lon": np.asarray(ds[lon_dim].values),
-            "lat": np.asarray(ds[lat_dim].values),
+            "lon": np.asarray(coord_info["lon"]),
+            "lat": np.asarray(coord_info["lat"]),
             "time": np.asarray(ds[time_dim].values),
         }
         if depth_dim and depth_dim in ds:
             dimensions["depth"] = np.asarray(ds[depth_dim].values)
+
+        if coord_info["curvilinear"]:
+            print("Detected true 2D coordinates; building curvilinear fieldset via xarray")
+        else:
+            print("Detected regular grid stored with 2D coordinates; reducing to 1D axes via xarray")
 
         fieldset = FieldSet.from_data(data=data, dimensions=dimensions, mesh=mesh)
     finally:
@@ -301,6 +364,16 @@ def _apply_periodic_halo(fieldset: FieldSet, cfg: dict) -> None:
 
     fieldset.add_periodic_halo(zonal=True, halosize=halo_size)
     print(f"Applied periodic halo: zonal=True, halosize={halo_size}")
+
+
+def _is_boundary_halo_enabled(cfg: dict) -> bool:
+    """Return whether the boundary-halo kill guard is enabled."""
+    return bool(cfg.get("simulation", {}).get("boundary_halo", {}).get("enabled", True))
+
+
+def _needs_periodic_wrap(cfg: dict) -> bool:
+    """Return whether runtime longitude wrapping is active."""
+    return bool(cfg.get("fieldset", {}).get("periodic_halo", False))
 
 
 def build_fieldset(cfg: dict) -> FieldSet:
@@ -367,27 +440,32 @@ def build_fieldset(cfg: dict) -> FieldSet:
 
 
 def _attach_boundary_halo_constants(fieldset: FieldSet, cfg: dict) -> None:
-    """Attach boundary halo guard-zone constants to the fieldset.
-
-    Reads simulation.boundary_halo from cfg (default: enabled, n_cells=1).
-    Constants are always attached so that BoundaryHaloKill / BoundaryHaloKill_GroupedEntity
-    can reference them regardless of whether the guard is active; when disabled,
-    the bounds are set to the hard field edges so no particle can ever trigger them.
-    """
+    """Attach runtime constants needed by periodic wrapping and boundary-halo kill."""
     fs_cfg = cfg["fieldset"]
     bh_cfg = cfg.get("simulation", {}).get("boundary_halo", {})
-    enabled = bh_cfg.get("enabled", True)
+    enabled = _is_boundary_halo_enabled(cfg)
     n_cells = int(bh_cfg.get("n_cells", 1))
 
     periodic = bool(fs_cfg.get("periodic_halo", False))
+    fieldset.add_constant("bh_periodic", 1.0 if periodic else 0.0)
+
+    if not enabled:
+        print("Boundary halo guard disabled")
+        return
 
     lon_axis = np.asarray(fieldset.U.grid.lon)
     lat_axis = np.asarray(fieldset.U.grid.lat)
 
+    if lon_axis.ndim != 1 or lat_axis.ndim != 1:
+        raise ValueError(
+            "simulation.boundary_halo currently supports regular 1D lon/lat axes only. "
+            "Disable boundary_halo or normalize the fieldset to a regular grid."
+        )
+
     dlon = float(np.mean(np.diff(lon_axis))) if len(lon_axis) > 1 else 0.0
     dlat = float(np.mean(np.diff(lat_axis))) if len(lat_axis) > 1 else 0.0
 
-    if enabled and n_cells > 0:
+    if n_cells > 0:
         lat_min = float(lat_axis[0])  + n_cells * abs(dlat)
         lat_max = float(lat_axis[-1]) - n_cells * abs(dlat)
         lon_min = float(lon_axis[0])  + n_cells * abs(dlon)
@@ -409,7 +487,6 @@ def _attach_boundary_halo_constants(fieldset: FieldSet, cfg: dict) -> None:
     fieldset.add_constant("bh_lat_max", lat_max)
     fieldset.add_constant("bh_lon_min", lon_min)
     fieldset.add_constant("bh_lon_max", lon_max)
-    fieldset.add_constant("bh_periodic", 1.0 if periodic else 0.0)
 
 
 def _build_release_points_from_region(rel_cfg: dict):
@@ -1457,6 +1534,8 @@ def run_simulation(cfg: dict, pset: ParticleSet, fieldset: FieldSet, lkm_modes=N
     max_age_seconds = _get_scheduled_release_max_age_seconds(cfg)
 
     grouped_entity_mode = _is_group_entity_mode(cfg)
+    boundary_halo_enabled = _is_boundary_halo_enabled(cfg)
+    periodic_wrap_enabled = _needs_periodic_wrap(cfg)
 
     if max_age_seconds is not None:
         fieldset.add_constant("kp_max_age_seconds", max_age_seconds)
@@ -1480,13 +1559,17 @@ def run_simulation(cfg: dict, pset: ParticleSet, fieldset: FieldSet, lkm_modes=N
             print("LKM disabled in grouped-entity mode")
 
         grouped_kernel = make_grouped_rk4_lkm_kernel(group_size)
-        kernels = pset.Kernel(WrapLongitudePeriodic_GroupedEntity)
+        kernels = None
+        if periodic_wrap_enabled:
+            kernels = pset.Kernel(WrapLongitudePeriodic_GroupedEntity)
         if max_age_seconds is not None:
-            kernels += pset.Kernel(DeleteParticleIfTooOld)
-        kernels += (
-            pset.Kernel(BoundaryHaloKill_GroupedEntity)
-            + pset.Kernel(grouped_kernel)
-        )
+            age_kernel = pset.Kernel(DeleteParticleIfTooOld)
+            kernels = age_kernel if kernels is None else kernels + age_kernel
+        if boundary_halo_enabled:
+            boundary_kernel = pset.Kernel(BoundaryHaloKill_GroupedEntity)
+            kernels = boundary_kernel if kernels is None else kernels + boundary_kernel
+        advection_kernel = pset.Kernel(grouped_kernel)
+        kernels = advection_kernel if kernels is None else kernels + advection_kernel
 
         pset.execute(
             kernels,
@@ -1503,10 +1586,17 @@ def run_simulation(cfg: dict, pset: ParticleSet, fieldset: FieldSet, lkm_modes=N
 
         # Member-based custom kernel with synchronized group updates
         kernel_func = make_AdvectionRK4_with_LKM(lkm_modes)
-        kernels = pset.Kernel(WrapLongitudePeriodic)
+        kernels = None
+        if periodic_wrap_enabled:
+            kernels = pset.Kernel(WrapLongitudePeriodic)
         if max_age_seconds is not None:
-            kernels += pset.Kernel(DeleteParticleIfTooOld)
-        kernels += pset.Kernel(BoundaryHaloKill) + pset.Kernel(kernel_func)
+            age_kernel = pset.Kernel(DeleteParticleIfTooOld)
+            kernels = age_kernel if kernels is None else kernels + age_kernel
+        if boundary_halo_enabled:
+            boundary_kernel = pset.Kernel(BoundaryHaloKill)
+            kernels = boundary_kernel if kernels is None else kernels + boundary_kernel
+        advection_kernel = pset.Kernel(kernel_func)
+        kernels = advection_kernel if kernels is None else kernels + advection_kernel
         print(f"LKM enabled: {lkm_modes.n_modes} modes, update every {update_freq} steps")
 
         total_steps = int(abs(runtime_days * 24 / dt_sync_hours))
@@ -1522,17 +1612,31 @@ def run_simulation(cfg: dict, pset: ParticleSet, fieldset: FieldSet, lkm_modes=N
                 output_file=output_file,
             )
     else:
-        kernels = pset.Kernel(WrapLongitudePeriodic)
+        kernels = None
+        if periodic_wrap_enabled:
+            kernels = pset.Kernel(WrapLongitudePeriodic)
         if max_age_seconds is not None:
-            kernels += pset.Kernel(DeleteParticleIfTooOld)
-        kernels += pset.Kernel(BoundaryHaloKill) + pset.Kernel(AdvectionRK4)
+            age_kernel = pset.Kernel(DeleteParticleIfTooOld)
+            kernels = age_kernel if kernels is None else kernels + age_kernel
+        if boundary_halo_enabled:
+            boundary_kernel = pset.Kernel(BoundaryHaloKill)
+            kernels = boundary_kernel if kernels is None else kernels + boundary_kernel
         print("LKM disabled: using standard advection")
-        pset.execute(
-            kernels,
-            runtime=timedelta(days=runtime_days),
-            dt=timedelta(hours=dt_integration_hours),
-            output_file=output_file,
-        )
+        if kernels is None:
+            pset.execute(
+                AdvectionRK4,
+                runtime=timedelta(days=runtime_days),
+                dt=timedelta(hours=dt_integration_hours),
+                output_file=output_file,
+            )
+        else:
+            kernels += pset.Kernel(AdvectionRK4)
+            pset.execute(
+                kernels,
+                runtime=timedelta(days=runtime_days),
+                dt=timedelta(hours=dt_integration_hours),
+                output_file=output_file,
+            )
 
     # Parcels appends ".zarr" to the output name if the path has no suffix.
     actual_zarr_path = zarr_path if zarr_path.exists() else zarr_path.parent / (zarr_path.name + ".zarr")

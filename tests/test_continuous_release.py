@@ -6,13 +6,15 @@ from unittest.mock import patch
 
 import numpy as np
 import xarray as xr
-from parcels import FieldSet
+from parcels import AdvectionRK4, FieldSet
 
 from kinematicparcels.runner.run_experiment import (
+    _attach_boundary_halo_constants,
     _build_release_points_from_region,
     build_particleset,
     build_fieldset,
     build_release,
+    run_simulation,
 )
 from kinematicparcels.runner.kernels import DeleteParticleIfTooOld, WrapLongitudePeriodic
 from kinematicparcels.runner.grouped_kernels import AdvectionRK4_Grouped, make_grouped_rk4_lkm_kernel
@@ -81,6 +83,164 @@ def test_build_fieldset_applies_configured_periodic_halo_size():
     assert args[0] is fieldset
     assert kwargs == {"zonal": True, "halosize": 7}
     assert fieldset.bh_periodic == 1.0
+
+
+def test_attach_boundary_halo_constants_is_noop_when_disabled_with_2d_grid():
+    fieldset = SimpleNamespace(
+        U=SimpleNamespace(
+            grid=SimpleNamespace(
+                lon=np.array([[0.0, 1.0], [0.0, 1.0]], dtype=float),
+                lat=np.array([[0.0, 0.0], [1.0, 1.0]], dtype=float),
+            )
+        )
+    )
+    fieldset.add_constant = lambda name, value: setattr(fieldset, name, value)
+
+    cfg = {
+        "fieldset": {"periodic_halo": False},
+        "simulation": {"boundary_halo": {"enabled": False, "n_cells": 1}},
+    }
+
+    _attach_boundary_halo_constants(fieldset, cfg)
+
+    assert fieldset.bh_periodic == 0.0
+    assert not hasattr(fieldset, "bh_lat_min")
+    assert not hasattr(fieldset, "bh_lon_min")
+
+
+def test_run_simulation_skips_boundary_halo_kernel_when_disabled(tmp_path: Path):
+    class KernelToken:
+        def __init__(self, names):
+            self.names = list(names)
+
+        def __add__(self, other):
+            return KernelToken(self.names + other.names)
+
+    class FakeParticleSet:
+        def __init__(self):
+            self.kernel_names = []
+            self.executed_kernels = []
+
+        def ParticleFile(self, name, outputdt):
+            return SimpleNamespace(name=name, outputdt=outputdt)
+
+        def Kernel(self, func):
+            name = getattr(func, "__name__", str(func))
+            self.kernel_names.append(name)
+            return KernelToken([name])
+
+        def execute(self, kernels, runtime, dt, output_file):
+            self.executed_kernels.append(kernels.names)
+
+    cfg = {
+        "experiment": {"output_dir": str(tmp_path)},
+        "output": {"zarr_name": "dummy.zarr"},
+            "fieldset": {"periodic_halo": True},
+        "simulation": {
+            "runtime_days": 1.0,
+            "dt_hours": 1.0,
+            "outputdt_hours": 6.0,
+            "boundary_halo": {"enabled": False},
+        },
+        "release": {"group": {"size": 1}},
+    }
+
+    pset = FakeParticleSet()
+    fieldset = SimpleNamespace(add_constant=lambda name, value: None)
+
+    with patch("kinematicparcels.runner.run_experiment._nullify_off_grid_zarr_records"):
+        run_simulation(cfg, pset, fieldset)
+
+    assert pset.executed_kernels == [["WrapLongitudePeriodic", "AdvectionRK4"]]
+    assert "BoundaryHaloKill" not in pset.kernel_names
+
+
+def test_run_simulation_skips_grouped_boundary_halo_kernel_when_disabled(tmp_path: Path):
+    class KernelToken:
+        def __init__(self, names):
+            self.names = list(names)
+
+        def __add__(self, other):
+            return KernelToken(self.names + other.names)
+
+    class FakeParticleSet:
+        def __init__(self):
+            self.kernel_names = []
+            self.executed_kernels = []
+
+        def ParticleFile(self, name, outputdt):
+            return SimpleNamespace(name=name, outputdt=outputdt)
+
+        def Kernel(self, func):
+            name = getattr(func, "__name__", str(func))
+            self.kernel_names.append(name)
+            return KernelToken([name])
+
+        def execute(self, kernels, runtime, dt, output_file):
+            self.executed_kernels.append(kernels.names)
+
+    cfg = {
+        "experiment": {"output_dir": str(tmp_path)},
+        "output": {"zarr_name": "dummy.zarr"},
+            "fieldset": {"periodic_halo": True},
+        "simulation": {
+            "runtime_days": 1.0,
+            "dt_hours": 1.0,
+            "outputdt_hours": 6.0,
+            "boundary_halo": {"enabled": False},
+        },
+        "release": {"group": {"size": 2}},
+    }
+
+    pset = FakeParticleSet()
+    fieldset = SimpleNamespace(add_constant=lambda name, value: None)
+
+    with patch("kinematicparcels.runner.run_experiment._nullify_off_grid_zarr_records"):
+        run_simulation(cfg, pset, fieldset)
+
+    executed = pset.executed_kernels[0]
+    assert executed[0] == "WrapLongitudePeriodic_GroupedEntity"
+    assert executed[-1] == "AdvectionRK4_Grouped"
+    assert "BoundaryHaloKill_GroupedEntity" not in pset.kernel_names
+
+
+def test_run_simulation_uses_direct_advection_when_no_runtime_kernels_needed(tmp_path: Path):
+    class FakeParticleSet:
+        def __init__(self):
+            self.executed = []
+            self.kernel_names = []
+
+        def ParticleFile(self, name, outputdt):
+            return SimpleNamespace(name=name, outputdt=outputdt)
+
+        def Kernel(self, func):
+            name = getattr(func, "__name__", str(func))
+            self.kernel_names.append(name)
+            raise AssertionError("Kernel() should not be called on the direct advection fast path")
+
+        def execute(self, kernels, runtime, dt, output_file):
+            self.executed.append(kernels)
+
+    cfg = {
+        "experiment": {"output_dir": str(tmp_path)},
+        "output": {"zarr_name": "dummy.zarr"},
+        "fieldset": {"periodic_halo": False},
+        "simulation": {
+            "runtime_days": 1.0,
+            "dt_hours": 1.0,
+            "outputdt_hours": 6.0,
+            "boundary_halo": {"enabled": False},
+        },
+        "release": {"group": {"size": 1}},
+    }
+
+    pset = FakeParticleSet()
+    fieldset = SimpleNamespace(add_constant=lambda name, value: None)
+
+    with patch("kinematicparcels.runner.run_experiment._nullify_off_grid_zarr_records"):
+        run_simulation(cfg, pset, fieldset)
+
+    assert pset.executed == [AdvectionRK4]
 
 
 def test_wrap_longitude_periodic_maps_particle_back_into_domain():
@@ -223,6 +383,48 @@ def test_build_particleset_copies_internal_release_time_when_max_age_is_enabled(
 
     np.testing.assert_allclose(release_time_values, particle_times)
     assert set(np.unique(release_time_values).tolist()) == {0.0, 43200.0, 86400.0}
+
+
+def test_build_fieldset_reduces_regular_2d_coordinate_variables(tmp_path: Path):
+    field_path = tmp_path / "regular_2d_coords.nc"
+
+    xi = np.array([10.0, 11.0, 12.0], dtype=np.float32)
+    eta = np.array([45.0, 46.0], dtype=np.float32)
+    depth = np.array([0.0], dtype=np.float32)
+    time = np.array([np.datetime64("2026-04-01T00:00:00", "ns")], dtype="datetime64[ns]")
+
+    lon2d = np.repeat(xi[:, None], len(eta), axis=1)
+    lat2d = np.repeat(eta[None, :], len(xi), axis=0)
+    shape = (len(time), len(depth), len(xi), len(eta))
+
+    ds = xr.Dataset(
+        {
+            "x_sea_water_velocity": (("time", "depth", "xi_rho", "eta_rho"), np.zeros(shape, dtype=np.float32)),
+            "y_sea_water_velocity": (("time", "depth", "xi_rho", "eta_rho"), np.zeros(shape, dtype=np.float32)),
+            "lon_rho": (("xi_rho", "eta_rho"), lon2d),
+            "lat_rho": (("xi_rho", "eta_rho"), lat2d),
+        },
+        coords={"time": time, "depth": depth},
+    )
+    ds.to_netcdf(field_path)
+
+    cfg = _base_cfg(str(field_path))
+    cfg["fieldset"]["dimensions"] = {
+        "lon": "lon_rho",
+        "lat": "lat_rho",
+        "time": "time",
+        "depth": "depth",
+    }
+    cfg["simulation"]["boundary_halo"] = {"enabled": True, "n_cells": 1}
+
+    fieldset = build_fieldset(cfg)
+
+    np.testing.assert_allclose(np.asarray(fieldset.U.grid.lon), xi)
+    np.testing.assert_allclose(np.asarray(fieldset.U.grid.lat), eta)
+    assert np.asarray(fieldset.U.grid.lon).ndim == 1
+    assert np.asarray(fieldset.U.grid.lat).ndim == 1
+    assert fieldset.bh_lon_min > float(xi.min())
+    assert fieldset.bh_lat_min > float(eta.min())
 
 
 def test_region_grid_non_continuous_max_age_requires_scheduled_release():
