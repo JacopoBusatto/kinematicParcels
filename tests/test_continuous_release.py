@@ -15,6 +15,7 @@ from kinematicparcels.runner.run_experiment import (
     build_release,
 )
 from kinematicparcels.runner.kernels import DeleteParticleIfTooOld, WrapLongitudePeriodic
+from kinematicparcels.runner.grouped_kernels import AdvectionRK4_Grouped, make_grouped_rk4_lkm_kernel
 from kinematicparcels.utilities.init_checks import filter_inside_domain
 
 
@@ -467,3 +468,72 @@ def test_delete_particle_if_too_old_uses_absolute_elapsed_time():
     particle.deleted = False
     DeleteParticleIfTooOld(particle, fieldset, -1.0)
     assert particle.deleted
+
+
+def test_grouped_entity_release_supports_group_size_five_without_lkm() -> None:
+    cfg = _base_cfg(str(ROOT / "test_fields" / "zero_velocity_april_2026.nc"))
+    cfg["release"]["group"] = {
+        "size": 5,
+        "radius_km": 0.0,
+        "placement": "equal_angles",
+    }
+    cfg["lkm"] = {"enabled": False}
+
+    fieldset = build_fieldset(cfg)
+    lons, lats, depths, metadata, release_times = build_release(cfg, fieldset)
+
+    assert depths is None
+    assert release_times is not None
+    assert np.all(metadata["group_size"] == 5)
+    assert "lon_5" in metadata
+    assert "lat_5" in metadata
+    assert len(lons) == len(lats) == len(metadata["group_id"])
+
+
+class _ZeroUV:
+    def __getitem__(self, key):
+        return 0.0, 0.0
+
+
+def test_grouped_entity_kernel_supports_group_size_five_with_and_without_lkm() -> None:
+    kernel = make_grouped_rk4_lkm_kernel(5)
+    assert kernel is AdvectionRK4_Grouped
+
+    particle = SimpleNamespace(
+        group_size=5,
+        depth=0.0,
+        dt=60.0,
+        lon_1=15.0,
+        lat_1=36.0,
+        lon_2=15.0,
+        lat_2=36.0,
+        lon_3=15.0,
+        lat_3=36.0,
+        lon_4=15.0,
+        lat_4=36.0,
+        lon_5=15.0,
+        lat_5=36.0,
+        lon=15.0,
+        lat=36.0,
+        center_lon=15.0,
+        center_lat=36.0,
+    )
+
+    fieldset_off = SimpleNamespace(UV=_ZeroUV())
+    AdvectionRK4_Grouped(particle, fieldset_off, 0.0)
+    assert np.isfinite(particle.lon_5)
+    assert np.isfinite(particle.lat_5)
+
+    lkm_modes = SimpleNamespace(
+        n_modes=1,
+        wavenumbers_1m=np.array([1.0e-3], dtype=float),
+        amplitudes_ms=np.array([0.02], dtype=float),
+        frequencies_hz=np.array([1.0e-4], dtype=float),
+        osc_amplitudes_m=np.array([5.0], dtype=float),
+        phases_rad=np.array([0.0], dtype=float),
+    )
+    fieldset_on = SimpleNamespace(UV=_ZeroUV(), lkm_modes=lkm_modes)
+    AdvectionRK4_Grouped(particle, fieldset_on, 0.0)
+
+    assert np.isfinite(particle.lon_5)
+    assert np.isfinite(particle.lat_5)

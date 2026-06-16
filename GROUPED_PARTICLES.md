@@ -149,11 +149,11 @@ This is the current default for `group.size > 1`. One Parcels particle stores th
 | `circle_id` | Source circle identifier when using `release.mode: circle` |
 | `center_lon`, `center_lat` | Arithmetic center of the member coordinates |
 | `lon`, `lat` | Standard Parcels position fields; in this layout they are equal to `center_lon`, `center_lat` |
-| `lon_1..lon_4`, `lat_1..lat_4` | Coordinates of members 1 through 4 |
+| `lon_1..lon_5`, `lat_1..lat_5` | Coordinates of members 1 through 5 |
 
 Notes:
 
-- Grouped-entity mode currently supports fixed sizes from 2 to 4.
+- Grouped-entity mode currently supports fixed sizes from 2 to 5.
 - Only the numbered member variables from `1` to `group_size` are meaningful for a given group.
 - In postprocessing, grouped-entity raw output is expanded into member-wise rows, so downstream analyses can work with `group_member`, `lon`, and `lat` as if each member had been saved separately.
 

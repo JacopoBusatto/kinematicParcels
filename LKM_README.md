@@ -22,11 +22,11 @@ There are two active execution paths.
 - Kernel: `AdvectionRK4_LKM` via `kernels_lkm_inline.py` wrapper.
 
 2. Grouped-entity path (current default for `group.size > 1`)
-- One Parcels particle stores all members of a group (`lon_1..lon_4`, `lat_1..lat_4`).
+- One Parcels particle stores all members of a group (`lon_1..lon_5`, `lat_1..lat_5`).
 - Group center and member-relative coordinates are computed inside grouped kernel.
 - Current grouped-entity geometry uses arithmetic lon/lat center plus local metric conversion (equirectangular approximation).
 - Kernel: `AdvectionRK4_Grouped` from `runner/grouped_kernels.py`.
-- Supported group sizes: 2..4.
+- Supported group sizes: 2..5.
 - Currently scipy-only in grouped-entity mode.
 
 ## Core Files
@@ -91,7 +91,7 @@ Two raw output layouts may appear depending on run mode.
 - Typical grouped variables include `group_id`, `group_size`, `center_lon`, `center_lat` and, for circle releases, `circle_id`.
 - Group-level canonical `lon`, `lat` are the group-center track.
 - In current grouped-entity output, `lon` and `lat` are equal to `center_lon` and `center_lat`.
-- Member coordinates are stored in `lon_1..lon_4`, `lat_1..lat_4`.
+- Member coordinates are stored in `lon_1..lon_5`, `lat_1..lat_5`.
 - `group_member` is not stored directly in raw output.
 - Only the numbered member variables from `1` to `group_size` are meaningful.
 
@@ -101,7 +101,7 @@ Postprocessing expands grouped-entity output to member-wise rows so trajectory p
 
 - Grouped-entity mode currently supports only scipy particles.
 - Grouped-entity mode currently requires `depth.enabled: false`.
-- Grouped-entity kernels are fixed-size (2..4 members).
+- Grouped-entity kernels are fixed-size (2..5 members).
 
 ## Validation Checklist
 

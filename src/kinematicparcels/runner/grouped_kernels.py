@@ -1,4 +1,4 @@
-"""Grouped-entity RK4 kernel for fixed-size groups (2..4)."""
+"""Grouped-entity RK4 kernel for fixed-size groups (2..5)."""
 
 from __future__ import annotations
 
@@ -19,8 +19,8 @@ def AdvectionRK4_Grouped(particle, fieldset, time):
 
     group_size_local = int(particle.group_size)
 
-    lons = [particle.lon_1, particle.lon_2, particle.lon_3, particle.lon_4]
-    lats = [particle.lat_1, particle.lat_2, particle.lat_3, particle.lat_4]
+    lons = [particle.lon_1, particle.lon_2, particle.lon_3, particle.lon_4, particle.lon_5]
+    lats = [particle.lat_1, particle.lat_2, particle.lat_3, particle.lat_4, particle.lat_5]
 
     center_lon = 0.0
     center_lat = 0.0
@@ -36,8 +36,8 @@ def AdvectionRK4_Grouped(particle, fieldset, time):
     meters_per_deg_lon = 111320.0 * cos_lat
     meters_per_deg_lat = 110540.0
 
-    x_rel = [0.0, 0.0, 0.0, 0.0]
-    y_rel = [0.0, 0.0, 0.0, 0.0]
+    x_rel = [0.0, 0.0, 0.0, 0.0, 0.0]
+    y_rel = [0.0, 0.0, 0.0, 0.0, 0.0]
     for i in range(group_size_local):
         x_rel[i] = (lons[i] - center_lon) * meters_per_deg_lon
         y_rel[i] = (lats[i] - center_lat) * meters_per_deg_lat
@@ -49,8 +49,8 @@ def AdvectionRK4_Grouped(particle, fieldset, time):
 
     apply_lkm = hasattr(fieldset, "lkm_modes") and (fieldset.lkm_modes is not None)
 
-    new_lons = [lons[0], lons[1], lons[2], lons[3]]
-    new_lats = [lats[0], lats[1], lats[2], lats[3]]
+    new_lons = [lons[0], lons[1], lons[2], lons[3], lons[4]]
+    new_lats = [lats[0], lats[1], lats[2], lats[3], lats[4]]
 
     for i in range(group_size_local):
         lon0 = lons[i]
@@ -187,6 +187,9 @@ def AdvectionRK4_Grouped(particle, fieldset, time):
     if group_size_local > 3:
         particle.lon_4 = new_lons[3]
         particle.lat_4 = new_lats[3]
+    if group_size_local > 4:
+        particle.lon_5 = new_lons[4]
+        particle.lat_5 = new_lats[4]
 
     end_center_lon = 0.0
     end_center_lat = 0.0
@@ -214,8 +217,8 @@ def BoundaryHaloKill_GroupedEntity(particle, fieldset, time):
     """
     group_size_local = int(particle.group_size)
 
-    lons = [particle.lon_1, particle.lon_2, particle.lon_3, particle.lon_4]
-    lats = [particle.lat_1, particle.lat_2, particle.lat_3, particle.lat_4]
+    lons = [particle.lon_1, particle.lon_2, particle.lon_3, particle.lon_4, particle.lon_5]
+    lats = [particle.lat_1, particle.lat_2, particle.lat_3, particle.lat_4, particle.lat_5]
 
     check_lon = fieldset.bh_periodic < 0.5
 
@@ -257,7 +260,7 @@ def WrapLongitudePeriodic_GroupedEntity(particle, fieldset, time):
 
 
 def make_grouped_rk4_lkm_kernel(group_size: int):
-    """Return grouped kernel for group size 2..4."""
-    if group_size < 2 or group_size > 4:
-        raise ValueError(f"Unsupported group_size={group_size}. Supported: 2..4")
+    """Return grouped kernel for group size 2..5."""
+    if group_size < 2 or group_size > 5:
+        raise ValueError(f"Unsupported group_size={group_size}. Supported: 2..5")
     return AdvectionRK4_Grouped

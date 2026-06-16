@@ -685,7 +685,7 @@ Distance (kilometers) from the base point to circle perimeter. Uses Cartesian ap
 Two storage layouts are currently supported:
 
 - **Member-based layout** (legacy grouped release): one Parcels particle per member.
-- **Grouped-entity layout** (current default for `group.size > 1`): one Parcels particle per group, with member coordinates stored as `lon_1..lon_4`, `lat_1..lat_4` and group diagnostics (`group_id`, `group_size`, `circle_id`, `center_lon`, `center_lat`).
+- **Grouped-entity layout** (current default for `group.size > 1`): one Parcels particle per group, with member coordinates stored as `lon_1..lon_5`, `lat_1..lat_5` and group diagnostics (`group_id`, `group_size`, `circle_id`, `center_lon`, `center_lat`).
 
 In postprocessing, grouped-entity outputs are expanded to member-wise rows so filtering with `max_group_member` and member-based plotting work as expected.
 
@@ -742,7 +742,7 @@ Two grouped raw-output layouts may appear depending on the execution path.
 | Layout | Variables typically present | Notes |
 |--------|-----------------------------|-------|
 | Member-based grouped output | `group_id`, `group_member`, `group_size`, optionally `circle_id`, `center_lon`, `center_lat`, `x_rel_m`, `y_rel_m` | One Parcels particle per member. `lon` and `lat` are the member coordinates. |
-| Grouped-entity output | `group_id`, `group_size`, optionally `circle_id`, `center_lon`, `center_lat`, `lon_1..lon_4`, `lat_1..lat_4` | One Parcels particle per group. `lon` and `lat` are aliases of `center_lon` and `center_lat`. Member coordinates are stored in the numbered `lon_i`, `lat_i` fields. Only `1..group_size` are meaningful. |
+| Grouped-entity output | `group_id`, `group_size`, optionally `circle_id`, `center_lon`, `center_lat`, `lon_1..lon_5`, `lat_1..lat_5` | One Parcels particle per group. `lon` and `lat` are aliases of `center_lon` and `center_lat`. Member coordinates are stored in the numbered `lon_i`, `lat_i` fields. Only `1..group_size` are meaningful. |
 
 In current grouped-entity runs with `group.size > 1`, the raw Zarr usually contains the group center twice: once as the standard Parcels coordinates `lon`, `lat`, and once as the explicit diagnostics `center_lon`, `center_lat`.
 

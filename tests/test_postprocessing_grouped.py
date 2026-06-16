@@ -398,6 +398,46 @@ def test_run_summary_preserves_group_member_for_grouped_datasets(tmp_path: Path)
     assert sorted(summary["group_member"].unique().tolist()) == [1, 2]
 
 
+def test_run_summary_expands_member_five_when_present(tmp_path: Path) -> None:
+    ds = xr.Dataset(
+        {
+            "time": (("trajectory", "obs"), np.array([["2026-04-15T00:00:00"]], dtype="datetime64[ns]")),
+            "lon": (("trajectory", "obs"), np.array([[14.0]])),
+            "lat": (("trajectory", "obs"), np.array([[36.8]])),
+            "z": (("trajectory", "obs"), np.zeros((1, 1))),
+            "group_size": (("trajectory", "obs"), np.array([[5]])),
+            "lon_1": (("trajectory", "obs"), np.array([[14.00]])),
+            "lat_1": (("trajectory", "obs"), np.array([[36.80]])),
+            "lon_2": (("trajectory", "obs"), np.array([[14.01]])),
+            "lat_2": (("trajectory", "obs"), np.array([[36.81]])),
+            "lon_3": (("trajectory", "obs"), np.array([[14.02]])),
+            "lat_3": (("trajectory", "obs"), np.array([[36.82]])),
+            "lon_4": (("trajectory", "obs"), np.array([[14.03]])),
+            "lat_4": (("trajectory", "obs"), np.array([[36.83]])),
+            "lon_5": (("trajectory", "obs"), np.array([[14.04]])),
+            "lat_5": (("trajectory", "obs"), np.array([[36.84]])),
+        },
+        coords={"trajectory": [0], "obs": [0]},
+    )
+    dataset_path = tmp_path / "grouped5.nc"
+    ds.to_netcdf(dataset_path)
+
+    cfg = PostprocessConfig(
+        dataset=DatasetConfig(input_path=str(dataset_path)),
+        output=OutputConfig(output_dir=str(tmp_path / "out")),
+        exports=ExportsConfig(save_trajectory_table=True, save_particle_summary=True),
+    )
+
+    context: dict = {}
+    run_summary(cfg, context)
+
+    traj = context["trajectory_table"]
+    summary = context["particle_summary"]
+
+    assert sorted(traj["group_member"].unique().tolist()) == [1, 2, 3, 4, 5]
+    assert sorted(summary["group_member"].unique().tolist()) == [1, 2, 3, 4, 5]
+
+
 def test_sanitize_trajectories_drops_trajectory_if_first_obs_is_invalid() -> None:
     df = pd.DataFrame(
         {

@@ -23,6 +23,8 @@ def _candidate_extra_vars(available_vars: set[str]) -> list[str]:
         "lat_3",
         "lon_4",
         "lat_4",
+        "lon_5",
+        "lat_5",
     ]
     return [v for v in candidate_extra_vars if v in available_vars]
 
@@ -34,7 +36,7 @@ def _expand_memberwise_rows(df: pd.DataFrame) -> pd.DataFrame:
         return df
 
     member_chunks: list[pd.DataFrame] = []
-    for m in (1, 2, 3, 4):
+    for m in (1, 2, 3, 4, 5):
         lon_col = f"lon_{m}"
         lat_col = f"lat_{m}"
         if lon_col not in df.columns or lat_col not in df.columns:
@@ -60,7 +62,18 @@ def _expand_memberwise_rows(df: pd.DataFrame) -> pd.DataFrame:
     out = pd.concat(member_chunks, ignore_index=True)
     drop_cols = [
         c
-        for c in ("lon_1", "lat_1", "lon_2", "lat_2", "lon_3", "lat_3", "lon_4", "lat_4")
+        for c in (
+            "lon_1",
+            "lat_1",
+            "lon_2",
+            "lat_2",
+            "lon_3",
+            "lat_3",
+            "lon_4",
+            "lat_4",
+            "lon_5",
+            "lat_5",
+        )
         if c in out.columns
     ]
     if drop_cols:

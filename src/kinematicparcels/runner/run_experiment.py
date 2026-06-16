@@ -115,6 +115,8 @@ class ScipyGroupEntityParticle(ScipyParticle):
     lat_3 = Variable('lat_3', dtype=np.float32, initial=0.0)
     lon_4 = Variable('lon_4', dtype=np.float32, initial=0.0)
     lat_4 = Variable('lat_4', dtype=np.float32, initial=0.0)
+    lon_5 = Variable('lon_5', dtype=np.float32, initial=0.0)
+    lat_5 = Variable('lat_5', dtype=np.float32, initial=0.0)
 
 
 # ============================================================================
@@ -159,9 +161,9 @@ def _build_group_entity_release(
     filter_land: bool = False,
 ):
     group_size = int(group_cfg.get("size", 1))
-    if group_size < 2 or group_size > 4:
+    if group_size < 2 or group_size > 5:
         raise ValueError(
-            f"Grouped-entity mode supports group.size in [2, 4], got {group_size}"
+            f"Grouped-entity mode supports group.size in [2, 5], got {group_size}"
         )
 
     lons_grouped, lats_grouped, group_id, group_member, _ = expand_groups(
@@ -180,8 +182,8 @@ def _build_group_entity_release(
 
     center_lons = np.zeros(n_groups, dtype=float)
     center_lats = np.zeros(n_groups, dtype=float)
-    lon_members = np.zeros((n_groups, 4), dtype=float)
-    lat_members = np.zeros((n_groups, 4), dtype=float)
+    lon_members = np.zeros((n_groups, 5), dtype=float)
+    lat_members = np.zeros((n_groups, 5), dtype=float)
 
     for ig, gid in enumerate(unique_group_ids):
         idx = np.where(group_id == gid)[0]
@@ -213,6 +215,8 @@ def _build_group_entity_release(
         "lat_3": lat_members[:, 2],
         "lon_4": lon_members[:, 3],
         "lat_4": lat_members[:, 3],
+        "lon_5": lon_members[:, 4],
+        "lat_5": lat_members[:, 4],
     }
     if circle_ids_base is not None:
         metadata["circle_id"] = np.asarray(circle_ids_base, dtype=int)[unique_group_ids]
@@ -448,7 +452,7 @@ def _build_release_points_from_list(rel_cfg: dict):
         table: pd.DataFrame,
     ) -> tuple[np.ndarray, np.ndarray, dict, np.ndarray | None, int]:
         member_indices = []
-        for idx in range(1, 5):
+        for idx in range(1, 6):
             lon_col = f"lon_{idx}"
             lat_col = f"lat_{idx}"
             has_lon = lon_col in table.columns
@@ -462,7 +466,7 @@ def _build_release_points_from_list(rel_cfg: dict):
 
         if len(member_indices) < 2:
             raise ValueError(
-                "release.points_file grouped input requires lon_i/lat_i columns for i in [1, 4]"
+                "release.points_file grouped input requires lon_i/lat_i columns for i in [1, 5]"
             )
 
         expected = list(range(1, max(member_indices) + 1))
@@ -475,8 +479,8 @@ def _build_release_points_from_list(rel_cfg: dict):
         group_size = len(member_indices)
         n_groups = len(table)
 
-        lon_members = np.zeros((n_groups, 4), dtype=float)
-        lat_members = np.zeros((n_groups, 4), dtype=float)
+        lon_members = np.zeros((n_groups, 5), dtype=float)
+        lat_members = np.zeros((n_groups, 5), dtype=float)
 
         for idx in member_indices:
             lon_col = f"lon_{idx}"
@@ -508,6 +512,8 @@ def _build_release_points_from_list(rel_cfg: dict):
             "lat_3": lat_members[:, 2],
             "lon_4": lon_members[:, 3],
             "lat_4": lat_members[:, 3],
+            "lon_5": lon_members[:, 4],
+            "lat_5": lat_members[:, 4],
         }
 
         if "circle_id" in table.columns:
@@ -528,7 +534,7 @@ def _build_release_points_from_list(rel_cfg: dict):
         table = _read_points_table(points_file)
 
         has_center_cols = ("lon" in table.columns) and ("lat" in table.columns)
-        has_group_cols = any((f"lon_{idx}" in table.columns) or (f"lat_{idx}" in table.columns) for idx in range(1, 5))
+        has_group_cols = any((f"lon_{idx}" in table.columns) or (f"lat_{idx}" in table.columns) for idx in range(1, 6))
 
         if has_center_cols and has_group_cols:
             raise ValueError(
