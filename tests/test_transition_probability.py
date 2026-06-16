@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from pathlib import Path
 from textwrap import dedent
 
 import numpy as np
@@ -45,6 +46,8 @@ def test_load_postprocess_config_parses_transition_probability_section(tmp_path)
                                 x_log_scale: true
                                 y_log_scale: true
                                 colormap: Paired
+                                x_limit_min: 1
+                                x_limit_max: 10
                         """
                 ),
         encoding="utf-8",
@@ -64,6 +67,8 @@ def test_load_postprocess_config_parses_transition_probability_section(tmp_path)
     assert cfg.transition_probability.plotting.x_log_scale is True
     assert cfg.transition_probability.plotting.y_log_scale is True
     assert cfg.transition_probability.plotting.colormap == "Paired"
+    assert cfg.transition_probability.plotting.x_limit_min == 1
+    assert cfg.transition_probability.plotting.x_limit_max == 10
 
 
 def test_transition_probability_plotting_writes_overview_and_source_plots(tmp_path) -> None:
@@ -115,9 +120,9 @@ def test_transition_probability_plotting_uses_shared_log_y_limits(tmp_path, monk
     captured_limits: dict[str, tuple[float, float]] = {}
     original_save = transition_probability_plotting._save_figure
 
-    def _capture_limits(fig, outpath) -> None:
+    def _capture_limits(fig, outpath, **kwargs) -> None:
         captured_limits[outpath.name] = fig.axes[0].get_ylim()
-        original_save(fig, outpath)
+        original_save(fig, outpath, **kwargs)
 
     monkeypatch.setattr(transition_probability_plotting, "_save_figure", _capture_limits)
 
@@ -162,13 +167,13 @@ def test_transition_probability_plotting_adds_reference_fraction_lines(tmp_path,
     captured_lines: dict[str, list[np.ndarray]] = {}
     original_save = transition_probability_plotting._save_figure
 
-    def _capture_lines(fig, outpath) -> None:
+    def _capture_lines(fig, outpath, **kwargs) -> None:
         black_lines = []
         for line in fig.axes[0].lines:
             if line.get_color() == "black" and line.get_linestyle() == "-":
                 black_lines.append(np.asarray(line.get_ydata(), dtype=float))
         captured_lines[outpath.name] = black_lines
-        original_save(fig, outpath)
+        original_save(fig, outpath, **kwargs)
 
     monkeypatch.setattr(transition_probability_plotting, "_save_figure", _capture_lines)
 
@@ -187,6 +192,96 @@ def test_transition_probability_plotting_adds_reference_fraction_lines(tmp_path,
     assert captured_lines["transition_probability_plot.png"][0] == pytest.approx([1.0, 2.0 / 3.0, 2.0 / 3.0])
     assert captured_lines["transition_probability_r1_plot.png"][0] == pytest.approx([1.0, 0.5, 0.5])
     assert captured_lines["transition_probability_r2_plot.png"][0] == pytest.approx([1.0, 1.0, 1.0])
+
+
+def test_transition_probability_plotting_applies_fixed_x_limits(tmp_path, monkeypatch) -> None:
+    transition_table = pd.DataFrame(
+        {
+            "age_days": [0.0, 1.0, 2.0, 3.0],
+            "p_r1__r1": [1.0, 0.5, 0.2, 0.0],
+            "p_r1__r2": [0.0, 0.5, 0.8, 1.0],
+            "p_r2__r1": [0.5, 0.5, 0.5, 0.5],
+            "p_r2__r2": [0.5, 0.5, 0.5, 0.5],
+        }
+    )
+    captured_limits: dict[str, tuple[float, float]] = {}
+    original_save = transition_probability_plotting._save_figure
+
+    def _capture_limits(fig, outpath, **kwargs) -> None:
+        captured_limits[outpath.name] = fig.axes[0].get_xlim()
+        original_save(fig, outpath, **kwargs)
+
+    monkeypatch.setattr(transition_probability_plotting, "_save_figure", _capture_limits)
+
+    overview_path = plot_transition_probability_overview(
+        transition_table,
+        region_labels=["r1", "r2"],
+        outpath=tmp_path / "transition_probability_plot.png",
+        x_limit_min=0.5,
+        x_limit_max=2.5,
+    )
+    source_paths = plot_transition_probability_by_source(
+        transition_table,
+        region_labels=["r1", "r2"],
+        outdir=tmp_path,
+        x_limit_min=0.5,
+        x_limit_max=2.5,
+    )
+
+    assert overview_path.exists()
+    assert all(path.exists() for path in source_paths)
+    assert captured_limits["transition_probability_plot.png"] == pytest.approx((0.5, 2.5))
+    assert captured_limits["transition_probability_r1_plot.png"] == pytest.approx((0.5, 2.5))
+    assert captured_limits["transition_probability_r2_plot.png"] == pytest.approx((0.5, 2.5))
+
+
+def test_transition_probability_plotting_rejects_invalid_x_limits() -> None:
+    transition_table = pd.DataFrame(
+        {
+            "age_days": [0.0, 1.0],
+            "p_r1__r1": [1.0, 1.0],
+        }
+    )
+
+    with pytest.raises(ValueError, match="x_limit_min must be smaller"):
+        plot_transition_probability_overview(
+            transition_table,
+            region_labels=["r1"],
+            outpath=Path("dummy.png"),
+            x_limit_min=2.0,
+            x_limit_max=1.0,
+        )
+
+    with pytest.raises(ValueError, match="x_limit_min must be > 0"):
+        plot_transition_probability_overview(
+            transition_table,
+            region_labels=["r1"],
+            outpath=Path("dummy.png"),
+            x_log_scale=True,
+            x_limit_min=0.0,
+        )
+
+
+def test_transition_probability_config_rejects_invalid_plotting_x_limits() -> None:
+    plotting = TransitionProbabilityConfig.PlottingConfig(
+        x_limit_min=3.0,
+        x_limit_max=2.0,
+    )
+    with pytest.raises(ValueError, match="x_limit_min must be smaller"):
+        TransitionProbabilityConfig(
+            region_labels=("r1",),
+            plotting=plotting,
+        )
+
+    log_plotting = TransitionProbabilityConfig.PlottingConfig(
+        x_log_scale=True,
+        x_limit_min=0.0,
+    )
+    with pytest.raises(ValueError, match="must be > 0"):
+        TransitionProbabilityConfig(
+            region_labels=("r1",),
+            plotting=log_plotting,
+        )
 
 
 def _region_manager(priority_r2: int = 1) -> RegionManager:

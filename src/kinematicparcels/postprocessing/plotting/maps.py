@@ -22,6 +22,11 @@ def plot_grid_map(
     figsize: tuple[float, float] = (12, 8),
     vmin: float | None = None,
     vmax: float | None = None,
+    colorbar_label: str | None = None,
+    title_fontsize: int | None = None,
+    colorbar_fontsize: int | None = None,
+    colorbar_tick_fontsize: int | None = None,
+    axis_tick_fontsize: int | None = None,
     add_land: bool = True,
     add_coastlines: bool = True,
     add_gridlines: bool = True,
@@ -77,6 +82,9 @@ def plot_grid_map(
         gl = ax.gridlines(draw_labels=True, linestyle="--", alpha=0.4)
         gl.top_labels = False
         gl.right_labels = False
+        if axis_tick_fontsize is not None:
+            gl.xlabel_style = {"size": axis_tick_fontsize}
+            gl.ylabel_style = {"size": axis_tick_fontsize}
 
     mesh = ax.pcolormesh(
         ds["lon"].values,
@@ -89,12 +97,18 @@ def plot_grid_map(
     )
 
     cbar = plt.colorbar(mesh, ax=ax, shrink=0.9, pad=0.03)
-    cbar.set_label(var_name)
+    cbar.set_label(colorbar_label or var_name, fontsize=colorbar_fontsize)
+    if colorbar_tick_fontsize is not None:
+        cbar.ax.tick_params(labelsize=colorbar_tick_fontsize)
 
-    if title:
-        ax.set_title(title)
-    else:
-        ax.set_title(var_name)
+    if axis_tick_fontsize is not None:
+        ax.tick_params(labelsize=axis_tick_fontsize)
+
+    if title_fontsize != 0:
+        if title:
+            ax.set_title(title, fontsize=title_fontsize)
+        else:
+            ax.set_title(var_name, fontsize=title_fontsize)
 
     plt.tight_layout()
     plt.savefig(outpath, dpi=150, bbox_inches="tight")
@@ -116,6 +130,7 @@ def plot_discrete_grid_map(
     colorbar_label_mode: str = "numeric",
     category_label_map: dict[int, dict[str, str]] | None = None,
     show_labels: bool = False,
+    axis_tick_fontsize: int | None = None,
 ) -> None:
     """
     Plot a 2D gridded discrete variable from an xarray.Dataset.
@@ -194,6 +209,9 @@ def plot_discrete_grid_map(
         gl = ax.gridlines(draw_labels=True, linestyle="--", alpha=0.4)
         gl.top_labels = False
         gl.right_labels = False
+        if axis_tick_fontsize is not None:
+            gl.xlabel_style = {"size": axis_tick_fontsize}
+            gl.ylabel_style = {"size": axis_tick_fontsize}
 
     mesh = ax.pcolormesh(
         ds["lon"].values,
@@ -214,6 +232,9 @@ def plot_discrete_grid_map(
     )
     cbar.ax.set_yticklabels([_display_label(int(v)) for v in categories])
     cbar.set_label(var_name)
+
+    if axis_tick_fontsize is not None:
+        ax.tick_params(labelsize=axis_tick_fontsize)
 
     if show_labels:
         lon_vals = ds["lon"].values
@@ -239,7 +260,7 @@ def plot_discrete_grid_map(
                 transform=ccrs.PlateCarree(),
                 ha="center",
                 va="center",
-                fontsize=16,
+                fontsize=12,
                 color="black",
                 alpha=0.9,
                 zorder=6,

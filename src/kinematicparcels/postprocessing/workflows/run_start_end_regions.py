@@ -245,6 +245,7 @@ def run_start_end_regions(cfg: PostprocessConfig, context: dict) -> None:
                 colorbar_label_mode=cfg.start_end_regions.colorbar_label_mode,
                 category_label_map=category_label_map,
                 show_labels=cfg.start_end_regions.show_region_labels,
+                axis_tick_fontsize=cfg.plotting.axis_tick_fontsize,
             )
 
             print("Saving end region plot:", end_plot_path)
@@ -258,6 +259,7 @@ def run_start_end_regions(cfg: PostprocessConfig, context: dict) -> None:
                 colorbar_label_mode=cfg.start_end_regions.colorbar_label_mode,
                 category_label_map=category_label_map,
                 show_labels=False,
+                axis_tick_fontsize=cfg.plotting.axis_tick_fontsize,
             )
 
             print("Saving mode region plot:", mode_plot_path)
@@ -271,6 +273,7 @@ def run_start_end_regions(cfg: PostprocessConfig, context: dict) -> None:
                 colorbar_label_mode=cfg.start_end_regions.colorbar_label_mode,
                 category_label_map=category_label_map,
                 show_labels=False,
+                axis_tick_fontsize=cfg.plotting.axis_tick_fontsize,
             )
     else:
         print(

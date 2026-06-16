@@ -1038,6 +1038,8 @@ transition_probability:
     x_log_scale: false
     y_log_scale: false
     colormap: null
+    x_limit_min: null
+    x_limit_max: null
 ```
 
 - `region_labels` list of regions to include in the matrix; required
@@ -1050,6 +1052,7 @@ transition_probability:
 - `plotting.enabled` saves the original comprehensive transition plot and additional plots decomposed by starting region
 - `plotting.x_log_scale` and `plotting.y_log_scale` switch the corresponding axes to log scale; non-positive values are masked on log axes
 - `plotting.colormap` optionally selects the Matplotlib categorical colormap used for the starting-region colors, for example `Paired`, `tab10`, `Dark2`, or `Set1`
+- `plotting.x_limit_min` and `plotting.x_limit_max` optionally fix the displayed x-axis window (particle age in days) without changing exported CSV values; when `x_log_scale` is true, provided limits must be positive
 
 The normalization denominator is still the number of particles that started in each
 origin region. Setting `trimming_age_days` alone does not force a constant denominator

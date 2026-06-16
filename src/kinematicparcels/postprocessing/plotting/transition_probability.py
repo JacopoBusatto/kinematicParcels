@@ -205,9 +205,49 @@ def _add_log_note(ax, *, x_log_scale: bool, y_log_scale: bool) -> None:
         )
 
 
-def _save_figure(fig, outpath: Path) -> None:
+def _validate_x_limits(
+    *,
+    x_log_scale: bool,
+    x_limit_min: float | None,
+    x_limit_max: float | None,
+) -> None:
+    if x_limit_min is not None and x_limit_max is not None and x_limit_min >= x_limit_max:
+        raise ValueError("x_limit_min must be smaller than x_limit_max.")
+
+    if x_log_scale:
+        if x_limit_min is not None and x_limit_min <= 0:
+            raise ValueError("x_limit_min must be > 0 when x_log_scale is enabled.")
+        if x_limit_max is not None and x_limit_max <= 0:
+            raise ValueError("x_limit_max must be > 0 when x_log_scale is enabled.")
+
+
+def _apply_x_limits(
+    ax,
+    *,
+    x_limit_min: float | None,
+    x_limit_max: float | None,
+) -> None:
+    if x_limit_min is None and x_limit_max is None:
+        return
+
+    current_min, current_max = ax.get_xlim()
+    ax.set_xlim(
+        x_limit_min if x_limit_min is not None else current_min,
+        x_limit_max if x_limit_max is not None else current_max,
+    )
+
+
+def _save_figure(
+    fig,
+    outpath: Path,
+    *,
+    bbox_extra_artists: tuple | None = None,
+) -> None:
     outpath.parent.mkdir(parents=True, exist_ok=True)
-    fig.savefig(outpath, dpi=150, bbox_inches="tight")
+    save_kwargs = {"dpi": 150, "bbox_inches": "tight"}
+    if bbox_extra_artists is not None:
+        save_kwargs["bbox_extra_artists"] = bbox_extra_artists
+    fig.savefig(outpath, **save_kwargs)
     plt.close(fig)
 
 
@@ -219,9 +259,17 @@ def plot_transition_probability_overview(
     x_log_scale: bool = False,
     y_log_scale: bool = False,
     colormap: str | None = None,
+    x_limit_min: float | None = None,
+    x_limit_max: float | None = None,
 ) -> Path:
     if "age_days" not in transition_table.columns:
         raise KeyError("transition probability table must contain an 'age_days' column.")
+
+    _validate_x_limits(
+        x_log_scale=x_log_scale,
+        x_limit_min=x_limit_min,
+        x_limit_max=x_limit_max,
+    )
 
     ages = transition_table["age_days"]
     start_colors = _build_palette(region_labels, colormap=colormap)
@@ -233,7 +281,7 @@ def plot_transition_probability_overview(
         y_log_scale=y_log_scale,
     )
 
-    fig, ax = plt.subplots(figsize=(14, 8), dpi=150)
+    fig, ax = plt.subplots(figsize=(16, 8), dpi=150)
 
     for origin in region_labels:
         for target in region_labels:
@@ -287,6 +335,11 @@ def plot_transition_probability_overview(
     ax.grid(True, which="major", color="#bfc7d5", alpha=0.8, linewidth=0.8)
     ax.grid(True, which="minor", color="#d7dde8", alpha=0.55, linewidth=0.5)
     _apply_axis_scales(ax, x_log_scale=x_log_scale, y_log_scale=y_log_scale)
+    _apply_x_limits(
+        ax,
+        x_limit_min=x_limit_min,
+        x_limit_max=x_limit_max,
+    )
     if shared_y_limits is not None:
         ax.set_ylim(*shared_y_limits)
     # _add_log_note(ax, x_log_scale=x_log_scale, y_log_scale=y_log_scale)
@@ -309,7 +362,7 @@ def plot_transition_probability_overview(
         framealpha=0.95,
     )
     ax.add_artist(first_legend)
-    ax.legend(
+    second_legend = ax.legend(
         handles=target_handles,
         title="Target region",
         loc="upper left",
@@ -319,8 +372,15 @@ def plot_transition_probability_overview(
         framealpha=0.95,
     )
 
+    # Reserve explicit right margin so outside legends are fully included in the export.
+    fig.subplots_adjust(right=0.74)
+
     outpath = Path(outpath)
-    _save_figure(fig, outpath)
+    _save_figure(
+        fig,
+        outpath,
+        bbox_extra_artists=(first_legend, second_legend),
+    )
     return outpath
 
 
@@ -332,9 +392,17 @@ def plot_transition_probability_by_source(
     x_log_scale: bool = False,
     y_log_scale: bool = False,
     colormap: str | None = None,
+    x_limit_min: float | None = None,
+    x_limit_max: float | None = None,
 ) -> list[Path]:
     if transition_table.empty:
         return []
+
+    _validate_x_limits(
+        x_log_scale=x_log_scale,
+        x_limit_min=x_limit_min,
+        x_limit_max=x_limit_max,
+    )
 
     ages = transition_table["age_days"]
     target_colors = _build_palette(region_labels, colormap=colormap)
@@ -404,6 +472,11 @@ def plot_transition_probability_by_source(
         ax.grid(True, which="major", color="#bfc7d5", alpha=0.8, linewidth=0.8)
         ax.grid(True, which="minor", color="#d7dde8", alpha=0.55, linewidth=0.5)
         _apply_axis_scales(ax, x_log_scale=x_log_scale, y_log_scale=y_log_scale)
+        _apply_x_limits(
+            ax,
+            x_limit_min=x_limit_min,
+            x_limit_max=x_limit_max,
+        )
         if shared_y_limits is not None:
             ax.set_ylim(*shared_y_limits)
         # _add_log_note(ax, x_log_scale=x_log_scale, y_log_scale=y_log_scale)

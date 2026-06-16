@@ -33,6 +33,10 @@ release:
 
 plotting:
   projection: PlateCarree
+  # title_fontsize: 14       # set to 0 to omit titles entirely
+  # colorbar_fontsize: 12
+  # colorbar_tick_fontsize: 10
+  # axis_tick_fontsize: 10
 
 transition_probability:
   region_labels:
@@ -52,3 +56,5 @@ transition_probability:
     x_log_scale: true
     y_log_scale: true
     colormap: Paired  # e.g. Paired | tab10 | Dark2 | Set1 | Set2 | tab20
+    x_limit_min: null  # Optional displayed lower x bound in days.
+    x_limit_max: null  # Optional displayed upper x bound in days.

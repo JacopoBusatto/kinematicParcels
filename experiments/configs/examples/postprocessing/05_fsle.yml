@@ -33,6 +33,10 @@ release:
 
 plotting:
   projection: PlateCarree
+  # title_fontsize: 14       # set to 0 to omit titles entirely
+  # colorbar_fontsize: 12
+  # colorbar_tick_fontsize: 10
+  # axis_tick_fontsize: 10
 
 fsle:
   pair_mode: center_pairs  # center_pairs | all_pairs

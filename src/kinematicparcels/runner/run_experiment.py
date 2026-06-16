@@ -7,6 +7,7 @@ from pathlib import Path
 import warnings
 
 import numpy as np
+import pandas as pd
 import xarray as xr
 import yaml
 import zarr
@@ -418,7 +419,140 @@ def _build_release_points_from_region(rel_cfg: dict):
 
 
 def _build_release_points_from_list(rel_cfg: dict):
+    def _read_points_table(path_like: str | Path) -> pd.DataFrame:
+        path = Path(path_like)
+        if not path.exists():
+            raise FileNotFoundError(f"release.points_file not found: {path}")
+
+        suffix = path.suffix.lower()
+        if suffix == ".csv":
+            table = pd.read_csv(path)
+        elif suffix == ".parquet":
+            table = pd.read_parquet(path)
+        else:
+            raise ValueError(
+                "release.points_file must have extension .csv or .parquet"
+            )
+
+        if table.empty:
+            raise ValueError("release.points_file contains no rows")
+
+        return table
+
+    def _parse_release_times(table: pd.DataFrame) -> np.ndarray | None:
+        if "time" not in table.columns:
+            return None
+        return pd.to_datetime(table["time"], errors="raise").to_numpy(dtype="datetime64[ns]")
+
+    def _build_explicit_group_entity_from_table(
+        table: pd.DataFrame,
+    ) -> tuple[np.ndarray, np.ndarray, dict, np.ndarray | None, int]:
+        member_indices = []
+        for idx in range(1, 5):
+            lon_col = f"lon_{idx}"
+            lat_col = f"lat_{idx}"
+            has_lon = lon_col in table.columns
+            has_lat = lat_col in table.columns
+            if has_lon != has_lat:
+                raise ValueError(
+                    f"release.points_file must contain both '{lon_col}' and '{lat_col}'"
+                )
+            if has_lon:
+                member_indices.append(idx)
+
+        if len(member_indices) < 2:
+            raise ValueError(
+                "release.points_file grouped input requires lon_i/lat_i columns for i in [1, 4]"
+            )
+
+        expected = list(range(1, max(member_indices) + 1))
+        if member_indices != expected:
+            raise ValueError(
+                "release.points_file grouped member columns must be contiguous from 1. "
+                f"Found indices: {member_indices}"
+            )
+
+        group_size = len(member_indices)
+        n_groups = len(table)
+
+        lon_members = np.zeros((n_groups, 4), dtype=float)
+        lat_members = np.zeros((n_groups, 4), dtype=float)
+
+        for idx in member_indices:
+            lon_col = f"lon_{idx}"
+            lat_col = f"lat_{idx}"
+
+            lon_vals = pd.to_numeric(table[lon_col], errors="coerce").to_numpy(dtype=float)
+            lat_vals = pd.to_numeric(table[lat_col], errors="coerce").to_numpy(dtype=float)
+            if np.any(~np.isfinite(lon_vals)) or np.any(~np.isfinite(lat_vals)):
+                raise ValueError(
+                    f"release.points_file contains non-finite values in '{lon_col}'/'{lat_col}'"
+                )
+
+            lon_members[:, idx - 1] = lon_vals
+            lat_members[:, idx - 1] = lat_vals
+
+        center_lons = np.mean(lon_members[:, :group_size], axis=1)
+        center_lats = np.mean(lat_members[:, :group_size], axis=1)
+
+        metadata = {
+            "group_id": np.arange(n_groups, dtype=int),
+            "group_size": np.full(n_groups, group_size, dtype=int),
+            "center_lon": center_lons,
+            "center_lat": center_lats,
+            "lon_1": lon_members[:, 0],
+            "lat_1": lat_members[:, 0],
+            "lon_2": lon_members[:, 1],
+            "lat_2": lat_members[:, 1],
+            "lon_3": lon_members[:, 2],
+            "lat_3": lat_members[:, 2],
+            "lon_4": lon_members[:, 3],
+            "lat_4": lat_members[:, 3],
+        }
+
+        if "circle_id" in table.columns:
+            circle_vals = pd.to_numeric(table["circle_id"], errors="coerce").to_numpy(dtype=float)
+            if np.any(~np.isfinite(circle_vals)):
+                raise ValueError("release.points_file contains non-finite values in 'circle_id'")
+            metadata["circle_id"] = circle_vals.astype(int)
+
+        return center_lons, center_lats, metadata, _parse_release_times(table), group_size
+
+    points_file = rel_cfg.get("points_file")
     points = rel_cfg.get("points", [])
+
+    if points_file is not None and len(points) > 0:
+        raise ValueError("Provide only one of release.points or release.points_file")
+
+    if points_file is not None:
+        table = _read_points_table(points_file)
+
+        has_center_cols = ("lon" in table.columns) and ("lat" in table.columns)
+        has_group_cols = any((f"lon_{idx}" in table.columns) or (f"lat_{idx}" in table.columns) for idx in range(1, 5))
+
+        if has_center_cols and has_group_cols:
+            raise ValueError(
+                "release.points_file is ambiguous: provide either lon/lat columns or lon_i/lat_i columns"
+            )
+
+        if has_group_cols:
+            lons, lats, metadata, release_times, group_size = _build_explicit_group_entity_from_table(table)
+            print(f"Loaded grouped points_file: {len(lons)} groups, group_size={group_size}")
+            return lons, lats, metadata, release_times, True, group_size
+
+        if not has_center_cols:
+            raise ValueError(
+                "release.points_file must contain lon/lat columns or grouped lon_i/lat_i columns"
+            )
+
+        lons = pd.to_numeric(table["lon"], errors="coerce").to_numpy(dtype=float)
+        lats = pd.to_numeric(table["lat"], errors="coerce").to_numpy(dtype=float)
+        if np.any(~np.isfinite(lons)) or np.any(~np.isfinite(lats)):
+            raise ValueError("release.points_file contains non-finite values in lon/lat columns")
+
+        print(f"Loaded points_file: {len(lons)} points")
+        return lons, lats, None, _parse_release_times(table), False, 1
+
     if len(points) == 0:
         raise ValueError("release.points is empty")
 
@@ -439,7 +573,7 @@ def _build_release_points_from_list(rel_cfg: dict):
                 f"Point #{i} must be either {{lon: ..., lat: ...}} or [lon, lat]"
             )
 
-    return np.asarray(lons), np.asarray(lats)
+    return np.asarray(lons), np.asarray(lats), None, None, False, 1
 
 
 def _tile_metadata(metadata: dict, repeat_factor: int) -> dict:
@@ -936,12 +1070,24 @@ def build_release(cfg: dict, fieldset: FieldSet):
     release_dimension = "2d"
     depths_from_circle_3d = None
     circle_ids_raw = None
+    explicit_group_entity_metadata = None
+    explicit_group_entity_size = None
+    is_explicit_group_entity = False
 
     if release_mode == "region_grid":
         lons_raw, lats_raw = _build_release_points_from_region(rel_cfg)
 
     elif release_mode == "point_list":
-        lons_raw, lats_raw = _build_release_points_from_list(rel_cfg)
+        (
+            lons_raw,
+            lats_raw,
+            explicit_group_entity_metadata,
+            explicit_release_times,
+            is_explicit_group_entity,
+            explicit_group_entity_size,
+        ) = _build_release_points_from_list(rel_cfg)
+        if explicit_release_times is not None:
+            release_times = np.asarray(explicit_release_times)
 
     elif release_mode == "circle":
         lons_raw, lats_raw, depths_from_circle_3d, release_times, release_dimension, circle_ids_raw = _build_circle_release(
@@ -958,6 +1104,88 @@ def build_release(cfg: dict, fieldset: FieldSet):
 
     summarize_initial_points(lons_raw, lats_raw, name="raw release points")
 
+    continuous_cfg = rel_cfg.get("continuous", {})
+
+    if release_mode == "point_list" and is_explicit_group_entity:
+        if continuous_cfg.get("enabled", False):
+            raise ValueError(
+                "release.continuous.enabled=true is not supported when release.points_file "
+                "provides explicit lon_i/lat_i grouped coordinates"
+            )
+
+        group_cfg = rel_cfg.get("group", {})
+        configured_group_size = int(group_cfg.get("size", 1))
+        if configured_group_size != int(explicit_group_entity_size):
+            raise ValueError(
+                "release.group.size must match the grouped points_file member count. "
+                f"Configured size={configured_group_size}, file size={explicit_group_entity_size}"
+            )
+
+        depth_cfg = rel_cfg.get("depth", {})
+        use_depth = depth_cfg.get("enabled", False)
+
+        metadata = explicit_group_entity_metadata
+        if metadata is None:
+            raise RuntimeError("Internal error: missing grouped metadata for points_file release")
+
+        keep_groups = np.ones(len(lons_raw), dtype=bool)
+        if rel_cfg.get("filter_domain", True):
+            member_ok_domain = np.ones(len(lons_raw), dtype=bool)
+            for member_idx in range(1, configured_group_size + 1):
+                member_ok_domain &= mask_inside_domain(
+                    np.asarray(metadata[f"lon_{member_idx}"]),
+                    np.asarray(metadata[f"lat_{member_idx}"]),
+                    fieldset,
+                )
+            keep_groups &= member_ok_domain
+
+        if rel_cfg.get("filter_land", False):
+            member_ok_ocean = np.ones(len(lons_raw), dtype=bool)
+            for member_idx in range(1, configured_group_size + 1):
+                member_ok_ocean &= mask_inside_ocean(
+                    np.asarray(metadata[f"lon_{member_idx}"]),
+                    np.asarray(metadata[f"lat_{member_idx}"]),
+                    fieldset,
+                )
+            n_removed = int((~member_ok_ocean).sum())
+            if n_removed > 0:
+                print(f"[land filter] removed {n_removed} grouped release rows from points_file")
+            keep_groups &= member_ok_ocean
+
+        if not np.all(keep_groups):
+            lons_raw = np.asarray(lons_raw)[keep_groups]
+            lats_raw = np.asarray(lats_raw)[keep_groups]
+            metadata = {k: np.asarray(v)[keep_groups] for k, v in metadata.items()}
+            if release_times is not None:
+                release_times = np.asarray(release_times)[keep_groups]
+
+        summarize_initial_points(lons_raw, lats_raw, name="grouped points_file release points")
+
+        if use_depth:
+            summarize_depth_axis(fieldset)
+
+            n_before_depth = len(lons_raw)
+            lons, lats, depths = build_multilevel_release(
+                lons2d=lons_raw,
+                lats2d=lats_raw,
+                requested_depths=depth_cfg["values"],
+                fieldset=fieldset,
+                depth_mode=depth_cfg.get("mode", "as_requested"),
+                request_convention=depth_cfg.get("request_convention", "positive_down"),
+                snap_method=depth_cfg.get("snap_method", "nearest"),
+                remove_duplicate_depths=depth_cfg.get("remove_duplicate_depths", True),
+                verbose=True,
+            )
+
+            repeat_factor = int(len(lons) / n_before_depth) if n_before_depth > 0 else 1
+            metadata = _tile_metadata(metadata, repeat_factor)
+            if release_times is not None and repeat_factor > 1:
+                release_times = np.tile(release_times, repeat_factor)
+
+            return lons, lats, depths, metadata, release_times
+
+        return lons_raw, lats_raw, None, metadata, release_times
+
     if release_mode != "circle" and rel_cfg.get("filter_domain", True):
         check_initial_points_in_domain(lons_raw, lats_raw, fieldset, verbose=True)
         lons_raw, lats_raw = filter_inside_domain(lons_raw, lats_raw, fieldset)
@@ -971,8 +1199,13 @@ def build_release(cfg: dict, fieldset: FieldSet):
         lons_raw, lats_raw = filter_inside_ocean(lons_raw, lats_raw, fieldset)
         summarize_initial_points(lons_raw, lats_raw, name="ocean-filtered release points")
 
-    continuous_cfg = rel_cfg.get("continuous", {})
     if release_mode != "circle" and continuous_cfg.get("enabled", False):
+        if release_times is not None:
+            raise ValueError(
+                "release.continuous.enabled=true cannot be combined with per-row 'time' "
+                "values from release.points_file"
+            )
+
         release_steps = _build_continuous_release_schedule(sim_cfg, continuous_cfg)
         n_base_points = len(lons_raw)
 

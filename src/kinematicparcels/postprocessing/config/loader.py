@@ -69,6 +69,14 @@ def _parse_optional_number(value: Any, name: str) -> float | None:
     return _require_number(value, name)
 
 
+def _parse_optional_positive_int(value: Any, name: str) -> int | None:
+    if value is None:
+        return None
+    if not isinstance(value, int) or value < 0:
+        raise ValueError(f"'{name}' must be a non-negative integer or null.")
+    return value
+
+
 def _parse_coordinates(section: dict[str, Any] | None) -> DatasetCoordinatesConfig:
     """
     Parse the optional dataset.coordinates section.
@@ -722,7 +730,30 @@ def _parse_plotting(section: dict[str, Any] | None) -> PlottingConfig:
         "plotting.projection",
     )
 
-    return PlottingConfig(projection=projection)
+    title_fontsize = _parse_optional_positive_int(
+        section.get("title_fontsize", None),
+        "plotting.title_fontsize",
+    )
+    colorbar_fontsize = _parse_optional_positive_int(
+        section.get("colorbar_fontsize", None),
+        "plotting.colorbar_fontsize",
+    )
+    colorbar_tick_fontsize = _parse_optional_positive_int(
+        section.get("colorbar_tick_fontsize", None),
+        "plotting.colorbar_tick_fontsize",
+    )
+    axis_tick_fontsize = _parse_optional_positive_int(
+        section.get("axis_tick_fontsize", None),
+        "plotting.axis_tick_fontsize",
+    )
+
+    return PlottingConfig(
+        projection=projection,
+        title_fontsize=title_fontsize,
+        colorbar_fontsize=colorbar_fontsize,
+        colorbar_tick_fontsize=colorbar_tick_fontsize,
+        axis_tick_fontsize=axis_tick_fontsize,
+    )
 
 
 def _parse_release(section: dict[str, Any] | None) -> ReleaseConfig:
@@ -972,11 +1003,21 @@ def _parse_transition_probability(section: dict[str, Any] | None) -> TransitionP
                 colormap_raw,
                 "transition_probability.plotting.colormap",
             )
+        x_limit_min = _parse_optional_number(
+            plotting_section.get("x_limit_min", None),
+            "transition_probability.plotting.x_limit_min",
+        )
+        x_limit_max = _parse_optional_number(
+            plotting_section.get("x_limit_max", None),
+            "transition_probability.plotting.x_limit_max",
+        )
         plotting = TransitionProbabilityConfig.PlottingConfig(
             enabled=bool(plotting_section.get("enabled", False)),
             x_log_scale=bool(plotting_section.get("x_log_scale", False)),
             y_log_scale=bool(plotting_section.get("y_log_scale", False)),
             colormap=colormap,
+            x_limit_min=x_limit_min,
+            x_limit_max=x_limit_max,
         )
 
     return TransitionProbabilityConfig(
@@ -1137,6 +1178,7 @@ def _parse_meridional_crossing(section: dict[str, Any] | None) -> MeridionalCros
                     probability_section.get("vmax", None),
                     "meridional_crossing.plotting.probability.vmax",
                 ),
+                as_percent=bool(probability_section.get("as_percent", False)),
             )
 
         count_section = plotting_section.get("count", None)

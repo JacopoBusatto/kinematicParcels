@@ -42,6 +42,10 @@ release:
 
 plotting:
   projection: PlateCarree
+  # title_fontsize: 14       # set to 0 to omit titles entirely
+  # colorbar_fontsize: 12
+  # colorbar_tick_fontsize: 10
+  # axis_tick_fontsize: 10
 
 start_end_regions:
   region_labels: null  # Use null for all labels or provide a YAML list of region names.

@@ -12,6 +12,7 @@ This folder contains self-contained YAML examples for the main experiment config
 - 06_circle_gaussian_2d.yml
 - 07_lkm_grouped_2d.yml
 - 08_circle_multistart_2d.yml
+- 09_point_list_points_file_grouped_2d.yml
 - ARGO/argo_to_zarr_example.yml
 - DRIFTERS/drifter_to_zarr_example.yml
 - DRIFTERS/drf_to_zarr_example.yml

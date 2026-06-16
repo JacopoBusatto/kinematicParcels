@@ -63,16 +63,37 @@ def run_meridional_crossing(cfg: PostprocessConfig, context: dict) -> None:
             var_name = f"crossing_probability_{direction}"
             if not _has_finite_values(result.dataset, var_name):
                 continue
+
+            vmin = cfg.meridional_crossing.plotting.probability.vmin
+            vmax = cfg.meridional_crossing.plotting.probability.vmax
+            ds_plot = result.dataset
+
+            if cfg.meridional_crossing.plotting.probability.as_percent:
+                ds_plot = result.dataset.copy(deep=True)
+                ds_plot[var_name] = ds_plot[var_name] * 100.0
+                if vmin is not None:
+                    vmin = vmin * 100.0
+                if vmax is not None:
+                    vmax = vmax * 100.0
+                colorbar_label = "Probability [%]"
+            else:
+                colorbar_label = None
+
             plot_path = outdir / f"meridional_crossing_probability_{direction}.png"
             print(f"Saving {direction} crossing probability plot:", plot_path)
             plot_grid_map(
-                result.dataset,
+                ds_plot,
                 var_name=var_name,
                 outpath=plot_path,
                 projection=cfg.plotting.projection,
                 title=f"Meridional crossing probability ({direction})",
-                vmin=cfg.meridional_crossing.plotting.probability.vmin,
-                vmax=cfg.meridional_crossing.plotting.probability.vmax,
+                vmin=vmin,
+                vmax=vmax,
+                colorbar_label=colorbar_label,
+                title_fontsize=cfg.plotting.title_fontsize,
+                colorbar_fontsize=cfg.plotting.colorbar_fontsize,
+                colorbar_tick_fontsize=cfg.plotting.colorbar_tick_fontsize,
+                axis_tick_fontsize=cfg.plotting.axis_tick_fontsize,
             )
 
     if cfg.meridional_crossing.plotting.count.enabled:
@@ -90,4 +111,8 @@ def run_meridional_crossing(cfg: PostprocessConfig, context: dict) -> None:
                 title=f"Meridional crossing count ({direction})",
                 vmin=cfg.meridional_crossing.plotting.count.vmin,
                 vmax=cfg.meridional_crossing.plotting.count.vmax,
+                title_fontsize=cfg.plotting.title_fontsize,
+                colorbar_fontsize=cfg.plotting.colorbar_fontsize,
+                colorbar_tick_fontsize=cfg.plotting.colorbar_tick_fontsize,
+                axis_tick_fontsize=cfg.plotting.axis_tick_fontsize,
             )

@@ -45,10 +45,16 @@ def test_load_postprocess_config_parses_meridional_crossing_plotting_section(tmp
                   enabled: true
                   vmin: 0.0
                   vmax: 1.0
+                  as_percent: true
                 count:
                   enabled: false
                   vmin: 0.0
                   vmax: 10.0
+            plotting:
+              title_fontsize: 15
+              colorbar_fontsize: 13
+              colorbar_tick_fontsize: 11
+              axis_tick_fontsize: 12
             """
         ),
         encoding="utf-8",
@@ -65,8 +71,13 @@ def test_load_postprocess_config_parses_meridional_crossing_plotting_section(tmp
     assert cfg.meridional_crossing.plotting.probability.enabled is True
     assert cfg.meridional_crossing.plotting.probability.vmin == 0.0
     assert cfg.meridional_crossing.plotting.probability.vmax == 1.0
+    assert cfg.meridional_crossing.plotting.probability.as_percent is True
     assert cfg.meridional_crossing.plotting.count.enabled is False
     assert cfg.meridional_crossing.plotting.count.vmax == 10.0
+    assert cfg.plotting.title_fontsize == 15
+    assert cfg.plotting.colorbar_fontsize == 13
+    assert cfg.plotting.colorbar_tick_fontsize == 11
+    assert cfg.plotting.axis_tick_fontsize == 12
 
 
 def test_load_postprocess_config_parses_beaching_times_plotting_section(tmp_path) -> None:

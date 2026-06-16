@@ -1,8 +1,10 @@
 from pathlib import Path
 
 import numpy as np
+import pandas as pd
 import xarray as xr
 from parcels import FieldSet
+import pytest
 
 from kinematicparcels.runner.run_experiment import build_fieldset, build_release
 from kinematicparcels.utilities.init_checks import mask_inside_ocean
@@ -163,3 +165,109 @@ def test_mask_inside_ocean_handles_lon_lat_variable_order(tmp_path):
     )
 
     assert mask.tolist() == [True, False]
+
+
+def test_build_release_reads_points_file_with_per_row_times(tmp_path):
+    fieldset = _make_fieldset_with_masked_land()
+    points_path = Path(tmp_path) / "points.csv"
+    pd.DataFrame(
+        {
+            "lon": [0.2, 0.8],
+            "lat": [0.2, 0.8],
+            "time": ["2026-01-01", "2026-01-02"],
+        }
+    ).to_csv(points_path, index=False)
+
+    cfg = {
+        "release": {
+            "mode": "point_list",
+            "filter_domain": True,
+            "filter_land": False,
+            "points_file": str(points_path),
+            "group": {"size": 1},
+            "depth": {"enabled": False},
+        },
+        "simulation": {},
+    }
+
+    lons, lats, depths, metadata, release_times = build_release(cfg, fieldset)
+
+    assert depths is None
+    assert lons.tolist() == [0.2, 0.8]
+    assert lats.tolist() == [0.2, 0.8]
+    assert metadata["group_size"].tolist() == [1, 1]
+    assert release_times is not None
+    np.testing.assert_array_equal(
+        release_times,
+        np.array(["2026-01-01", "2026-01-02"], dtype="datetime64[ns]"),
+    )
+
+
+def test_build_release_reads_grouped_points_file_as_explicit_group_entities(tmp_path):
+    fieldset = _make_fieldset_with_masked_land()
+    points_path = Path(tmp_path) / "grouped_points.csv"
+    pd.DataFrame(
+        {
+            "lon_1": [0.2, 0.2],
+            "lat_1": [0.2, 0.2],
+            "lon_2": [0.8, 0.8],
+            "lat_2": [0.2, 0.4],
+            "time": ["2026-01-01", "2026-01-03"],
+        }
+    ).to_csv(points_path, index=False)
+
+    cfg = {
+        "release": {
+            "mode": "point_list",
+            "filter_domain": True,
+            "filter_land": True,
+            "points_file": str(points_path),
+            "group": {"size": 2},
+            "depth": {"enabled": False},
+        },
+        "simulation": {},
+    }
+
+    lons, lats, depths, metadata, release_times = build_release(cfg, fieldset)
+
+    assert depths is None
+    assert len(lons) == 2
+    assert len(lats) == 2
+    assert metadata["group_size"].tolist() == [2, 2]
+    np.testing.assert_allclose(metadata["center_lon"], [0.5, 0.5])
+    np.testing.assert_allclose(metadata["center_lat"], [0.2, 0.3])
+    np.testing.assert_allclose(metadata["lon_1"], [0.2, 0.2])
+    np.testing.assert_allclose(metadata["lon_2"], [0.8, 0.8])
+    assert release_times is not None
+    np.testing.assert_array_equal(
+        release_times,
+        np.array(["2026-01-01", "2026-01-03"], dtype="datetime64[ns]"),
+    )
+
+
+def test_build_release_grouped_points_file_requires_matching_group_size(tmp_path):
+    fieldset = _make_fieldset_with_masked_land()
+    points_path = Path(tmp_path) / "grouped_points.csv"
+    pd.DataFrame(
+        {
+            "lon_1": [0.2],
+            "lat_1": [0.2],
+            "lon_2": [0.8],
+            "lat_2": [0.2],
+        }
+    ).to_csv(points_path, index=False)
+
+    cfg = {
+        "release": {
+            "mode": "point_list",
+            "filter_domain": True,
+            "filter_land": False,
+            "points_file": str(points_path),
+            "group": {"size": 3},
+            "depth": {"enabled": False},
+        },
+        "simulation": {},
+    }
+
+    with pytest.raises(ValueError, match=r"release\.group\.size must match"):
+        build_release(cfg, fieldset)

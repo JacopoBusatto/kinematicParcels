@@ -314,6 +314,8 @@ class TransitionProbabilityConfig:
         x_log_scale: bool = False
         y_log_scale: bool = False
         colormap: str | None = None
+        x_limit_min: float | None = None
+        x_limit_max: float | None = None
 
     region_labels: tuple[str, ...] = ()
     time_step_stride: int = 1
@@ -361,6 +363,38 @@ class TransitionProbabilityConfig:
             raise ValueError(
                 "transition_probability.max_group_member must be an integer > 0 or null."
             )
+
+        if self.plotting.x_limit_min is not None and self.plotting.x_limit_min < 0:
+            raise ValueError(
+                "transition_probability.plotting.x_limit_min must be >= 0 or null."
+            )
+
+        if self.plotting.x_limit_max is not None and self.plotting.x_limit_max < 0:
+            raise ValueError(
+                "transition_probability.plotting.x_limit_max must be >= 0 or null."
+            )
+
+        if (
+            self.plotting.x_limit_min is not None
+            and self.plotting.x_limit_max is not None
+            and self.plotting.x_limit_min >= self.plotting.x_limit_max
+        ):
+            raise ValueError(
+                "transition_probability.plotting.x_limit_min must be smaller than "
+                "transition_probability.plotting.x_limit_max."
+            )
+
+        if self.plotting.x_log_scale:
+            if self.plotting.x_limit_min is not None and self.plotting.x_limit_min <= 0:
+                raise ValueError(
+                    "transition_probability.plotting.x_limit_min must be > 0 when "
+                    "transition_probability.plotting.x_log_scale is true."
+                )
+            if self.plotting.x_limit_max is not None and self.plotting.x_limit_max <= 0:
+                raise ValueError(
+                    "transition_probability.plotting.x_limit_max must be > 0 when "
+                    "transition_probability.plotting.x_log_scale is true."
+                )
 
 
 @dataclass(frozen=True)
@@ -438,6 +472,7 @@ class MeridionalCrossingMapPlottingConfig:
     enabled: bool = True
     vmin: float | None = None
     vmax: float | None = None
+    as_percent: bool = False
 
     def __post_init__(self) -> None:
         _validate_plot_limits("meridional_crossing.plotting", self.vmin, self.vmax)
@@ -494,6 +529,22 @@ class ReleaseConfig:
 @dataclass(frozen=True)
 class PlottingConfig:
     projection: str = "PlateCarree"
+    title_fontsize: int | None = None
+    colorbar_fontsize: int | None = None
+    colorbar_tick_fontsize: int | None = None
+    axis_tick_fontsize: int | None = None
+
+    def __post_init__(self) -> None:
+        for name, value in (
+            ("title_fontsize", self.title_fontsize),
+            ("colorbar_fontsize", self.colorbar_fontsize),
+            ("colorbar_tick_fontsize", self.colorbar_tick_fontsize),
+            ("axis_tick_fontsize", self.axis_tick_fontsize),
+        ):
+            if value is not None and (not isinstance(value, int) or value < 0):
+                raise ValueError(
+                    f"plotting.{name} must be a non-negative integer or null."
+                )
 
 
 @dataclass(frozen=True)

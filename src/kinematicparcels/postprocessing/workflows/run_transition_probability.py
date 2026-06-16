@@ -38,6 +38,8 @@ def run_transition_probability(cfg: PostprocessConfig, context: dict) -> None:
             x_log_scale=cfg.transition_probability.plotting.x_log_scale,
             y_log_scale=cfg.transition_probability.plotting.y_log_scale,
             colormap=cfg.transition_probability.plotting.colormap,
+            x_limit_min=cfg.transition_probability.plotting.x_limit_min,
+            x_limit_max=cfg.transition_probability.plotting.x_limit_max,
         )
         plot_transition_probability_by_source(
             transition_table,
@@ -46,4 +48,6 @@ def run_transition_probability(cfg: PostprocessConfig, context: dict) -> None:
             x_log_scale=cfg.transition_probability.plotting.x_log_scale,
             y_log_scale=cfg.transition_probability.plotting.y_log_scale,
             colormap=cfg.transition_probability.plotting.colormap,
+            x_limit_min=cfg.transition_probability.plotting.x_limit_min,
+            x_limit_max=cfg.transition_probability.plotting.x_limit_max,
         )
