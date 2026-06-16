@@ -257,7 +257,7 @@ class TrajectoriesConfig:
     animate: bool = False
     animation_fps: int = 8
     animation_every_n: int = 1
-    animation_color_by: str = "lat0"
+    animation_color_by: str = "group_member"
     animation_cmap: str | None = None  # None = auto (viridis for numeric, tab10/20/hsv for categorical)
     animation_cmap_mode: str = "auto"  # "auto" | "categorical" | "numeric"
     animation_vmin: float | None = None

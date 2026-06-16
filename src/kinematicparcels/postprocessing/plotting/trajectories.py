@@ -90,25 +90,36 @@ def _resolve_color_lookup(
     if not color_by:
         return None, ["trajectory"]
 
+    if color_by == "group_member" and "group_member" in df.columns:
+        df_norm = _normalize_key_columns(df, key_cols)
+        lookup = df_norm.groupby(key_cols, sort=False)["group_member"].first()
+        return lookup, key_cols
+
     if summary_df is not None and color_by in summary_df.columns:
         if "trajectory" not in summary_df.columns:
             raise KeyError("summary_df must contain 'trajectory' column.")
         lookup_cols = key_cols if all(c in summary_df.columns for c in key_cols) else ["trajectory"]
         summary_norm = _normalize_key_columns(summary_df, lookup_cols)
-        lookup = (
-            summary_norm[lookup_cols + [color_by]]
-            .drop_duplicates(subset=lookup_cols)
-            .set_index(lookup_cols)[color_by]
-        )
+        if color_by == "group_member":
+            lookup = summary_norm.groupby(lookup_cols, sort=False)["group_member"].first()
+        else:
+            lookup = (
+                summary_norm[lookup_cols + [color_by]]
+                .drop_duplicates(subset=lookup_cols)
+                .set_index(lookup_cols)[color_by]
+            )
         return lookup, lookup_cols
 
     if color_by in df.columns:
         df_norm = _normalize_key_columns(df, key_cols)
-        lookup = (
-            df_norm[key_cols + [color_by]]
-            .drop_duplicates(subset=key_cols)
-            .set_index(key_cols)[color_by]
-        )
+        if color_by == "group_member":
+            lookup = df_norm.groupby(key_cols, sort=False)["group_member"].first()
+        else:
+            lookup = (
+                df_norm[key_cols + [color_by]]
+                .drop_duplicates(subset=key_cols)
+                .set_index(key_cols)[color_by]
+            )
         return lookup, key_cols
 
     raise KeyError(f"color_by='{color_by}' not found in summary_df or trajectory_df.")

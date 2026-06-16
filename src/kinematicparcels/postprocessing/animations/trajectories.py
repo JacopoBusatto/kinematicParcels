@@ -140,17 +140,24 @@ def animate_trajectories(
     if len(times) == 0:
         raise ValueError("No time steps available for trajectory animation.")
 
-    if summary_df is not None and color_by in summary_df.columns:
+    if color_by == "group_member" and has_group_member:
+        source = "trajectory"
+        lookup_cols = group_cols
+        color_lookup = None
+    elif summary_df is not None and color_by in summary_df.columns:
         if "trajectory" not in summary_df.columns:
             raise KeyError("summary_df must contain 'trajectory' column.")
         lookup_cols = group_cols if all(c in summary_df.columns for c in group_cols) else ["trajectory"]
         source = "summary"
         summary_norm = _normalize_key_columns(summary_df, lookup_cols)
-        color_lookup = (
-            summary_norm[lookup_cols + [color_by]]
-            .drop_duplicates(subset=lookup_cols)
-            .set_index(lookup_cols)[color_by]
-        )
+        if color_by == "group_member":
+            color_lookup = summary_norm.groupby(lookup_cols, sort=False)["group_member"].first()
+        else:
+            color_lookup = (
+                summary_norm[lookup_cols + [color_by]]
+                .drop_duplicates(subset=lookup_cols)
+                .set_index(lookup_cols)[color_by]
+            )
     elif color_by in df.columns:
         source = "trajectory"
         lookup_cols = group_cols

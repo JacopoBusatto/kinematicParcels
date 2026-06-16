@@ -238,6 +238,40 @@ def test_plot_trajectories_map_accepts_categorical_summary_coloring(tmp_path: Pa
     assert outpath.stat().st_size > 0
 
 
+def test_plot_trajectories_map_uses_group_member_coloring_when_requested(tmp_path: Path) -> None:
+    df = pd.DataFrame(
+        {
+            "trajectory": ["1_m1", "1_m1", "1_m2", "1_m2"],
+            "group_member": [1, 1, 2, 2],
+            "obs": [0, 1, 0, 1],
+            "time": pd.to_datetime(
+                [
+                    "2026-04-15T00:00:00",
+                    "2026-04-15T06:00:00",
+                    "2026-04-15T00:00:00",
+                    "2026-04-15T06:00:00",
+                ]
+            ),
+            "lon": [14.30, 14.45, 15.10, 15.22],
+            "lat": [36.90, 36.82, 37.20, 37.26],
+        }
+    )
+    summary = build_particle_summary(df)
+
+    outpath = tmp_path / "trajectories_by_group_member.png"
+    plot_trajectories_map(
+        df,
+        outpath=outpath,
+        title="Trajectories by group member",
+        summary_df=summary,
+        color_by="group_member",
+        show_end=False,
+    )
+
+    assert outpath.exists()
+    assert outpath.stat().st_size > 0
+
+
 def test_plot_trajectories_map_accepts_array_like_summary_trajectory_ids(tmp_path: Path) -> None:
     df = pd.DataFrame(
         {
@@ -308,6 +342,44 @@ def test_animate_trajectories_accepts_categorical_summary_coloring(tmp_path: Pat
         summary_df=summary,
         color_by="start_region",
         colorbar_label="Start region",
+        fps=2,
+        show_time_bar=False,
+        trail=False,
+        show_tracer=False,
+    )
+
+    assert outpath.exists()
+    assert outpath.stat().st_size > 0
+
+
+def test_animate_trajectories_uses_group_member_coloring_when_requested(tmp_path: Path) -> None:
+    df = pd.DataFrame(
+        {
+            "trajectory": ["1_m1", "1_m1", "1_m2", "1_m2"],
+            "group_member": [1, 1, 2, 2],
+            "obs": [0, 1, 0, 1],
+            "time": pd.to_datetime(
+                [
+                    "2026-04-15T00:00:00",
+                    "2026-04-15T06:00:00",
+                    "2026-04-15T00:00:00",
+                    "2026-04-15T06:00:00",
+                ]
+            ),
+            "lon": [14.30, 14.45, 15.10, 15.22],
+            "lat": [36.90, 36.82, 37.20, 37.26],
+        }
+    )
+    summary = build_particle_summary(df)
+
+    outpath = tmp_path / "trajectories_by_group_member.gif"
+    animate_trajectories(
+        df,
+        outpath=outpath,
+        title="Trajectories by group member",
+        summary_df=summary,
+        color_by="group_member",
+        colorbar_label="Group member",
         fps=2,
         show_time_bar=False,
         trail=False,
