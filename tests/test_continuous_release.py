@@ -71,6 +71,34 @@ def _base_cfg(field_pattern: str) -> dict:
     }
 
 
+def _write_constant_velocity_field(field_path: Path, *, u_value: float, v_value: float) -> None:
+    lon = np.array([14.0, 14.5, 15.0, 15.5, 16.0], dtype=np.float32)
+    lat = np.array([35.0, 35.5, 36.0, 36.5, 37.0], dtype=np.float32)
+    time = np.array(
+        [
+            np.datetime64("2026-04-01T00:00:00", "ns"),
+            np.datetime64("2026-04-02T00:00:00", "ns"),
+        ],
+        dtype="datetime64[ns]",
+    )
+
+    shape = (len(time), len(lat), len(lon))
+    ds = xr.Dataset(
+        {
+            "x_sea_water_velocity": (
+                ("time", "lat", "lon"),
+                np.full(shape, u_value, dtype=np.float32),
+            ),
+            "y_sea_water_velocity": (
+                ("time", "lat", "lon"),
+                np.full(shape, v_value, dtype=np.float32),
+            ),
+        },
+        coords={"time": time, "lat": lat, "lon": lon},
+    )
+    ds.to_netcdf(field_path)
+
+
 def test_build_fieldset_applies_configured_periodic_halo_size():
     cfg = _base_cfg(str(ROOT / "test_fields" / "zero_velocity_april_2026.nc"))
     cfg["fieldset"]["periodic_halo"] = True
@@ -241,6 +269,93 @@ def test_run_simulation_uses_direct_advection_when_no_runtime_kernels_needed(tmp
         run_simulation(cfg, pset, fieldset)
 
     assert pset.executed == [AdvectionRK4]
+
+
+def test_run_simulation_writes_grouped_release_state_before_first_advection(tmp_path: Path):
+    field_path = tmp_path / "constant_grouped_velocity.nc"
+    _write_constant_velocity_field(field_path, u_value=0.2, v_value=0.0)
+
+    cfg = _base_cfg(str(field_path))
+    cfg["experiment"]["output_dir"] = str(tmp_path / "grouped_initial_output")
+    cfg["release"]["mode"] = "point_list"
+    cfg["release"]["points"] = [{"lon": 15.0, "lat": 36.0}]
+    cfg["release"]["continuous"] = {"enabled": False}
+    cfg["release"]["group"] = {
+        "size": 5,
+        "radius_km": 1.0,
+        "placement": "equal_angles",
+    }
+
+    fieldset = build_fieldset(cfg)
+    lons, lats, depths, metadata, release_times = build_release(cfg, fieldset)
+    pset = build_particleset(
+        cfg,
+        fieldset,
+        lons,
+        lats,
+        depths=depths,
+        metadata_dict=metadata,
+        release_times=release_times,
+    )
+
+    run_simulation(cfg, pset, fieldset)
+
+    ds = xr.open_zarr(Path(cfg["experiment"]["output_dir"]) / cfg["output"]["zarr_name"])
+    finite_times = ds.time.values[0][np.isfinite(ds.time.values[0])]
+
+    np.testing.assert_array_equal(
+        finite_times[:2],
+        np.array(
+            [
+                np.datetime64("2026-04-01T00:00:00", "ns"),
+                np.datetime64("2026-04-01T06:00:00", "ns"),
+            ],
+            dtype="datetime64[ns]",
+        ),
+    )
+    assert np.isclose(ds.lon.values[0, 0], lons[0])
+    assert np.isclose(ds.lat.values[0, 0], lats[0])
+    assert np.isclose(ds.center_lon.values[0, 0], metadata["center_lon"][0])
+    assert np.isclose(ds.center_lat.values[0, 0], metadata["center_lat"][0])
+    assert np.isclose(ds.lon_1.values[0, 0], metadata["lon_1"][0])
+    assert np.isclose(ds.lat_1.values[0, 0], metadata["lat_1"][0])
+    assert ds.lon.values[0, 1] > ds.lon.values[0, 0]
+    assert ds.lon_1.values[0, 1] > ds.lon_1.values[0, 0]
+
+
+def test_run_simulation_continuous_release_has_no_duplicate_first_observation(tmp_path: Path):
+    cfg = _base_cfg(str(ROOT / "test_fields" / "zero_velocity_april_2026.nc"))
+    cfg["experiment"]["output_dir"] = str(tmp_path / "continuous_initial_output")
+    cfg["release"]["dlon"] = 100.0
+    cfg["release"]["dlat"] = 100.0
+
+    fieldset = build_fieldset(cfg)
+    lons, lats, depths, metadata, release_times = build_release(cfg, fieldset)
+    pset = build_particleset(
+        cfg,
+        fieldset,
+        lons,
+        lats,
+        depths=depths,
+        metadata_dict=metadata,
+        release_times=release_times,
+    )
+
+    run_simulation(cfg, pset, fieldset)
+
+    ds = xr.open_zarr(Path(cfg["experiment"]["output_dir"]) / cfg["output"]["zarr_name"])
+
+    first_times = []
+    for row in ds.time.values:
+        finite = row[np.isfinite(row)]
+        first_times.append(finite[0])
+        if len(finite) >= 2:
+            assert finite[1] != finite[0]
+
+    np.testing.assert_array_equal(
+        np.sort(np.array(first_times, dtype="datetime64[ns]")),
+        np.sort(np.unique(release_times)),
+    )
 
 
 def test_wrap_longitude_periodic_maps_particle_back_into_domain():

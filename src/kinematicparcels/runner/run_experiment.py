@@ -1457,6 +1457,101 @@ def build_particleset(
 
     return pset
 
+
+def _ordered_unique_particle_times(pset: ParticleSet, *, forward_time: bool) -> np.ndarray:
+    particledata = getattr(pset, "particledata", None)
+    if particledata is None:
+        return np.empty(0, dtype=float)
+
+    particle_times = np.asarray(particledata.getvardata("time"), dtype=float)
+    particle_times = particle_times[np.isfinite(particle_times)]
+    if particle_times.size == 0:
+        return np.empty(0, dtype=float)
+
+    unique_times = np.unique(particle_times)
+    return unique_times if forward_time else unique_times[::-1]
+
+
+def _write_initial_release_snapshots(pset: ParticleSet, output_file, *, forward_time: bool) -> None:
+    if not hasattr(output_file, "write"):
+        return
+
+    release_times = _ordered_unique_particle_times(pset, forward_time=forward_time)
+    if release_times.size == 0:
+        return
+
+    for release_time in release_times:
+        output_file.write(pset, time=float(release_time))
+
+    print(
+        "Wrote explicit initial release snapshot(s) for "
+        f"{len(release_times)} release time(s) before integration"
+    )
+
+
+def _zarr_fill_value(dtype: np.dtype) -> float | int | bool:
+    if np.issubdtype(dtype, np.floating):
+        return np.nan
+    if np.issubdtype(dtype, np.integer):
+        return np.iinfo(dtype).max
+    if np.issubdtype(dtype, np.bool_):
+        return False
+    raise TypeError(f"Unsupported zarr dtype for row compaction: {dtype}")
+
+
+def _compact_duplicate_initial_zarr_records(zarr_path: Path) -> None:
+    """
+    Remove Parcels' duplicated first record after an explicit release snapshot.
+
+    Parcels writes the state at `time_at_startofloop` after the first integration
+    step, so when the runner writes an explicit release snapshot up front the
+    output file contains a duplicated first timestamp. Compact each affected
+    trajectory row in place so `obs=0` remains the true release state and later
+    observations stay contiguous.
+    """
+    z = zarr.open(str(zarr_path), mode="r+")
+    if "time" not in z:
+        return
+
+    time_values = z["time"][:]
+    if time_values.ndim != 2:
+        return
+
+    duplicate_rows: dict[int, np.ndarray] = {}
+    for row_index, row in enumerate(time_values):
+        valid = np.flatnonzero(np.isfinite(row))
+        if len(valid) < 2:
+            continue
+        if np.isclose(row[valid[0]], row[valid[1]], atol=1.0e-6, rtol=0.0):
+            duplicate_rows[row_index] = np.concatenate(([valid[0]], valid[2:]))
+
+    if not duplicate_rows:
+        return
+
+    vars_to_compact = [
+        name
+        for name in z.array_keys()
+        if z[name].ndim == 2 and z[name].shape == time_values.shape
+    ]
+
+    for var_name in vars_to_compact:
+        arr = z[var_name]
+        try:
+            fill_value = _zarr_fill_value(arr.dtype)
+        except TypeError:
+            continue
+
+        for row_index, keep_indices in duplicate_rows.items():
+            row = arr[row_index, :]
+            compacted = np.full(row.shape, fill_value, dtype=arr.dtype)
+            compacted[: len(keep_indices)] = row[keep_indices]
+            arr[row_index, :] = compacted
+
+    print(
+        f"[zarr repair] Compacted duplicate initial record(s) for {len(duplicate_rows)} "
+        f"trajectory row(s) across {len(vars_to_compact)} variable(s)."
+    )
+
 def _nullify_off_grid_zarr_records(zarr_path: Path, *, outputdt_s: float) -> None:
     """
     Nullify zarr records whose timestamps are not aligned to the outputdt grid.
@@ -1547,6 +1642,11 @@ def run_simulation(cfg: dict, pset: ParticleSet, fieldset: FieldSet, lkm_modes=N
     output_file = pset.ParticleFile(
         name=str(zarr_path),
         outputdt=timedelta(hours=dt_output_hours),
+    )
+    _write_initial_release_snapshots(
+        pset,
+        output_file,
+        forward_time=dt_integration_hours >= 0,
     )
 
     # Choose kernel and execution strategy.
@@ -1640,10 +1740,12 @@ def run_simulation(cfg: dict, pset: ParticleSet, fieldset: FieldSet, lkm_modes=N
 
     # Parcels appends ".zarr" to the output name if the path has no suffix.
     actual_zarr_path = zarr_path if zarr_path.exists() else zarr_path.parent / (zarr_path.name + ".zarr")
-    _nullify_off_grid_zarr_records(
-        actual_zarr_path,
-        outputdt_s=timedelta(hours=dt_output_hours).total_seconds(),
-    )
+    if actual_zarr_path.exists():
+        _compact_duplicate_initial_zarr_records(actual_zarr_path)
+        _nullify_off_grid_zarr_records(
+            actual_zarr_path,
+            outputdt_s=timedelta(hours=dt_output_hours).total_seconds(),
+        )
 
 
 def main():
