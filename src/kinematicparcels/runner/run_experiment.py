@@ -1505,27 +1505,26 @@ def _compact_duplicate_initial_zarr_records(zarr_path: Path) -> None:
 
     Parcels writes the state at `time_at_startofloop` after the first integration
     step, so when the runner writes an explicit release snapshot up front the
-    output file contains a duplicated first timestamp. Compact each affected
-    trajectory row in place so `obs=0` remains the true release state and later
-    observations stay contiguous.
+    output file contains a duplicated first timestamp. Compact only rows whose
+    first two observations share the same timestamp so `obs=0` remains the true
+    release state and later observations stay contiguous.
     """
     z = zarr.open(str(zarr_path), mode="r+")
     if "time" not in z:
         return
 
     time_values = z["time"][:]
-    if time_values.ndim != 2:
+    if time_values.ndim != 2 or time_values.shape[1] < 2:
         return
 
-    duplicate_rows: dict[int, np.ndarray] = {}
-    for row_index, row in enumerate(time_values):
-        valid = np.flatnonzero(np.isfinite(row))
-        if len(valid) < 2:
-            continue
-        if np.isclose(row[valid[0]], row[valid[1]], atol=1.0e-6, rtol=0.0):
-            duplicate_rows[row_index] = np.concatenate(([valid[0]], valid[2:]))
+    duplicate_rows = np.isfinite(time_values[:, 0]) & np.isfinite(time_values[:, 1]) & np.isclose(
+        time_values[:, 0],
+        time_values[:, 1],
+        atol=1.0e-6,
+        rtol=0.0,
+    )
 
-    if not duplicate_rows:
+    if not np.any(duplicate_rows):
         return
 
     vars_to_compact = [
@@ -1535,20 +1534,18 @@ def _compact_duplicate_initial_zarr_records(zarr_path: Path) -> None:
     ]
 
     for var_name in vars_to_compact:
-        arr = z[var_name]
+        arr = z[var_name][:]
         try:
             fill_value = _zarr_fill_value(arr.dtype)
         except TypeError:
             continue
 
-        for row_index, keep_indices in duplicate_rows.items():
-            row = arr[row_index, :]
-            compacted = np.full(row.shape, fill_value, dtype=arr.dtype)
-            compacted[: len(keep_indices)] = row[keep_indices]
-            arr[row_index, :] = compacted
+        arr[duplicate_rows, 1:-1] = arr[duplicate_rows, 2:]
+        arr[duplicate_rows, -1] = fill_value
+        z[var_name][:] = arr
 
     print(
-        f"[zarr repair] Compacted duplicate initial record(s) for {len(duplicate_rows)} "
+        f"[zarr repair] Compacted duplicate initial record(s) for {int(duplicate_rows.sum())} "
         f"trajectory row(s) across {len(vars_to_compact)} variable(s)."
     )
 

@@ -6,11 +6,13 @@ from unittest.mock import patch
 
 import numpy as np
 import xarray as xr
+import zarr
 from parcels import AdvectionRK4, FieldSet
 
 from kinematicparcels.runner.run_experiment import (
     _attach_boundary_halo_constants,
     _build_release_points_from_region,
+    _compact_duplicate_initial_zarr_records,
     build_particleset,
     build_fieldset,
     build_release,
@@ -356,6 +358,41 @@ def test_run_simulation_continuous_release_has_no_duplicate_first_observation(tm
         np.sort(np.array(first_times, dtype="datetime64[ns]")),
         np.sort(np.unique(release_times)),
     )
+
+
+def test_compact_duplicate_initial_zarr_records_only_checks_first_two_obs(tmp_path: Path) -> None:
+    zarr_path = tmp_path / "duplicate_initial.zarr"
+    store = zarr.open_group(str(zarr_path), mode="w")
+
+    time = np.array(
+        [
+            [0.0, 0.0, 6.0, 12.0],
+            [1.0, 7.0, 7.0, 13.0],
+        ],
+        dtype=np.float64,
+    )
+    lon = np.array(
+        [
+            [10.0, 10.0, 10.5, 11.0],
+            [20.0, 20.5, 20.5, 21.0],
+        ],
+        dtype=np.float64,
+    )
+
+    store.create_dataset("time", data=time, shape=time.shape, dtype=time.dtype)
+    store.create_dataset("lon", data=lon, shape=lon.shape, dtype=lon.dtype)
+
+    _compact_duplicate_initial_zarr_records(zarr_path)
+
+    repaired = zarr.open_group(str(zarr_path), mode="r")
+
+    np.testing.assert_allclose(repaired["time"][0, :3], np.array([0.0, 6.0, 12.0]))
+    assert np.isnan(repaired["time"][0, 3])
+    np.testing.assert_allclose(repaired["lon"][0, :3], np.array([10.0, 10.5, 11.0]))
+    assert np.isnan(repaired["lon"][0, 3])
+
+    np.testing.assert_allclose(repaired["time"][1, :], np.array([1.0, 7.0, 7.0, 13.0]))
+    np.testing.assert_allclose(repaired["lon"][1, :], np.array([20.0, 20.5, 20.5, 21.0]))
 
 
 def test_wrap_longitude_periodic_maps_particle_back_into_domain():
