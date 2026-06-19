@@ -105,6 +105,7 @@ analysis:
         - exponent_maps
 exponent_maps:
     distance: meridional
+    infer_grid_from_start: false
     fsle:
         enable: true
         scale: [2.0, 5.0]
@@ -129,6 +130,7 @@ exponent_maps:
     assert cfg.analysis.types == ("exponent_maps",)
     assert cfg.exponent_maps is not None
     assert cfg.exponent_maps.distance == "meridional"
+    assert cfg.exponent_maps.infer_grid_from_start is False
     assert cfg.exponent_maps.fsle.enabled is True
     assert cfg.exponent_maps.fsle.scales_km == pytest.approx((2.0, 5.0))
     assert cfg.exponent_maps.fsle.mask_zeros is True
@@ -377,6 +379,7 @@ def test_run_exponent_maps_accepts_sparse_release_grid(tmp_path) -> None:
         release=ReleaseConfig(mode="region_grid", continuous=False),
         exponent_maps=ExponentMapsConfig(
             distance="meridional",
+            infer_grid_from_start=False,
             fsle=ExponentMapsFSLEConfig(enabled=True, scales_km=(2.0,), mask_zeros=False),
             ftle=ExponentMapsFTLEConfig(enabled=False),
         ),

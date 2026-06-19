@@ -452,6 +452,7 @@ def infer_regular_spacing_from_centers(
     values: np.ndarray | pd.Series,
     *,
     round_decimals: int = 6,
+    min_repeated_count: int = 2,
 ) -> float:
     """
     Infer the regular spacing of a 1D grid from center coordinates.
@@ -462,6 +463,10 @@ def infer_regular_spacing_from_centers(
         1D array of center coordinates.
     round_decimals
         Number of decimals used to collapse small floating-point differences.
+    min_repeated_count
+        Minimum number of occurrences required for a spacing candidate to be
+        considered reliable. If no candidate reaches this count, the smallest
+        positive spacing is used.
 
     Returns
     -------
@@ -482,46 +487,27 @@ def infer_regular_spacing_from_centers(
     if finite.size < 2:
         raise ValueError("Need at least two unique points to infer spacing.")
 
-    best_spacing: float | None = None
-    best_score = -np.inf
+    if min_repeated_count < 1:
+        raise ValueError("min_repeated_count must be >= 1.")
 
-    # Search across multiple precisions and prefer the spacing with the
-    # strongest weighted support (count * distance), which suppresses jitter.
-    min_decimals = 1
-    for decimals in range(int(round_decimals), min_decimals - 1, -1):
-        rounded_vals = np.unique(np.round(finite, decimals))
-        if rounded_vals.size < 2:
-            continue
+    rounded_vals = np.unique(np.round(finite, int(round_decimals)))
+    if rounded_vals.size < 2:
+        raise ValueError("Need at least two unique points to infer spacing.")
 
-        diffs = np.diff(np.sort(rounded_vals))
-        diffs = diffs[diffs > 0]
-        if diffs.size == 0:
-            continue
+    diffs = np.diff(np.sort(rounded_vals))
+    rounded_diffs = np.round(diffs[diffs > 0], int(round_decimals))
+    rounded_diffs = rounded_diffs[rounded_diffs > 0]
 
-        rounded_diffs = np.round(diffs, decimals)
-        rounded_diffs = rounded_diffs[rounded_diffs > 0]
-        if rounded_diffs.size == 0:
-            continue
-
-        candidates, counts = np.unique(rounded_diffs, return_counts=True)
-        mask = counts >= 2
-        if mask.any():
-            candidates = candidates[mask]
-            counts = counts[mask]
-
-        scores = candidates * counts
-        idx = int(np.argmax(scores))
-        score = float(scores[idx])
-        spacing = float(candidates[idx])
-
-        if score > best_score:
-            best_score = score
-            best_spacing = spacing
-
-    if best_spacing is None or best_spacing <= 0:
+    if rounded_diffs.size == 0:
         raise ValueError("Could not infer positive spacing from coordinates.")
 
-    return best_spacing
+    candidates, counts = np.unique(rounded_diffs, return_counts=True)
+    reliable = candidates[counts >= min_repeated_count]
+
+    if reliable.size > 0:
+        return float(np.min(reliable))
+
+    return float(np.min(candidates))
 
 
 def _select_release_centers(

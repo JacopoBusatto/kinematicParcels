@@ -8,7 +8,7 @@ import xarray as xr
 
 from ..analyses import compute_exponent_maps
 from ..config.models import ExponentMapPlotConfig, PostprocessConfig
-from ..core import build_grid_from_config
+from ..core import build_grid_from_config, build_release_grid_from_summary
 from ..io import save_dataset_netcdf
 from ..plotting import plot_exponent_map
 from .base_products import get_particle_summary, get_trajectory_table
@@ -172,13 +172,21 @@ def run_exponent_maps(cfg: PostprocessConfig, context: dict) -> None:
     centers = _validate_grouped_regular_release(summary_df) if exponent_cfg.require_grouped_regular_grid else summary_df
 
     print("Building release grid")
-    grid = build_grid_from_config(
-        cfg,
-        centers,
-        lon_col="lon0",
-        lat_col="lat0",
-        time_col="time0",
-    )
+    if exponent_cfg.infer_grid_from_start:
+        grid = build_release_grid_from_summary(
+            centers,
+            lon_col="lon0",
+            lat_col="lat0",
+            time_col="time0",
+        )
+    else:
+        grid = build_grid_from_config(
+            cfg,
+            centers,
+            lon_col="lon0",
+            lat_col="lat0",
+            time_col="time0",
+        )
     dlon_inferred = grid.dlon
     dlat_inferred = grid.dlat
     print(f"Inferred release spacing: dlon={dlon_inferred:.6f}, dlat={dlat_inferred:.6f}")

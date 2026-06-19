@@ -611,6 +611,7 @@ def test_load_postprocess_config_parses_start_end_region_map_styling(tmp_path: P
                 dataset:
                     input_path: ./dummy.zarr
                 start_end_regions:
+                    infer_grid_from_start: false
                     discrete_cmap: Set3
                     colorbar_label_mode: region_label
                     show_region_labels: true
@@ -620,6 +621,7 @@ def test_load_postprocess_config_parses_start_end_region_map_styling(tmp_path: P
 
     cfg = load_postprocess_config(cfg_path)
 
+    assert cfg.start_end_regions.infer_grid_from_start is False
     assert cfg.start_end_regions.discrete_cmap == "Set3"
     assert cfg.start_end_regions.colorbar_label_mode == "region_label"
     assert cfg.start_end_regions.show_region_labels is True

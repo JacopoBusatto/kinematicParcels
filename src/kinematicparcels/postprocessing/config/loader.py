@@ -367,6 +367,7 @@ def _parse_beaching_times(section: dict[str, Any] | None) -> BeachingTimesConfig
 
     section = _require_dict(section, "beaching_times")
 
+    infer_grid_from_start = bool(section.get("infer_grid_from_start", True))
     lon_col = _require_nonempty_string(
         section.get("lon_col", "lon0"),
         "beaching_times.lon_col",
@@ -404,6 +405,7 @@ def _parse_beaching_times(section: dict[str, Any] | None) -> BeachingTimesConfig
         )
 
     return BeachingTimesConfig(
+        infer_grid_from_start=infer_grid_from_start,
         lon_col=lon_col,
         lat_col=lat_col,
         value_col=value_col,
@@ -539,6 +541,7 @@ def _parse_exponent_maps(section: dict[str, Any] | None) -> ExponentMapsConfig |
         section.get("distance", "geodesical"),
         "exponent_maps.distance",
     )
+    infer_grid_from_start = bool(section.get("infer_grid_from_start", True))
     require_grouped_regular_grid = bool(section.get("require_grouped_regular_grid", True))
 
     fsle_section = _require_dict(section.get("fsle", {}), "exponent_maps.fsle")
@@ -577,6 +580,7 @@ def _parse_exponent_maps(section: dict[str, Any] | None) -> ExponentMapsConfig |
 
     return ExponentMapsConfig(
         distance=distance,
+        infer_grid_from_start=infer_grid_from_start,
         require_grouped_regular_grid=require_grouped_regular_grid,
         fsle=fsle,
         ftle=ftle,
@@ -783,6 +787,7 @@ def _parse_start_end_regions(section: dict[str, Any] | None) -> StartEndRegionsC
 
     section = _require_dict(section, "start_end_regions")
 
+    infer_grid_from_start = bool(section.get("infer_grid_from_start", True))
     region_labels_raw = section.get("region_labels", None)
     region_labels: tuple[str, ...] | None
 
@@ -906,6 +911,7 @@ def _parse_start_end_regions(section: dict[str, Any] | None) -> StartEndRegionsC
 
     return StartEndRegionsConfig(
         region_labels=region_labels,
+        infer_grid_from_start=infer_grid_from_start,
         how_many=how_many,
         priority_level=priority_level,
         priority_mode=priority_mode,

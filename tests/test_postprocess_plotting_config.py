@@ -99,6 +99,7 @@ def test_load_postprocess_config_parses_beaching_times_plotting_section(tmp_path
               dlon: 1.0
               dlat: 1.0
             beaching_times:
+              infer_grid_from_start: false
               lon_col: lon0
               lat_col: lat0
               value_col: lifetime_seconds
@@ -115,6 +116,7 @@ def test_load_postprocess_config_parses_beaching_times_plotting_section(tmp_path
     cfg = load_postprocess_config(cfg_path)
 
     assert cfg.analysis.types == ("beaching_times",)
+    assert cfg.beaching_times.infer_grid_from_start is False
     assert cfg.beaching_times.plotting.enabled is True
     assert cfg.beaching_times.plotting.vmin == 0.0
     assert cfg.beaching_times.plotting.vmax == 365.0

@@ -13,7 +13,7 @@ from ..analyses import (
 )
 from ..animations import animate_trajectories
 from ..config.models import PostprocessConfig
-from ..core import build_grid_from_config
+from ..core import build_grid_from_config, build_release_grid_from_summary
 from ..io import save_dataset_netcdf, save_grid_table
 from ..plotting import plot_connectivity_map, plot_discrete_grid_map, plot_trajectories_map
 from .base_products import get_particle_summary, get_trajectory_table
@@ -174,15 +174,21 @@ def run_start_end_regions(cfg: PostprocessConfig, context: dict) -> None:
     # In continuous mode, per-cell labels are chosen by modal class (random tie break).
     if _is_grid_mode(cfg):
         print("Building release grid from classified summary")
-        if "grid" not in context:
-            context["grid"] = build_grid_from_config(
+        if cfg.start_end_regions.infer_grid_from_start:
+            grid = build_release_grid_from_summary(
+                classified_summary,
+                lon_col="lon0",
+                lat_col="lat0",
+                time_col="time0",
+            )
+        else:
+            grid = build_grid_from_config(
                 cfg,
                 classified_summary,
                 lon_col="lon0",
                 lat_col="lat0",
                 time_col="time0",
             )
-        grid = context["grid"]
 
         print("Computing start/end/mode region maps")
         start_grid_table, start_ds, end_grid_table, end_ds = compute_start_end_region_maps(

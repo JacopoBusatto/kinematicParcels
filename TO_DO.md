@@ -437,3 +437,6 @@ Important constraints:
 
 or just trim the gifs maybe its easier
 ```
+
+
+grid from start: now that the first point is fixed, we could infer the grid, check how it's done

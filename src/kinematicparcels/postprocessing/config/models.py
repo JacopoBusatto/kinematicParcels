@@ -110,6 +110,7 @@ class BeachingTimesPlottingConfig:
 
 @dataclass(frozen=True)
 class BeachingTimesConfig:
+    infer_grid_from_start: bool = True
     lon_col: str = "lon0"
     lat_col: str = "lat0"
     value_col: str = "lifetime_seconds"
@@ -223,6 +224,7 @@ class ExponentMapsFTLEConfig:
 @dataclass(frozen=True)
 class ExponentMapsConfig:
     distance: str = "geodesical"
+    infer_grid_from_start: bool = True
     require_grouped_regular_grid: bool = True
     fsle: ExponentMapsFSLEConfig = field(default_factory=ExponentMapsFSLEConfig)
     ftle: ExponentMapsFTLEConfig = field(default_factory=ExponentMapsFTLEConfig)
@@ -274,6 +276,7 @@ class TrajectoriesConfig:
 @dataclass(frozen=True)
 class StartEndRegionsConfig:
     region_labels: tuple[str, ...] | None = None
+    infer_grid_from_start: bool = True
     how_many: str = "priority_max"
     priority_level: int | None = None
     priority_mode: str = "exact"
