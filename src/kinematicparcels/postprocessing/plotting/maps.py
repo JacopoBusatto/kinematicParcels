@@ -22,6 +22,7 @@ def plot_grid_map(
     figsize: tuple[float, float] = (12, 8),
     vmin: float | None = None,
     vmax: float | None = None,
+    cmap: str | None = None,
     colorbar_label: str | None = None,
     title_fontsize: int | None = None,
     colorbar_fontsize: int | None = None,
@@ -94,6 +95,7 @@ def plot_grid_map(
         shading="auto",
         vmin=vmin,
         vmax=vmax,
+        cmap=cmap,
     )
 
     cbar = plt.colorbar(mesh, ax=ax, shrink=0.9, pad=0.03)

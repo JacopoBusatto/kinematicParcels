@@ -1,4 +1,5 @@
 from .beaching_times import compute_beaching_times
+from .cluster_strength import compute_cluster_strength
 from .density import compute_time_density
 from .exponent_maps import compute_exponent_maps
 from .fsle import build_fsle_pair_trajectories, compute_fsle
@@ -15,6 +16,7 @@ from .transition_probability import compute_transition_probability
 __all__ = [
     "compute_time_density",
     "compute_beaching_times",
+    "compute_cluster_strength",
     "compute_exponent_maps",
     "build_fsle_pair_trajectories",
     "compute_fsle",

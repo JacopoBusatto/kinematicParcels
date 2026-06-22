@@ -19,6 +19,7 @@ dependencies = [
     "netcdf4",
     "zarr",
     "pyyaml",
+    "scipy",
     "matplotlib",
     "cartopy",
     "tqdm",

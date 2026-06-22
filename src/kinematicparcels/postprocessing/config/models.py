@@ -95,7 +95,60 @@ class DensityConfig:
     animation_every_n: int = 1
     animation_vmin: float | None = None
     animation_vmax: float | None = None
+    min_mask_value: float | None = None
     show_time_bar: bool = True
+    plot_snaps: bool = False
+    timestep_snaps: int | tuple[int, ...] | None = None
+
+    def __post_init__(self) -> None:
+        if self.plot_snaps and self.timestep_snaps is None:
+            raise ValueError(
+                "density.timestep_snaps is required when density.plot_snaps is true."
+            )
+
+
+@dataclass(frozen=True)
+class ClusterStrengthConfig:
+    scale_km: float
+    distance: str = "haversine"
+    cutoff_factor: float = 4.0
+    mask: bool = True
+    animate: bool = False
+    animation_fps: int = 8
+    animation_every_n: int = 1
+    plot_snaps: bool = False
+    timestep_snaps: int | tuple[int, ...] | None = None
+    vmin: float | None = None
+    vmax: float | None = None
+    min_mask_value: float | None = None
+    cmap: str = "viridis"
+
+    def __post_init__(self) -> None:
+        if self.scale_km <= 0:
+            raise ValueError("cluster_strength.scale_km must be positive.")
+
+        if self.distance not in {"haversine", "euclidean"}:
+            raise ValueError(
+                "cluster_strength.distance must be lowercase and one of: "
+                "'haversine', 'euclidean'."
+            )
+
+        if self.cutoff_factor <= 0:
+            raise ValueError("cluster_strength.cutoff_factor must be positive.")
+
+        if not isinstance(self.animation_fps, int) or self.animation_fps <= 0:
+            raise ValueError("cluster_strength.animation_fps must be an integer > 0.")
+
+        if not isinstance(self.animation_every_n, int) or self.animation_every_n < 1:
+            raise ValueError("cluster_strength.animation_every_n must be an integer >= 1.")
+
+        _validate_plot_limits("cluster_strength", self.vmin, self.vmax)
+
+        if self.plot_snaps and self.timestep_snaps is None:
+            raise ValueError(
+                "cluster_strength.timestep_snaps is required when "
+                "cluster_strength.plot_snaps is true."
+            )
 
 
 @dataclass(frozen=True)
@@ -566,6 +619,7 @@ class PostprocessConfig:
     grid: GridConfig | None = None
     release: ReleaseConfig = field(default_factory=ReleaseConfig)
     density: DensityConfig = field(default_factory=DensityConfig)
+    cluster_strength: ClusterStrengthConfig | None = None
     cleaning: CleaningConfig = field(default_factory=CleaningConfig)
     beaching_times: BeachingTimesConfig = field(default_factory=BeachingTimesConfig)
     fsle: FSLEConfig = field(default_factory=FSLEConfig)

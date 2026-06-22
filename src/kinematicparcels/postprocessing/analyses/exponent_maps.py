@@ -5,7 +5,7 @@ from dataclasses import dataclass
 import numpy as np
 import pandas as pd
 
-from .fsle import _haversine_km, _meridional_distance_km
+from ..core.distances import haversine_km, meridional_distance_km
 
 
 @dataclass(frozen=True)
@@ -107,12 +107,12 @@ def _build_center_member_pairs(
             merged["time"] = merged["time_center"]
 
             if meridional_only:
-                merged["distance_km"] = _meridional_distance_km(
+                merged["distance_km"] = meridional_distance_km(
                     merged["lat_center"].to_numpy(),
                     merged["lat_member"].to_numpy(),
                 )
             else:
-                merged["distance_km"] = _haversine_km(
+                merged["distance_km"] = haversine_km(
                     merged["lon_center"].to_numpy(),
                     merged["lat_center"].to_numpy(),
                     merged["lon_member"].to_numpy(),

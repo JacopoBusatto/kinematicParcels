@@ -7,8 +7,8 @@ from math import log
 import numpy as np
 import pandas as pd
 
+from ..core.distances import EARTH_RADIUS_KM, haversine_km, meridional_distance_km
 
-EARTH_RADIUS_KM = 6371.0
 
 
 @dataclass(frozen=True)
@@ -23,35 +23,6 @@ def _build_scales(min_scale: float, max_scale: float, rho_increment: float) -> l
     if len(scales) < 2:
         raise ValueError("FSLE requires at least two scales. Check min_scale, max_scale, and rho_increment.")
     return scales
-
-
-def _haversine_km(
-    lon1: np.ndarray,
-    lat1: np.ndarray,
-    lon2: np.ndarray,
-    lat2: np.ndarray,
-) -> np.ndarray:
-    lon1_rad = np.radians(lon1)
-    lat1_rad = np.radians(lat1)
-    lon2_rad = np.radians(lon2)
-    lat2_rad = np.radians(lat2)
-
-    dlon = lon2_rad - lon1_rad
-    dlat = lat2_rad - lat1_rad
-
-    a = (
-        np.sin(dlat / 2.0) ** 2
-        + np.cos(lat1_rad) * np.cos(lat2_rad) * np.sin(dlon / 2.0) ** 2
-    )
-    c = 2.0 * np.arcsin(np.sqrt(a))
-    return EARTH_RADIUS_KM * c
-
-
-def _meridional_distance_km(
-    lat1: np.ndarray,
-    lat2: np.ndarray,
-) -> np.ndarray:
-    return EARTH_RADIUS_KM * np.abs(np.radians(lat2) - np.radians(lat1))
 
 
 def build_fsle_pair_trajectories(
@@ -121,12 +92,12 @@ def build_fsle_pair_trajectories(
     pairs = pd.concat(pair_chunks, ignore_index=True)
     pairs = pairs.sort_values(["pair_id", "obs"]).reset_index(drop=True)
     if meridional_only:
-        pairs["distance_km"] = _meridional_distance_km(
+        pairs["distance_km"] = meridional_distance_km(
             pairs["lat_a"].to_numpy(),
             pairs["lat_b"].to_numpy(),
         )
     else:
-        pairs["distance_km"] = _haversine_km(
+        pairs["distance_km"] = haversine_km(
             pairs["lon_a"].to_numpy(),
             pairs["lat_a"].to_numpy(),
             pairs["lon_b"].to_numpy(),

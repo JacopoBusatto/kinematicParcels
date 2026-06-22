@@ -11,6 +11,7 @@ import numpy as np
 import xarray as xr
 
 from ..plotting.projections import get_projection
+from ..plotting.masking import mask_values_below
 from .utils import (
     add_time_progress_bar,
     build_animation_colormap,
@@ -30,6 +31,8 @@ def animate_density(
     colorbar_label: str | None = None,
     vmin: float | None = None,
     vmax: float | None = None,
+    min_mask_value: float | None = None,
+    cmap_name: str = "viridis",
     show_time_bar: bool = True,
     figsize: tuple[float, float] = (12, 8),
     add_land: bool = True,
@@ -63,7 +66,12 @@ def animate_density(
     if var_name not in ds.data_vars:
         raise KeyError(f"Variable '{var_name}' not found in dataset.")
 
-    da = ds[var_name]
+    plot_ds = ds
+    if min_mask_value is not None:
+        plot_ds = ds.copy()
+        plot_ds[var_name] = mask_values_below(ds[var_name], min_mask_value)
+
+    da = plot_ds[var_name]
 
     required_dims = {"time", "lat", "lon"}
     if not required_dims.issubset(set(da.dims)):
@@ -86,14 +94,14 @@ def animate_density(
         raise ValueError("Dataset contains no time steps to animate.")
 
     vmin, vmax = get_fixed_color_limits(
-        ds,
+        plot_ds,
         var_name=var_name,
         vmin=vmin,
         vmax=vmax,
     )
 
     cmap, norm = build_animation_colormap(
-        cmap_name="viridis",
+        cmap_name=cmap_name,
         under_color="magenta",
         over_color="red",
         vmin=vmin,

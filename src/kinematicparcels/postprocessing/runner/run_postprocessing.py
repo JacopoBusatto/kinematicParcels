@@ -32,6 +32,10 @@ def _run_single_analysis(
         from ..workflows.run_density import run_density
         run_density(cfg, context)
 
+    elif analysis_name == "cluster_strength":
+        from ..workflows.run_cluster_strength import run_cluster_strength
+        run_cluster_strength(cfg, context)
+
     elif analysis_name == "beaching_times":
         from ..workflows.run_beaching_times import run_beaching_times
         run_beaching_times(cfg, context)

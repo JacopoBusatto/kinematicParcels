@@ -8,6 +8,7 @@ from ..config.models import PostprocessConfig
 from ..core import build_grid_from_config
 from ..io import save_dataset_netcdf, save_grid_table
 from .base_products import get_trajectory_table
+from .snapshots import save_gridded_snapshots
 
 
 def run_density(cfg: PostprocessConfig, context: dict) -> None:
@@ -62,6 +63,26 @@ def run_density(cfg: PostprocessConfig, context: dict) -> None:
     print("Saving density dataset:", density_nc_path)
     save_dataset_netcdf(density_ds, density_nc_path)
 
+    if cfg.density.plot_snaps:
+        save_gridded_snapshots(
+            density_ds,
+            var_name=cfg.density.animation_var,
+            timestep_snaps=cfg.density.timestep_snaps,
+            config_name="density",
+            outdir=outdir,
+            filename_prefix="density",
+            title_prefix=cfg.density.animation_var,
+            projection=cfg.plotting.projection,
+            vmin=cfg.density.animation_vmin,
+            vmax=cfg.density.animation_vmax,
+            min_mask_value=cfg.density.min_mask_value,
+            colorbar_label=cfg.density.animation_label,
+            title_fontsize=cfg.plotting.title_fontsize,
+            colorbar_fontsize=cfg.plotting.colorbar_fontsize,
+            colorbar_tick_fontsize=cfg.plotting.colorbar_tick_fontsize,
+            axis_tick_fontsize=cfg.plotting.axis_tick_fontsize,
+        )
+
     if cfg.density.animate:
         gif_path = outdir / "density.gif"
         print("Saving density animation:", gif_path)
@@ -77,5 +98,6 @@ def run_density(cfg: PostprocessConfig, context: dict) -> None:
             colorbar_label=cfg.density.animation_label,
             vmin=cfg.density.animation_vmin,
             vmax=cfg.density.animation_vmax,
+            min_mask_value=cfg.density.min_mask_value,
             show_time_bar=cfg.density.show_time_bar,
         )

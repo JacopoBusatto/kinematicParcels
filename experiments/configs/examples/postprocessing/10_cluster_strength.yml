@@ -1,4 +1,4 @@
-# Example postprocessing config for the `density` analysis.
+# Example postprocessing config for the `cluster_strength` analysis.
 
 dataset:
   input_path: ./outputs/test_group_pairs.zarr
@@ -12,10 +12,10 @@ dataset:
 
 analysis:
   types:
-    - density
+    - cluster_strength
 
 output:
-  output_dir: ./outputs/postprocessing/examples/density
+  output_dir: ./outputs/postprocessing/examples/cluster_strength
 
 exports:
   save_trajectory_table: false
@@ -47,23 +47,17 @@ plotting:
   # colorbar_tick_fontsize: 10
   # axis_tick_fontsize: 10
 
-density:
-  lon_col: lon
-  lat_col: lat
-  time_col: time
-  normalize_active: true
-  normalize_total: true
-  fill_ever_active_empty_with_zero: false
-  group_member: null  # Set 1, 2, ... to keep only one grouped member before binning.
-
+cluster_strength:
+  scale_km: 5.0
+  distance: haversine  # haversine | euclidean
+  cutoff_factor: 4.0
+  mask: true
   animate: false
-  animation_var: particle_count
-  animation_label: particle_count
   animation_fps: 8
   animation_every_n: 1
-  animation_vmin: null
-  animation_vmax: null
-  min_mask_value: null
-  show_time_bar: true
   plot_snaps: false
   timestep_snaps: null
+  vmin: null
+  vmax: null
+  min_mask_value: null
+  cmap: viridis

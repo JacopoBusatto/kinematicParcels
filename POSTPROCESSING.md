@@ -11,6 +11,7 @@ The system is designed to work efficiently with large trajectory datasets (10⁵
 Typical diagnostics produced include:
 
 - particle density maps
+- cluster strength maps
 - beaching time maps
 - start/end region classification
 - transition probability matrices
@@ -384,6 +385,7 @@ analysis:
   types:
     - summary
     - density
+    - cluster_strength
     - beaching_times
     # - trajectories
     # - start_end_regions
@@ -400,6 +402,7 @@ analysis:
   types:
     - summary
     - density
+    - cluster_strength
     - beaching_times
     - fsle
     - meridional_crossing
@@ -483,6 +486,7 @@ workflows/
     High-level workflows
     - run_summary
     - run_density
+    - run_cluster_strength
     - run_beaching_times
   - run_exponent_maps
     - run_fsle
@@ -501,6 +505,7 @@ The currently supported analysis types are:
 
 - summary
 - density
+- cluster_strength
 - beaching_times
 - exponent_maps
 - fsle
@@ -516,6 +521,7 @@ analysis:
   types:
     - summary
     - density
+    - cluster_strength
     - beaching_times
     - exponent_maps
     - fsle
@@ -539,8 +545,8 @@ All analyses share the same top-level configuration structure.
 
 `analysis`
 
-- `types`: ordered list of analyses to execute; supported values are `summary`, `density`, `beaching_times`, `fsle`, `meridional_crossing`, `start_end_regions`, `transition_probability`, and `trajectories`
-- `types`: ordered list of analyses to execute; supported values are `summary`, `density`, `beaching_times`, `exponent_maps`, `fsle`, `meridional_crossing`, `start_end_regions`, `transition_probability`, and `trajectories`
+- `types`: ordered list of analyses to execute; supported values are `summary`, `density`, `cluster_strength`, `beaching_times`, `fsle`, `meridional_crossing`, `start_end_regions`, `transition_probability`, and `trajectories`
+- `types`: ordered list of analyses to execute; supported values are `summary`, `density`, `cluster_strength`, `beaching_times`, `exponent_maps`, `fsle`, `meridional_crossing`, `start_end_regions`, `transition_probability`, and `trajectories`
 
 `output`
 
@@ -629,9 +635,13 @@ density:
   animation_label: "density [%]"
   animation_fps: 6
   animation_every_n: 1
-  animation_vmin: 0
+  animation_vmin: null
   animation_vmax: 0.05
+  min_mask_value: null
   show_time_bar: true
+
+  plot_snaps: false
+  timestep_snaps: null
 ```
 
 - `time_col`, `lon_col`  and `lat_col` string name of coordinates
@@ -643,8 +653,122 @@ density:
 - `animation_label` colorbar label
 - `animation_fps` fps of the gif
 - `animation_every_n` use every Nth time slice in the animation
-- `animation_vmin` and `animation_vmax` min and max values for the colorbar. Setting them clips values outside the chosen range
+- `animation_vmin` and `animation_vmax` min and max values for the colorbar. `null` lets the limits be inferred from the plotted data. Setting a value clips plotted values outside the chosen range
+- `min_mask_value` masks plotted values below this threshold before applying `animation_vmin` and `animation_vmax`. Use `null` to disable it. This affects snapshots and animations only; `density.nc` and the density table keep the native values
 - `show_time_bar` draw a time progression bar
+- `plot_snaps` save static PNG snapshots for selected timesteps
+- `timestep_snaps` timestep index or list of indices used when `plot_snaps: true`; negative indices are supported
+
+------------------------------------------------------------
+CLUSTER STRENGTH
+------------------------------------------------------------
+
+Computes the Huntley et al. (2015) cluster strength metric on the regular
+postprocessing grid.
+
+Cluster strength is a smooth particle-accumulation diagnostic. Instead of
+counting only particles that fall inside the same grid cell, it evaluates each
+target grid point and sums nearby particle contributions with a Gaussian weight.
+Particles exactly on the target point contribute `1`; particles farther away
+contribute progressively less.
+
+Use this analysis when you want to map material accumulation regions with a
+continuous distance-weighted metric rather than a box-count density field.
+
+Input:
+- trajectory_table
+
+Output:
+- cluster_strength.nc
+- optional snapshot PNGs
+- optional GIF animation
+
+The gridded variable is:
+
+- cluster_strength(time, lat, lon)
+
+The output grid is the regular grid defined by the shared `grid` section. The
+workflow builds it with `build_grid_from_config`, so it follows the same grid
+rules as the other gridded postprocessing products.
+
+Formula:
+
+```text
+C(x*, t) = sum_n exp(- (d(x*, x_n(t)) / L)^2 )
+```
+
+where `L` is `scale_km`. Candidate particles are restricted to a finite
+Gaussian cutoff of `cutoff_factor * scale_km`.
+
+Grid and mask behavior:
+
+- If `mask: true`, only target grid cells visited by at least one particle at least once are evaluated and stored.
+- Grid cells never visited by any particle remain `NaN` for every timestep.
+- The mask is applied only to target grid cells, not to the particle table.
+- At each timestep, all finite particle positions at that timestep may contribute to every valid target cell if they are within the cutoff distance.
+- If a valid target cell has no contributing particles at a timestep, its value is `0.0`.
+- If `mask: false`, all grid cells are evaluated.
+
+Distance options:
+
+- `haversine` computes exact great-circle distances in kilometers for the final Gaussian weights. Candidate lookup uses local projected coordinates for speed, then exact haversine distances are applied to the candidates.
+- `euclidean` computes distances in a local equirectangular projection in kilometers. This is faster and can be appropriate for regional domains where the metric approximation is acceptable.
+
+The `distance` value is strict lowercase. Use `haversine` or `euclidean`.
+
+Performance:
+
+- The computation is performed one timestep at a time.
+- A finite cutoff avoids evaluating the Gaussian contribution from every particle to every grid cell.
+- When SciPy is available, `scipy.spatial.cKDTree` is used for neighbor queries.
+- If SciPy is unavailable, the code emits a warning and uses a slower chunked fallback.
+- `cutoff_factor: 4.0` means contributions beyond `4 * scale_km` are ignored. This is usually a small truncation because the Gaussian weight is already very small at that distance.
+
+Options:
+
+```yaml
+cluster_strength:
+  scale_km: 5.0
+  distance: haversine
+  cutoff_factor: 4.0
+  mask: true
+  animate: false
+  animation_fps: 8
+  animation_every_n: 1
+  plot_snaps: false
+  timestep_snaps: null
+  vmin: null
+  vmax: null
+  min_mask_value: null
+  cmap: viridis
+```
+
+- `scale_km` Gaussian length scale in kilometers. This field is required and must be positive. Larger values make each particle influence a wider area and produce smoother maps; smaller values emphasize local, sharper accumulations.
+- `distance` distance backend. Available lowercase values are `haversine` and `euclidean`.
+- `cutoff_factor` multiplier applied to `scale_km` to define the finite search radius. Must be positive. The default `4.0` evaluates particles within `4 * scale_km`.
+- `mask` controls which target grid cells are evaluated. With `true`, only cells visited by at least one particle over the full dataset are output; never-visited cells stay `NaN`. With `false`, the full grid is evaluated.
+- `animate` saves a GIF animation named `cluster_strength.gif`.
+- `animation_fps` frames per second of the GIF. Must be an integer greater than zero.
+- `animation_every_n` temporal stride for the GIF. `1` uses every timestep, `2` uses every second timestep, and so on. Must be an integer greater than or equal to one.
+- `plot_snaps` saves static PNG snapshots for selected timesteps.
+- `timestep_snaps` timestep index or list of indices used when `plot_snaps: true`. Negative indices follow Python indexing, so `-1` means the last timestep.
+- `vmin` lower color limit for snapshots and animation. `null` lets Matplotlib choose from the plotted data. Setting a value clips plotted values below the limit.
+- `vmax` upper color limit for snapshots and animation. `null` lets Matplotlib choose from the plotted data. Setting a value clips plotted values above the limit.
+- `min_mask_value` masks plotted values below this threshold before applying `vmin` and `vmax`. Use `null` to disable it. This affects snapshots and animations only; `cluster_strength.nc` keeps the native values.
+- `cmap` Matplotlib colormap used for snapshots and animation.
+
+Output files:
+
+- `cluster_strength.nc` is always saved.
+- `cluster_strength.gif` is saved when `animate: true`.
+- `cluster_strength_timestep_<timestamp>.png` files are saved when `plot_snaps: true`.
+
+Unlike `density`, this workflow does not save a gridded table by default. The
+primary product is the NetCDF because the output naturally has dimensions
+`time, lat, lon`.
+
+Example config:
+- `experiments/configs/examples/postprocessing/10_cluster_strength.yml`
 
 ------------------------------------------------------------
 BEACHING TIMES
@@ -1188,6 +1312,21 @@ density:
   group_member: null
   animate: false
   animation_every_n: 1
+
+cluster_strength:
+  scale_km: 5.0
+  distance: haversine
+  cutoff_factor: 4.0
+  mask: true
+  animate: false
+  animation_fps: 8
+  animation_every_n: 1
+  plot_snaps: false
+  timestep_snaps: null
+  vmin: null
+  vmax: null
+  min_mask_value: null
+  cmap: viridis
 
 beaching_times:
   lon_col: lon0

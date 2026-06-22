@@ -8,6 +8,7 @@ import yaml
 from .models import (
     AnalysisConfig,
     CleaningConfig,
+    ClusterStrengthConfig,
     DatasetConfig,
     DatasetCoordinatesConfig,
     BeachingTimesPlottingConfig,
@@ -353,8 +354,98 @@ def _parse_density(section: dict[str, Any] | None) -> DensityConfig:
         animation_every_n=animation_every_n_density,
         animation_vmin=animation_vmin,
         animation_vmax=animation_vmax,
+        min_mask_value=_parse_optional_number(
+            section.get("min_mask_value", None),
+            "density.min_mask_value",
+        ),
         show_time_bar=show_time_bar,
-        fill_ever_active_empty_with_zero=fill_ever_active_empty_with_zero
+        fill_ever_active_empty_with_zero=fill_ever_active_empty_with_zero,
+        plot_snaps=bool(section.get("plot_snaps", False)),
+        timestep_snaps=_parse_timestep_snaps(
+            section.get("timestep_snaps", None),
+            "density.timestep_snaps",
+        ),
+    )
+
+
+def _parse_timestep_snaps(value: Any, name: str) -> int | tuple[int, ...] | None:
+    if value is None:
+        return None
+
+    if isinstance(value, bool):
+        raise ValueError(f"'{name}' must be an integer, list of integers, or null.")
+
+    if isinstance(value, int):
+        return value
+
+    if not isinstance(value, list):
+        raise ValueError(f"'{name}' must be an integer, list of integers, or null.")
+
+    parsed: list[int] = []
+    for i, item in enumerate(value):
+        if isinstance(item, bool) or not isinstance(item, int):
+            raise ValueError(f"'{name}[{i}]' must be an integer.")
+        parsed.append(item)
+    return tuple(parsed)
+
+
+def _parse_cluster_strength(section: dict[str, Any] | None) -> ClusterStrengthConfig | None:
+    """
+    Parse the optional cluster_strength section.
+    """
+    if section is None:
+        return None
+
+    section = _require_dict(section, "cluster_strength")
+
+    scale_km = _require_number(
+        section.get("scale_km"),
+        "cluster_strength.scale_km",
+    )
+    distance = _require_nonempty_string(
+        section.get("distance", "haversine"),
+        "cluster_strength.distance",
+    )
+    animation_fps_raw = section.get("animation_fps", 8)
+    if not isinstance(animation_fps_raw, int) or animation_fps_raw <= 0:
+        raise ValueError("'cluster_strength.animation_fps' must be an integer > 0.")
+
+    animation_every_n_raw = section.get("animation_every_n", 1)
+    if not isinstance(animation_every_n_raw, int) or animation_every_n_raw < 1:
+        raise ValueError("'cluster_strength.animation_every_n' must be an integer >= 1.")
+
+    return ClusterStrengthConfig(
+        scale_km=scale_km,
+        distance=distance,
+        cutoff_factor=_require_number(
+            section.get("cutoff_factor", 4.0),
+            "cluster_strength.cutoff_factor",
+        ),
+        mask=bool(section.get("mask", True)),
+        animate=bool(section.get("animate", False)),
+        animation_fps=animation_fps_raw,
+        animation_every_n=animation_every_n_raw,
+        plot_snaps=bool(section.get("plot_snaps", False)),
+        timestep_snaps=_parse_timestep_snaps(
+            section.get("timestep_snaps", None),
+            "cluster_strength.timestep_snaps",
+        ),
+        vmin=_parse_optional_number(
+            section.get("vmin", None),
+            "cluster_strength.vmin",
+        ),
+        vmax=_parse_optional_number(
+            section.get("vmax", None),
+            "cluster_strength.vmax",
+        ),
+        min_mask_value=_parse_optional_number(
+            section.get("min_mask_value", None),
+            "cluster_strength.min_mask_value",
+        ),
+        cmap=_require_nonempty_string(
+            section.get("cmap", "viridis"),
+            "cluster_strength.cmap",
+        ),
     )
 
 
@@ -1250,6 +1341,7 @@ def load_postprocess_config(path: str | Path) -> PostprocessConfig:
     grid = _parse_grid(raw.get("grid"))
     release = _parse_release(raw.get("release"))
     density = _parse_density(raw.get("density"))
+    cluster_strength = _parse_cluster_strength(raw.get("cluster_strength"))
     cleaning = _parse_cleaning(raw.get("cleaning"))
     beaching_times = _parse_beaching_times(raw.get("beaching_times"))
     fsle = _parse_fsle(raw.get("fsle"))
@@ -1268,6 +1360,7 @@ def load_postprocess_config(path: str | Path) -> PostprocessConfig:
         grid=grid,
         release=release,
         density=density,
+        cluster_strength=cluster_strength,
         cleaning=cleaning,
         beaching_times=beaching_times,
         fsle=fsle,
