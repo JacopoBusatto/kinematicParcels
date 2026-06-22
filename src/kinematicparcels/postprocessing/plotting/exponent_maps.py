@@ -9,6 +9,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import xarray as xr
 
+from .colorbar import infer_colorbar_extend
 from .projections import get_projection
 
 
@@ -102,8 +103,16 @@ def plot_exponent_map(
             norm_vmax = float(vmax) if vmax is not None else float(np.nanmax(positive_values))
             mesh_kwargs["norm"] = mcolors.LogNorm(vmin=norm_vmin, vmax=norm_vmax)
     else:
-        mesh_kwargs["vmin"] = vmin
-        mesh_kwargs["vmax"] = vmax
+        norm_vmin = vmin
+        norm_vmax = vmax
+        mesh_kwargs["vmin"] = norm_vmin
+        mesh_kwargs["vmax"] = norm_vmax
+
+    colorbar_extend = infer_colorbar_extend(
+        values,
+        vmin=norm_vmin,
+        vmax=norm_vmax,
+    )
 
     mesh = ax.pcolormesh(
         da["lon"].values,
@@ -112,7 +121,13 @@ def plot_exponent_map(
         **mesh_kwargs,
     )
 
-    cbar = plt.colorbar(mesh, ax=ax, shrink=0.9, pad=0.03)
+    cbar = plt.colorbar(
+        mesh,
+        ax=ax,
+        shrink=0.9,
+        pad=0.03,
+        extend=colorbar_extend,
+    )
     cbar.set_label(da.name or "value")
 
     ax.set_title(title or (da.name or "value"))

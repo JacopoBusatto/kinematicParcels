@@ -9,6 +9,7 @@ import matplotlib.colors as mcolors
 import numpy as np
 import xarray as xr
 
+from .colorbar import infer_colorbar_extend
 from .projections import get_projection
 
 
@@ -52,7 +53,9 @@ def plot_grid_map(
     if vmin is not None and vmax is not None and vmin > vmax:
         raise ValueError("vmin must be less than or equal to vmax.")
 
-    values = da.values
+    raw_values = da.values
+    colorbar_extend = infer_colorbar_extend(raw_values, vmin=vmin, vmax=vmax)
+    values = raw_values
     if vmin is not None or vmax is not None:
         clip_min = vmin if vmin is not None else -np.inf
         clip_max = vmax if vmax is not None else np.inf
@@ -98,7 +101,13 @@ def plot_grid_map(
         cmap=cmap,
     )
 
-    cbar = plt.colorbar(mesh, ax=ax, shrink=0.9, pad=0.03)
+    cbar = plt.colorbar(
+        mesh,
+        ax=ax,
+        shrink=0.9,
+        pad=0.03,
+        extend=colorbar_extend,
+    )
     cbar.set_label(colorbar_label or var_name, fontsize=colorbar_fontsize)
     if colorbar_tick_fontsize is not None:
         cbar.ax.tick_params(labelsize=colorbar_tick_fontsize)

@@ -12,6 +12,7 @@ import xarray as xr
 
 from ..plotting.projections import get_projection
 from ..plotting.masking import mask_values_below
+from ..plotting.colorbar import infer_colorbar_extend
 from .utils import (
     add_time_progress_bar,
     build_animation_colormap,
@@ -99,6 +100,11 @@ def animate_density(
         vmin=vmin,
         vmax=vmax,
     )
+    colorbar_extend = infer_colorbar_extend(
+        da.isel(time=time_indices).values,
+        vmin=vmin,
+        vmax=vmax,
+    )
 
     cmap, norm = build_animation_colormap(
         cmap_name=cmap_name,
@@ -154,7 +160,7 @@ def animate_density(
                 ax=ax,
                 shrink=0.9,
                 pad=0.03,
-                extend="both",
+                extend=colorbar_extend,
             )
             cbar.set_label(colorbar_label)
 
