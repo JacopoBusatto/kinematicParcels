@@ -63,7 +63,6 @@ density:
   animation_every_n: 1
   animation_vmin: null
   animation_vmax: null
-  min_mask_value: null
   show_time_bar: true
   plot_snaps: false
   timestep_snaps: null
