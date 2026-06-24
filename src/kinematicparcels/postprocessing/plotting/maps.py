@@ -56,10 +56,16 @@ def plot_grid_map(
     raw_values = da.values
     colorbar_extend = infer_colorbar_extend(raw_values, vmin=vmin, vmax=vmax)
     values = raw_values
+    cmap_for_plot = cmap
+    if colorbar_extend != "neither":
+        cmap_for_plot = plt.get_cmap(cmap).copy() if cmap is not None else plt.get_cmap().copy()
+        if colorbar_extend in {"min", "both"}:
+            cmap_for_plot.set_under("magenta")
+        if colorbar_extend in {"max", "both"}:
+            cmap_for_plot.set_over("red")
+    norm = None
     if vmin is not None or vmax is not None:
-        clip_min = vmin if vmin is not None else -np.inf
-        clip_max = vmax if vmax is not None else np.inf
-        values = np.clip(values, clip_min, clip_max)
+        norm = mcolors.Normalize(vmin=vmin, vmax=vmax, clip=False)
 
     outpath = Path(outpath)
     outpath.parent.mkdir(parents=True, exist_ok=True)
@@ -96,9 +102,8 @@ def plot_grid_map(
         values,
         transform=ccrs.PlateCarree(),
         shading="auto",
-        vmin=vmin,
-        vmax=vmax,
-        cmap=cmap,
+        cmap=cmap_for_plot,
+        norm=norm,
     )
 
     cbar = plt.colorbar(

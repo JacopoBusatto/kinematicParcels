@@ -685,11 +685,24 @@ Output:
 
 The gridded variable is:
 
-- cluster_strength(time, lat, lon)
+- cluster_strength(release_time, age_days, lat, lon)
 
 The output grid is the regular grid defined by the shared `grid` section. The
 workflow builds it with `build_grid_from_config`, so it follows the same grid
 rules as the other gridded postprocessing products.
+
+`release_time` is derived from the first observation of each selected particle
+after sorting by `obs`. `age_days` is the signed elapsed time from that
+release:
+
+```text
+age_days = time - release_time
+```
+
+Forward simulations therefore have positive ages. Backward simulations have
+negative ages, and the dataset records `simulation_direction` in the NetCDF
+attributes. The output always uses the release-aware structure, even when only
+one release time is present.
 
 Formula:
 
@@ -703,11 +716,13 @@ Gaussian cutoff of `cutoff_factor * scale_km`.
 Grid and mask behavior:
 
 - If `mask: true`, only target grid cells visited by at least one particle at least once are evaluated and stored.
-- Grid cells never visited by any particle remain `NaN` for every timestep.
+- Grid cells never visited by any selected particle remain `NaN` for every release and age.
 - The mask is applied only to target grid cells, not to the particle table.
-- At each timestep, all finite particle positions at that timestep may contribute to every valid target cell if they are within the cutoff distance.
-- If a valid target cell has no contributing particles at a timestep, its value is `0.0`.
+- At each release and age, all finite particle positions in that cohort may contribute to every valid target cell if they are within the cutoff distance.
+- If a valid target cell has no contributing particles at an observed release-age combination, its value is `0.0`.
+- Release-age combinations that do not exist in the trajectory data remain `NaN`.
 - If `mask: false`, all grid cells are evaluated.
+- If `group_member` exists, `max_group_member` controls which grouped members are included. The default is `1`, because cluster strength is treated as a single-trajectory diagnostic.
 
 Distance options:
 
@@ -732,40 +747,63 @@ cluster_strength:
   distance: haversine
   cutoff_factor: 4.0
   mask: true
-  animate: false
-  animation_fps: 8
-  animation_every_n: 1
-  plot_snaps: false
-  timestep_snaps: null
-  vmin: null
-  vmax: null
-  min_mask_value: null
-  cmap: viridis
+  max_group_member: 1
+
+  animation:
+    enabled: false
+    every_release: true
+    fixed_age_days: null
+    age_tolerance_days: null
+    vmin: null
+    vmax: null
+    min_mask_value: null
+    cmap: viridis
+    fps: 8
+    every_n: 1
+
+  snapshots:
+    enabled: false
+    fixed_age_days: null
+    age_tolerance_days: null
+    vmin: null
+    vmax: null
+    min_mask_value: null
+    cmap: viridis
 ```
 
 - `scale_km` Gaussian length scale in kilometers. This field is required and must be positive. Larger values make each particle influence a wider area and produce smoother maps; smaller values emphasize local, sharper accumulations.
 - `distance` distance backend. Available lowercase values are `haversine` and `euclidean`.
 - `cutoff_factor` multiplier applied to `scale_km` to define the finite search radius. Must be positive. The default `4.0` evaluates particles within `4 * scale_km`.
 - `mask` controls which target grid cells are evaluated. With `true`, only cells visited by at least one particle over the full dataset are output; never-visited cells stay `NaN`. With `false`, the full grid is evaluated.
-- `animate` saves a GIF animation named `cluster_strength.gif`.
-- `animation_fps` frames per second of the GIF. Must be an integer greater than zero.
-- `animation_every_n` temporal stride for the GIF. `1` uses every timestep, `2` uses every second timestep, and so on. Must be an integer greater than or equal to one.
-- `plot_snaps` saves static PNG snapshots for selected timesteps.
-- `timestep_snaps` timestep index or list of indices used when `plot_snaps: true`. Negative indices follow Python indexing, so `-1` means the last timestep.
-- `vmin` lower color limit for snapshots and animation. `null` lets Matplotlib choose from the plotted data. Setting a value clips plotted values below the limit.
-- `vmax` upper color limit for snapshots and animation. `null` lets Matplotlib choose from the plotted data. Setting a value clips plotted values above the limit.
-- `min_mask_value` masks plotted values below this threshold before applying `vmin` and `vmax`. Use `null` to disable it. This affects snapshots and animations only; `cluster_strength.nc` keeps the native values.
-- `cmap` Matplotlib colormap used for snapshots and animation.
+- `max_group_member` keeps only grouped members up to this index when `group_member` exists. The default `1` uses only the first member; `null` keeps all members.
+
+Animation options:
+
+- `animation.enabled` enables GIF output.
+- `animation.every_release: true` with `animation.fixed_age_days: null` saves one GIF per release time. Frames move along `age_days`, while the time bar shows absolute datetimes.
+- `animation.fixed_age_days` may be a number or list of ages. When set, each GIF is fixed at the requested age and frames move over `release_time`.
+- `animation.age_tolerance_days: null` requires exact age matches. Set a float to use the nearest available age within that tolerance.
+- `animation.vmin` and `animation.vmax` set color limits. `null` lets Matplotlib choose from the plotted data.
+- `animation.min_mask_value` masks plotted values below this threshold before color scaling. It affects figures only, not `cluster_strength.nc`.
+- `animation.cmap` sets the Matplotlib colormap.
+- `animation.fps` and `animation.every_n` control GIF playback and temporal stride.
+
+Snapshot options:
+
+- `snapshots.enabled` enables static PNG output.
+- `snapshots.fixed_age_days` is required for snapshot output. `null` means no snapshots are saved.
+- `snapshots.age_tolerance_days`, `snapshots.vmin`, `snapshots.vmax`, `snapshots.min_mask_value`, and `snapshots.cmap` behave like the animation options.
 
 Output files:
 
 - `cluster_strength.nc` is always saved.
-- `cluster_strength.gif` is saved when `animate: true`.
-- `cluster_strength_timestep_<timestamp>.png` files are saved when `plot_snaps: true`.
+- `cluster_strength_release_<release_time>.gif` files are saved for release-wise animations.
+- `cluster_strength_age_<age_days>.gif` files are saved for fixed-age animations.
+- `cluster_strength_release_<release_time>_age_<age_days>.png` files are saved for snapshots.
 
 Unlike `density`, this workflow does not save a gridded table by default. The
 primary product is the NetCDF because the output naturally has dimensions
-`time, lat, lon`.
+`release_time, age_days, lat, lon`.
 
 Example config:
 - `experiments/configs/examples/postprocessing/10_cluster_strength.yml`
@@ -1318,15 +1356,26 @@ cluster_strength:
   distance: haversine
   cutoff_factor: 4.0
   mask: true
-  animate: false
-  animation_fps: 8
-  animation_every_n: 1
-  plot_snaps: false
-  timestep_snaps: null
-  vmin: null
-  vmax: null
-  min_mask_value: null
-  cmap: viridis
+  max_group_member: 1
+  animation:
+    enabled: false
+    every_release: true
+    fixed_age_days: null
+    age_tolerance_days: null
+    vmin: null
+    vmax: null
+    min_mask_value: null
+    cmap: viridis
+    fps: 8
+    every_n: 1
+  snapshots:
+    enabled: false
+    fixed_age_days: null
+    age_tolerance_days: null
+    vmin: null
+    vmax: null
+    min_mask_value: null
+    cmap: viridis
 
 beaching_times:
   lon_col: lon0

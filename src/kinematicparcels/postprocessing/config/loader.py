@@ -8,7 +8,9 @@ import yaml
 from .models import (
     AnalysisConfig,
     CleaningConfig,
+    ClusterStrengthAnimationConfig,
     ClusterStrengthConfig,
+    ClusterStrengthSnapshotsConfig,
     DatasetConfig,
     DatasetCoordinatesConfig,
     BeachingTimesPlottingConfig,
@@ -75,6 +77,12 @@ def _parse_optional_positive_int(value: Any, name: str) -> int | None:
         return None
     if not isinstance(value, int) or value < 0:
         raise ValueError(f"'{name}' must be a non-negative integer or null.")
+    return value
+
+
+def _parse_positive_int(value: Any, name: str) -> int:
+    if not isinstance(value, int) or value <= 0:
+        raise ValueError(f"'{name}' must be an integer > 0.")
     return value
 
 
@@ -389,6 +397,104 @@ def _parse_timestep_snaps(value: Any, name: str) -> int | tuple[int, ...] | None
     return tuple(parsed)
 
 
+def _parse_optional_number_or_list(value: Any, name: str) -> float | tuple[float, ...] | None:
+    if value is None:
+        return None
+
+    if isinstance(value, bool):
+        raise ValueError(f"'{name}' must be a number, list of numbers, or null.")
+
+    if isinstance(value, (int, float)):
+        return float(value)
+
+    if not isinstance(value, list):
+        raise ValueError(f"'{name}' must be a number, list of numbers, or null.")
+
+    parsed: list[float] = []
+    for i, item in enumerate(value):
+        if isinstance(item, bool) or not isinstance(item, (int, float)):
+            raise ValueError(f"'{name}[{i}]' must be a number.")
+        parsed.append(float(item))
+    return tuple(parsed)
+
+
+def _parse_cluster_strength_animation(section: dict[str, Any] | None) -> ClusterStrengthAnimationConfig:
+    if section is None:
+        return ClusterStrengthAnimationConfig()
+
+    section = _require_dict(section, "cluster_strength.animation")
+    return ClusterStrengthAnimationConfig(
+        enabled=bool(section.get("enabled", False)),
+        every_release=bool(section.get("every_release", True)),
+        fixed_age_days=_parse_optional_number_or_list(
+            section.get("fixed_age_days", None),
+            "cluster_strength.animation.fixed_age_days",
+        ),
+        age_tolerance_days=_parse_optional_number(
+            section.get("age_tolerance_days", None),
+            "cluster_strength.animation.age_tolerance_days",
+        ),
+        vmin=_parse_optional_number(
+            section.get("vmin", None),
+            "cluster_strength.animation.vmin",
+        ),
+        vmax=_parse_optional_number(
+            section.get("vmax", None),
+            "cluster_strength.animation.vmax",
+        ),
+        min_mask_value=_parse_optional_number(
+            section.get("min_mask_value", None),
+            "cluster_strength.animation.min_mask_value",
+        ),
+        cmap=_require_nonempty_string(
+            section.get("cmap", "viridis"),
+            "cluster_strength.animation.cmap",
+        ),
+        fps=_parse_positive_int(
+            section.get("fps", 8),
+            "cluster_strength.animation.fps",
+        ),
+        every_n=_parse_positive_int(
+            section.get("every_n", 1),
+            "cluster_strength.animation.every_n",
+        ),
+    )
+
+
+def _parse_cluster_strength_snapshots(section: dict[str, Any] | None) -> ClusterStrengthSnapshotsConfig:
+    if section is None:
+        return ClusterStrengthSnapshotsConfig()
+
+    section = _require_dict(section, "cluster_strength.snapshots")
+    return ClusterStrengthSnapshotsConfig(
+        enabled=bool(section.get("enabled", False)),
+        fixed_age_days=_parse_optional_number_or_list(
+            section.get("fixed_age_days", None),
+            "cluster_strength.snapshots.fixed_age_days",
+        ),
+        age_tolerance_days=_parse_optional_number(
+            section.get("age_tolerance_days", None),
+            "cluster_strength.snapshots.age_tolerance_days",
+        ),
+        vmin=_parse_optional_number(
+            section.get("vmin", None),
+            "cluster_strength.snapshots.vmin",
+        ),
+        vmax=_parse_optional_number(
+            section.get("vmax", None),
+            "cluster_strength.snapshots.vmax",
+        ),
+        min_mask_value=_parse_optional_number(
+            section.get("min_mask_value", None),
+            "cluster_strength.snapshots.min_mask_value",
+        ),
+        cmap=_require_nonempty_string(
+            section.get("cmap", "viridis"),
+            "cluster_strength.snapshots.cmap",
+        ),
+    )
+
+
 def _parse_cluster_strength(section: dict[str, Any] | None) -> ClusterStrengthConfig | None:
     """
     Parse the optional cluster_strength section.
@@ -406,13 +512,13 @@ def _parse_cluster_strength(section: dict[str, Any] | None) -> ClusterStrengthCo
         section.get("distance", "haversine"),
         "cluster_strength.distance",
     )
-    animation_fps_raw = section.get("animation_fps", 8)
-    if not isinstance(animation_fps_raw, int) or animation_fps_raw <= 0:
-        raise ValueError("'cluster_strength.animation_fps' must be an integer > 0.")
-
-    animation_every_n_raw = section.get("animation_every_n", 1)
-    if not isinstance(animation_every_n_raw, int) or animation_every_n_raw < 1:
-        raise ValueError("'cluster_strength.animation_every_n' must be an integer >= 1.")
+    max_group_member_raw = section.get("max_group_member", 1)
+    if max_group_member_raw is None:
+        max_group_member = None
+    else:
+        if not isinstance(max_group_member_raw, int) or max_group_member_raw <= 0:
+            raise ValueError("'cluster_strength.max_group_member' must be an integer > 0 or null.")
+        max_group_member = max_group_member_raw
 
     return ClusterStrengthConfig(
         scale_km=scale_km,
@@ -422,30 +528,9 @@ def _parse_cluster_strength(section: dict[str, Any] | None) -> ClusterStrengthCo
             "cluster_strength.cutoff_factor",
         ),
         mask=bool(section.get("mask", True)),
-        animate=bool(section.get("animate", False)),
-        animation_fps=animation_fps_raw,
-        animation_every_n=animation_every_n_raw,
-        plot_snaps=bool(section.get("plot_snaps", False)),
-        timestep_snaps=_parse_timestep_snaps(
-            section.get("timestep_snaps", None),
-            "cluster_strength.timestep_snaps",
-        ),
-        vmin=_parse_optional_number(
-            section.get("vmin", None),
-            "cluster_strength.vmin",
-        ),
-        vmax=_parse_optional_number(
-            section.get("vmax", None),
-            "cluster_strength.vmax",
-        ),
-        min_mask_value=_parse_optional_number(
-            section.get("min_mask_value", None),
-            "cluster_strength.min_mask_value",
-        ),
-        cmap=_require_nonempty_string(
-            section.get("cmap", "viridis"),
-            "cluster_strength.cmap",
-        ),
+        max_group_member=max_group_member,
+        animation=_parse_cluster_strength_animation(section.get("animation")),
+        snapshots=_parse_cluster_strength_snapshots(section.get("snapshots")),
     )
 
 

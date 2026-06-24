@@ -108,20 +108,59 @@ class DensityConfig:
 
 
 @dataclass(frozen=True)
+class ClusterStrengthAnimationConfig:
+    enabled: bool = False
+    every_release: bool = True
+    fixed_age_days: float | tuple[float, ...] | None = None
+    vmin: float | None = None
+    vmax: float | None = None
+    age_tolerance_days: float | None = None
+    min_mask_value: float | None = None
+    cmap: str = "viridis"
+    fps: int = 8
+    every_n: int = 1
+
+    def __post_init__(self) -> None:
+        _validate_plot_limits("cluster_strength.animation", self.vmin, self.vmax)
+
+        if self.age_tolerance_days is not None and self.age_tolerance_days < 0:
+            raise ValueError("cluster_strength.animation.age_tolerance_days must be >= 0 or null.")
+
+        if not isinstance(self.fps, int) or self.fps <= 0:
+            raise ValueError("cluster_strength.animation.fps must be an integer > 0.")
+
+        if not isinstance(self.every_n, int) or self.every_n < 1:
+            raise ValueError("cluster_strength.animation.every_n must be an integer >= 1.")
+
+
+@dataclass(frozen=True)
+class ClusterStrengthSnapshotsConfig:
+    enabled: bool = False
+    fixed_age_days: float | tuple[float, ...] | None = None
+    vmin: float | None = None
+    vmax: float | None = None
+    age_tolerance_days: float | None = None
+    min_mask_value: float | None = None
+    cmap: str = "viridis"
+
+    def __post_init__(self) -> None:
+        _validate_plot_limits("cluster_strength.snapshots", self.vmin, self.vmax)
+
+        if self.age_tolerance_days is not None and self.age_tolerance_days < 0:
+            raise ValueError(
+                "cluster_strength.snapshots.age_tolerance_days must be >= 0 or null."
+            )
+
+
+@dataclass(frozen=True)
 class ClusterStrengthConfig:
     scale_km: float
     distance: str = "haversine"
     cutoff_factor: float = 4.0
     mask: bool = True
-    animate: bool = False
-    animation_fps: int = 8
-    animation_every_n: int = 1
-    plot_snaps: bool = False
-    timestep_snaps: int | tuple[int, ...] | None = None
-    vmin: float | None = None
-    vmax: float | None = None
-    min_mask_value: float | None = None
-    cmap: str = "viridis"
+    max_group_member: int | None = 1
+    animation: ClusterStrengthAnimationConfig = field(default_factory=ClusterStrengthAnimationConfig)
+    snapshots: ClusterStrengthSnapshotsConfig = field(default_factory=ClusterStrengthSnapshotsConfig)
 
     def __post_init__(self) -> None:
         if self.scale_km <= 0:
@@ -136,19 +175,8 @@ class ClusterStrengthConfig:
         if self.cutoff_factor <= 0:
             raise ValueError("cluster_strength.cutoff_factor must be positive.")
 
-        if not isinstance(self.animation_fps, int) or self.animation_fps <= 0:
-            raise ValueError("cluster_strength.animation_fps must be an integer > 0.")
-
-        if not isinstance(self.animation_every_n, int) or self.animation_every_n < 1:
-            raise ValueError("cluster_strength.animation_every_n must be an integer >= 1.")
-
-        _validate_plot_limits("cluster_strength", self.vmin, self.vmax)
-
-        if self.plot_snaps and self.timestep_snaps is None:
-            raise ValueError(
-                "cluster_strength.timestep_snaps is required when "
-                "cluster_strength.plot_snaps is true."
-            )
+        if self.max_group_member is not None and self.max_group_member <= 0:
+            raise ValueError("cluster_strength.max_group_member must be an integer > 0 or null.")
 
 
 @dataclass(frozen=True)

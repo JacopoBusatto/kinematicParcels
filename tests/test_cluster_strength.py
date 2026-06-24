@@ -10,47 +10,64 @@ from kinematicparcels.postprocessing.analyses.cluster_strength import compute_cl
 from kinematicparcels.postprocessing.config.loader import load_postprocess_config
 from kinematicparcels.postprocessing.core.distances import haversine_km
 from kinematicparcels.postprocessing.core.gridding import RegularGrid
-from kinematicparcels.postprocessing.workflows.run_cluster_strength import _resolve_snapshot_indices
+
+
+def _trajectory_df(
+    *,
+    times: list[pd.Timestamp],
+    lons: list[float],
+    lats: list[float],
+    trajectory: str = "p0",
+    group_member: int | None = None,
+) -> pd.DataFrame:
+    data: dict[str, object] = {
+        "trajectory": [trajectory] * len(times),
+        "obs": list(range(len(times))),
+        "time": times,
+        "lon": lons,
+        "lat": lats,
+    }
+    if group_member is not None:
+        data["group_member"] = [group_member] * len(times)
+    return pd.DataFrame(data)
 
 
 def test_cluster_strength_single_particle_on_grid_point_contributes_one() -> None:
-    grid = RegularGrid(
-        lon_min=-0.5,
-        lon_max=0.5,
-        lat_min=-0.5,
-        lat_max=0.5,
-        dlon=1.0,
-        dlat=1.0,
-    )
-    df = pd.DataFrame(
-        {
-            "time": [pd.Timestamp("2026-01-01")],
-            "lon": [0.0],
-            "lat": [0.0],
-        }
+    grid = RegularGrid(-0.5, 0.5, -0.5, 0.5, 1.0, 1.0)
+    df = _trajectory_df(
+        times=[pd.Timestamp("2026-01-01")],
+        lons=[0.0],
+        lats=[0.0],
     )
 
     ds = compute_cluster_strength(df, grid=grid, scale_km=10.0, mask=False)
 
-    assert ds["cluster_strength"].shape == (1, 1, 1)
-    assert ds["cluster_strength"].values[0, 0, 0] == pytest.approx(1.0)
+    assert ds["cluster_strength"].dims == ("release_time", "age_days", "lat", "lon")
+    assert ds["cluster_strength"].shape == (1, 1, 1, 1)
+    assert ds["age_days"].values.tolist() == [0.0]
+    assert "units" not in ds["age_days"].attrs
+    assert ds["age_days"].attrs["unit_label"] == "days"
+    assert ds["cluster_strength"].values[0, 0, 0, 0] == pytest.approx(1.0)
 
 
 def test_cluster_strength_two_particles_sum_gaussian_contributions() -> None:
-    grid = RegularGrid(
-        lon_min=-0.5,
-        lon_max=0.5,
-        lat_min=-0.5,
-        lat_max=0.5,
-        dlon=1.0,
-        dlat=1.0,
-    )
-    df = pd.DataFrame(
-        {
-            "time": [pd.Timestamp("2026-01-01"), pd.Timestamp("2026-01-01")],
-            "lon": [0.0, 0.1],
-            "lat": [0.0, 0.0],
-        }
+    grid = RegularGrid(-0.5, 0.5, -0.5, 0.5, 1.0, 1.0)
+    df = pd.concat(
+        [
+            _trajectory_df(
+                times=[pd.Timestamp("2026-01-01")],
+                lons=[0.0],
+                lats=[0.0],
+                trajectory="p0",
+            ),
+            _trajectory_df(
+                times=[pd.Timestamp("2026-01-01")],
+                lons=[0.1],
+                lats=[0.0],
+                trajectory="p1",
+            ),
+        ],
+        ignore_index=True,
     )
     scale_km = 20.0
     distance = haversine_km(0.0, 0.0, 0.1, 0.0)
@@ -58,48 +75,30 @@ def test_cluster_strength_two_particles_sum_gaussian_contributions() -> None:
 
     ds = compute_cluster_strength(df, grid=grid, scale_km=scale_km, mask=False)
 
-    assert ds["cluster_strength"].values[0, 0, 0] == pytest.approx(float(expected))
+    assert ds["cluster_strength"].values[0, 0, 0, 0] == pytest.approx(float(expected))
 
 
 def test_cluster_strength_mask_true_leaves_never_explored_cells_nan() -> None:
-    grid = RegularGrid(
-        lon_min=-0.5,
-        lon_max=1.5,
-        lat_min=-0.5,
-        lat_max=0.5,
-        dlon=1.0,
-        dlat=1.0,
-    )
-    df = pd.DataFrame(
-        {
-            "time": [pd.Timestamp("2026-01-01")],
-            "lon": [0.0],
-            "lat": [0.0],
-        }
+    grid = RegularGrid(-0.5, 1.5, -0.5, 0.5, 1.0, 1.0)
+    df = _trajectory_df(
+        times=[pd.Timestamp("2026-01-01")],
+        lons=[0.0],
+        lats=[0.0],
     )
 
     ds = compute_cluster_strength(df, grid=grid, scale_km=1000.0, mask=True)
 
     values = ds["cluster_strength"].values
-    assert values[0, 0, 0] == pytest.approx(1.0)
-    assert np.isnan(values[0, 0, 1])
+    assert values[0, 0, 0, 0] == pytest.approx(1.0)
+    assert np.isnan(values[0, 0, 0, 1])
 
 
 def test_cluster_strength_euclidean_distance_runs() -> None:
-    grid = RegularGrid(
-        lon_min=-0.5,
-        lon_max=0.5,
-        lat_min=-0.5,
-        lat_max=0.5,
-        dlon=1.0,
-        dlat=1.0,
-    )
-    df = pd.DataFrame(
-        {
-            "time": [pd.Timestamp("2026-01-01")],
-            "lon": [0.0],
-            "lat": [0.0],
-        }
+    grid = RegularGrid(-0.5, 0.5, -0.5, 0.5, 1.0, 1.0)
+    df = _trajectory_df(
+        times=[pd.Timestamp("2026-01-01")],
+        lons=[0.0],
+        lats=[0.0],
     )
 
     ds = compute_cluster_strength(
@@ -111,27 +110,18 @@ def test_cluster_strength_euclidean_distance_runs() -> None:
     )
 
     assert ds.attrs["distance"] == "euclidean"
-    assert ds["cluster_strength"].values[0, 0, 0] == pytest.approx(1.0)
+    assert ds["cluster_strength"].values[0, 0, 0, 0] == pytest.approx(1.0)
 
 
 def test_cluster_strength_warns_when_scipy_is_absent(monkeypatch) -> None:
     from kinematicparcels.postprocessing.analyses import cluster_strength as cluster_module
 
     monkeypatch.setattr(cluster_module, "cKDTree", None)
-    grid = RegularGrid(
-        lon_min=-0.5,
-        lon_max=0.5,
-        lat_min=-0.5,
-        lat_max=0.5,
-        dlon=1.0,
-        dlat=1.0,
-    )
-    df = pd.DataFrame(
-        {
-            "time": [pd.Timestamp("2026-01-01")],
-            "lon": [0.0],
-            "lat": [0.0],
-        }
+    grid = RegularGrid(-0.5, 0.5, -0.5, 0.5, 1.0, 1.0)
+    df = _trajectory_df(
+        times=[pd.Timestamp("2026-01-01")],
+        lons=[0.0],
+        lats=[0.0],
     )
 
     with pytest.warns(RuntimeWarning, match="scipy.spatial.cKDTree is unavailable"):
@@ -139,20 +129,23 @@ def test_cluster_strength_warns_when_scipy_is_absent(monkeypatch) -> None:
 
 
 def test_cluster_strength_cutoff_factor_excludes_far_particles() -> None:
-    grid = RegularGrid(
-        lon_min=-0.5,
-        lon_max=0.5,
-        lat_min=-0.5,
-        lat_max=0.5,
-        dlon=1.0,
-        dlat=1.0,
-    )
-    df = pd.DataFrame(
-        {
-            "time": [pd.Timestamp("2026-01-01"), pd.Timestamp("2026-01-01")],
-            "lon": [0.0, 0.1],
-            "lat": [0.0, 0.0],
-        }
+    grid = RegularGrid(-0.5, 0.5, -0.5, 0.5, 1.0, 1.0)
+    df = pd.concat(
+        [
+            _trajectory_df(
+                times=[pd.Timestamp("2026-01-01")],
+                lons=[0.0],
+                lats=[0.0],
+                trajectory="p0",
+            ),
+            _trajectory_df(
+                times=[pd.Timestamp("2026-01-01")],
+                lons=[0.1],
+                lats=[0.0],
+                trajectory="p1",
+            ),
+        ],
+        ignore_index=True,
     )
 
     ds = compute_cluster_strength(
@@ -164,7 +157,89 @@ def test_cluster_strength_cutoff_factor_excludes_far_particles() -> None:
     )
 
     assert ds.attrs["cutoff_factor"] == 1.0
-    assert ds["cluster_strength"].values[0, 0, 0] == pytest.approx(1.0)
+    assert ds["cluster_strength"].values[0, 0, 0, 0] == pytest.approx(1.0)
+
+
+def test_cluster_strength_separates_release_time_and_signed_age() -> None:
+    grid = RegularGrid(-0.5, 0.5, -0.5, 0.5, 1.0, 1.0)
+    df = pd.concat(
+        [
+            _trajectory_df(
+                times=[pd.Timestamp("2026-01-01"), pd.Timestamp("2026-01-02")],
+                lons=[0.0, 0.0],
+                lats=[0.0, 0.0],
+                trajectory="p0",
+            ),
+            _trajectory_df(
+                times=[pd.Timestamp("2026-01-05"), pd.Timestamp("2026-01-06")],
+                lons=[0.0, 0.0],
+                lats=[0.0, 0.0],
+                trajectory="p1",
+            ),
+        ],
+        ignore_index=True,
+    )
+
+    ds = compute_cluster_strength(df, grid=grid, scale_km=10.0, mask=False)
+
+    assert ds.sizes["release_time"] == 2
+    assert ds["age_days"].values.tolist() == [0.0, 1.0]
+    assert ds.attrs["simulation_direction"] == "forward"
+    assert ds["cluster_strength"].sel(age_days=1.0).values[:, 0, 0] == pytest.approx([1.0, 1.0])
+
+
+def test_cluster_strength_backward_age_is_negative() -> None:
+    grid = RegularGrid(-0.5, 0.5, -0.5, 0.5, 1.0, 1.0)
+    df = _trajectory_df(
+        times=[
+            pd.Timestamp("2026-01-03"),
+            pd.Timestamp("2026-01-02"),
+            pd.Timestamp("2026-01-01"),
+        ],
+        lons=[0.0, 0.0, 0.0],
+        lats=[0.0, 0.0, 0.0],
+    )
+
+    ds = compute_cluster_strength(df, grid=grid, scale_km=10.0, mask=False)
+
+    assert ds.attrs["simulation_direction"] == "backward"
+    assert ds["age_days"].values.tolist() == [-2.0, -1.0, 0.0]
+    assert ds["release_time"].values[0] == np.datetime64("2026-01-03T00:00:00.000000000")
+
+
+def test_cluster_strength_filters_group_members_by_default() -> None:
+    grid = RegularGrid(-0.5, 0.5, -0.5, 0.5, 1.0, 1.0)
+    df = pd.concat(
+        [
+            _trajectory_df(
+                times=[pd.Timestamp("2026-01-01")],
+                lons=[0.0],
+                lats=[0.0],
+                trajectory="g0",
+                group_member=1,
+            ),
+            _trajectory_df(
+                times=[pd.Timestamp("2026-01-01")],
+                lons=[0.0],
+                lats=[0.0],
+                trajectory="g0",
+                group_member=2,
+            ),
+        ],
+        ignore_index=True,
+    )
+
+    default_ds = compute_cluster_strength(df, grid=grid, scale_km=10.0, mask=False)
+    all_ds = compute_cluster_strength(
+        df,
+        grid=grid,
+        scale_km=10.0,
+        mask=False,
+        max_group_member=None,
+    )
+
+    assert default_ds["cluster_strength"].values[0, 0, 0, 0] == pytest.approx(1.0)
+    assert all_ds["cluster_strength"].values[0, 0, 0, 0] == pytest.approx(2.0)
 
 
 def test_load_postprocess_config_rejects_missing_cluster_strength_scale(tmp_path) -> None:
@@ -223,9 +298,17 @@ def test_load_postprocess_config_parses_cluster_strength_cutoff_and_euclidean(tm
               scale_km: 5
               distance: euclidean
               cutoff_factor: 3
-              animation_fps: 5
-              animation_every_n: 2
-              min_mask_value: 0.05
+              max_group_member: null
+              animation:
+                enabled: true
+                fps: 5
+                every_n: 2
+                min_mask_value: 0.05
+                fixed_age_days: [1, 2]
+              snapshots:
+                enabled: true
+                fixed_age_days: 1
+                vmin: 0
             """
         ),
         encoding="utf-8",
@@ -236,10 +319,15 @@ def test_load_postprocess_config_parses_cluster_strength_cutoff_and_euclidean(tm
     assert cfg.cluster_strength is not None
     assert cfg.cluster_strength.distance == "euclidean"
     assert cfg.cluster_strength.cutoff_factor == 3.0
-    assert cfg.cluster_strength.vmin is None
-    assert cfg.cluster_strength.min_mask_value == 0.05
-    assert cfg.cluster_strength.animation_fps == 5
-    assert cfg.cluster_strength.animation_every_n == 2
+    assert cfg.cluster_strength.max_group_member is None
+    assert cfg.cluster_strength.animation.enabled is True
+    assert cfg.cluster_strength.animation.min_mask_value == 0.05
+    assert cfg.cluster_strength.animation.fixed_age_days == pytest.approx((1.0, 2.0))
+    assert cfg.cluster_strength.animation.fps == 5
+    assert cfg.cluster_strength.animation.every_n == 2
+    assert cfg.cluster_strength.snapshots.enabled is True
+    assert cfg.cluster_strength.snapshots.fixed_age_days == 1.0
+    assert cfg.cluster_strength.snapshots.vmin == 0.0
 
 
 def test_load_postprocess_config_rejects_invalid_cluster_strength_animation_cadence(tmp_path) -> None:
@@ -254,13 +342,14 @@ def test_load_postprocess_config_rejects_invalid_cluster_strength_animation_cade
                 - cluster_strength
             cluster_strength:
               scale_km: 5
-              animation_fps: 0
+              animation:
+                fps: 0
             """
         ),
         encoding="utf-8",
     )
 
-    with pytest.raises(ValueError, match="cluster_strength.animation_fps"):
+    with pytest.raises(ValueError, match="cluster_strength.animation.fps"):
         load_postprocess_config(cfg_path)
 
 
@@ -284,13 +373,3 @@ def test_load_postprocess_config_rejects_uppercase_cluster_strength_distance(tmp
 
     with pytest.raises(ValueError, match="must be lowercase"):
         load_postprocess_config(cfg_path)
-
-
-def test_resolve_snapshot_indices_supports_negative_indices() -> None:
-    assert _resolve_snapshot_indices(-1, n_times=4) == (3,)
-    assert _resolve_snapshot_indices((0, -1, 2), n_times=4) == (0, 3, 2)
-
-
-def test_resolve_snapshot_indices_rejects_out_of_range_indices() -> None:
-    with pytest.raises(IndexError, match="out of range"):
-        _resolve_snapshot_indices(-5, n_times=4)

@@ -245,12 +245,109 @@ def build_distance_backend(distance: str) -> DistanceBackend:
     )
 
 
+def _particle_group_cols(df: pd.DataFrame) -> list[str]:
+    cols = ["trajectory"]
+    if "group_member" in df.columns:
+        cols.append("group_member")
+    return cols
+
+
+def _elapsed_days_from_release(
+    time_values: pd.Series,
+    release_time_values: pd.Series,
+) -> pd.Series:
+    if pd.api.types.is_datetime64_any_dtype(time_values):
+        delta = pd.to_datetime(time_values) - pd.to_datetime(release_time_values)
+        return delta.dt.total_seconds() / 86400.0
+
+    numeric_time = pd.to_numeric(time_values)
+    numeric_release = pd.to_numeric(release_time_values)
+    return numeric_time - numeric_release
+
+
+def _infer_simulation_direction(work: pd.DataFrame, *, particle_cols: list[str], time_col: str) -> str:
+    two_rows = (
+        work.sort_values(particle_cols + ["obs"])
+        .groupby(particle_cols, sort=False)
+        .head(2)
+    )
+    if two_rows.empty:
+        return "forward"
+
+    deltas: list[float] = []
+    for _, particle_data in two_rows.groupby(particle_cols, sort=False):
+        if len(particle_data) < 2:
+            continue
+        first_time = particle_data.iloc[0][time_col]
+        second_time = particle_data.iloc[1][time_col]
+        delta = second_time - first_time
+        if hasattr(delta, "total_seconds"):
+            delta_value = float(delta.total_seconds())
+        else:
+            delta_value = float(delta)
+        if delta_value != 0:
+            deltas.append(delta_value)
+
+    if not deltas:
+        return "forward"
+
+    has_forward = any(delta > 0 for delta in deltas)
+    has_backward = any(delta < 0 for delta in deltas)
+    if has_forward and has_backward:
+        warnings.warn(
+            "Cluster-strength input contains both forward and backward particle time ordering; "
+            "using 'mixed' simulation_direction.",
+            RuntimeWarning,
+            stacklevel=2,
+        )
+        return "mixed"
+    return "backward" if has_backward else "forward"
+
+
+def _attach_release_metadata(
+    df: pd.DataFrame,
+    *,
+    lon_col: str,
+    lat_col: str,
+    time_col: str,
+) -> tuple[pd.DataFrame, str]:
+    required = ["trajectory", "obs", lon_col, lat_col, time_col]
+    missing = [col for col in required if col not in df.columns]
+    if missing:
+        raise KeyError(f"Input dataframe missing required columns: {missing}")
+
+    work = df.copy()
+    work[time_col] = pd.to_datetime(work[time_col])
+    work = work.loc[work[time_col].notna()].copy()
+    if work.empty:
+        return work, "forward"
+
+    particle_cols = _particle_group_cols(work)
+    work = work.sort_values(particle_cols + ["obs"]).reset_index(drop=True)
+    simulation_direction = _infer_simulation_direction(
+        work,
+        particle_cols=particle_cols,
+        time_col=time_col,
+    )
+
+    release_meta = (
+        work.groupby(particle_cols, sort=False)
+        .first()
+        .reset_index()[particle_cols + [time_col]]
+        .rename(columns={time_col: "release_time"})
+    )
+    work = work.merge(release_meta, on=particle_cols, how="left")
+    work["age_days"] = _elapsed_days_from_release(work[time_col], work["release_time"])
+    return work, simulation_direction
+
+
 def _empty_dataset(grid: RegularGrid, *, attrs: dict[str, object]) -> xr.Dataset:
-    data = np.full((0, grid.nlat, grid.nlon), np.nan, dtype=float)
+    data = np.full((0, 0, grid.nlat, grid.nlon), np.nan, dtype=float)
     ds = xr.Dataset(
-        data_vars={"cluster_strength": (("time", "lat", "lon"), data)},
+        data_vars={"cluster_strength": (("release_time", "age_days", "lat", "lon"), data)},
         coords={
-            "time": np.array([], dtype="datetime64[ns]"),
+            "release_time": np.array([], dtype="datetime64[ns]"),
+            "age_days": np.array([], dtype=float),
             "lat": grid.lat_centers,
             "lon": grid.lon_centers,
         },
@@ -270,6 +367,7 @@ def compute_cluster_strength(
     lon_col: str = "lon",
     lat_col: str = "lat",
     time_col: str = "time",
+    max_group_member: int | None = 1,
     grid_chunk_size: int = 4096,
 ) -> xr.Dataset:
     """
@@ -277,7 +375,7 @@ def compute_cluster_strength(
 
     C(x*, t) = sum_n exp(- (d(x*, x_n(t)) / L)^2 )
     """
-    required = [lon_col, lat_col, time_col]
+    required = ["trajectory", "obs", lon_col, lat_col, time_col]
     missing = [col for col in required if col not in df.columns]
     if missing:
         raise KeyError(f"Input dataframe missing required columns: {missing}")
@@ -286,6 +384,8 @@ def compute_cluster_strength(
         raise ValueError("scale_km must be positive.")
     if cutoff_factor <= 0:
         raise ValueError("cutoff_factor must be positive.")
+    if max_group_member is not None and max_group_member <= 0:
+        raise ValueError("max_group_member must be an integer > 0 or None.")
     if grid_chunk_size < 1:
         raise ValueError("grid_chunk_size must be >= 1.")
 
@@ -305,21 +405,45 @@ def compute_cluster_strength(
         "cutoff_factor": float(cutoff_factor),
         "cutoff_km": cutoff_km,
         "mask": bool(mask),
+        "max_group_member": "all" if max_group_member is None else int(max_group_member),
+        "age_definition": "signed days since release_time",
     }
 
     if df.empty:
-        ds = _empty_dataset(grid, attrs={**common_attrs, "candidate_search": backend.candidate_search})
+        ds = _empty_dataset(
+            grid,
+            attrs={
+                **common_attrs,
+                "candidate_search": backend.candidate_search,
+                "simulation_direction": "forward",
+            },
+        )
         return ds
 
     work = df.copy()
-    work[time_col] = pd.to_datetime(work[time_col])
-    work = work.loc[work[time_col].notna()].copy()
+    if max_group_member is not None and "group_member" in work.columns:
+        work = work.loc[work["group_member"] <= max_group_member].copy()
+
+    work, simulation_direction = _attach_release_metadata(
+        work,
+        lon_col=lon_col,
+        lat_col=lat_col,
+        time_col=time_col,
+    )
 
     if work.empty:
-        ds = _empty_dataset(grid, attrs={**common_attrs, "candidate_search": backend.candidate_search})
+        ds = _empty_dataset(
+            grid,
+            attrs={
+                **common_attrs,
+                "candidate_search": backend.candidate_search,
+                "simulation_direction": simulation_direction,
+            },
+        )
         return ds
 
-    time_values = pd.DatetimeIndex(work[time_col].unique()).sort_values()
+    release_time_values = pd.DatetimeIndex(work["release_time"].unique()).sort_values()
+    age_values = np.array(sorted(float(age) for age in pd.unique(work["age_days"])), dtype=float)
     finite = work.loc[
         np.isfinite(work[lon_col].to_numpy(dtype=float))
         & np.isfinite(work[lat_col].to_numpy(dtype=float))
@@ -347,15 +471,31 @@ def compute_cluster_strength(
     valid_lat_bins = valid_flat_indices // grid.nlon
     valid_lon_bins = valid_flat_indices % grid.nlon
 
-    data = np.full((len(time_values), grid.nlat, grid.nlon), np.nan, dtype=float)
-    finite_by_time = {
-        pd.Timestamp(time_value): group
-        for time_value, group in finite.groupby(time_col, sort=False, observed=False)
+    data = np.full((len(release_time_values), len(age_values), grid.nlat, grid.nlon), np.nan, dtype=float)
+    release_lookup = {pd.Timestamp(value): idx for idx, value in enumerate(release_time_values)}
+    age_lookup = {float(value): idx for idx, value in enumerate(age_values)}
+    observed_release_ages = [
+        (pd.Timestamp(release_time), float(age_days))
+        for release_time, age_days in (
+            work[["release_time", "age_days"]]
+            .drop_duplicates()
+            .sort_values(["release_time", "age_days"])
+            .itertuples(index=False, name=None)
+        )
+    ]
+    finite_by_release_age = {
+        (pd.Timestamp(release_time), float(age_days)): group
+        for (release_time, age_days), group in finite.groupby(
+            ["release_time", "age_days"],
+            sort=False,
+            observed=False,
+        )
     }
 
-    for time_idx, time_value in enumerate(time_values):
-        timestamp = pd.Timestamp(time_value)
-        step = finite_by_time.get(timestamp)
+    for release_time, age_days in observed_release_ages:
+        release_idx = release_lookup[pd.Timestamp(release_time)]
+        age_idx = age_lookup[float(age_days)]
+        step = finite_by_release_age.get((release_time, age_days))
         if step is None or step.empty:
             strengths = np.zeros(target_lon.size, dtype=float)
         else:
@@ -370,16 +510,21 @@ def compute_cluster_strength(
             )
 
         if valid_flat_indices.size > 0:
-            data[time_idx, valid_lat_bins, valid_lon_bins] = strengths
+            data[release_idx, age_idx, valid_lat_bins, valid_lon_bins] = strengths
 
     ds = xr.Dataset(
-        data_vars={"cluster_strength": (("time", "lat", "lon"), data)},
+        data_vars={"cluster_strength": (("release_time", "age_days", "lat", "lon"), data)},
         coords={
-            "time": time_values,
+            "release_time": release_time_values,
+            "age_days": age_values,
             "lat": grid.lat_centers,
             "lon": grid.lon_centers,
         },
-        attrs={**common_attrs, "candidate_search": backend.candidate_search},
+        attrs={
+            **common_attrs,
+            "candidate_search": backend.candidate_search,
+            "simulation_direction": simulation_direction,
+        },
     )
     ds["cluster_strength"].attrs.update(
         {
@@ -388,6 +533,13 @@ def compute_cluster_strength(
             "scale_km": float(scale_km),
             "distance": backend.name,
             "cutoff_km": cutoff_km,
+        }
+    )
+    ds["age_days"].attrs.update(
+        {
+            "long_name": "signed age since release",
+            "unit_label": "days",
+            "description": "signed elapsed time from release_time in days",
         }
     )
 

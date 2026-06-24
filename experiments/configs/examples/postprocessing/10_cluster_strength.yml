@@ -52,12 +52,25 @@ cluster_strength:
   distance: haversine  # haversine | euclidean
   cutoff_factor: 4.0
   mask: true
-  animate: false
-  animation_fps: 8
-  animation_every_n: 1
-  plot_snaps: false
-  timestep_snaps: null
-  vmin: null
-  vmax: null
-  min_mask_value: null
-  cmap: viridis
+  max_group_member: 1  # Set 1 for single-trajectory diagnostics, or null to keep all members.
+
+  animation:
+    enabled: false
+    every_release: true
+    fixed_age_days: null
+    age_tolerance_days: null
+    vmin: null
+    vmax: null
+    min_mask_value: null
+    cmap: viridis
+    fps: 8
+    every_n: 1
+
+  snapshots:
+    enabled: false
+    fixed_age_days: null
+    age_tolerance_days: null
+    vmin: null
+    vmax: null
+    min_mask_value: null
+    cmap: viridis
