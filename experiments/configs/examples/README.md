@@ -14,6 +14,8 @@ This folder contains self-contained YAML examples for the main experiment config
 - 08_circle_multistart_2d.yml
 - 09_point_list_points_file_grouped_2d.yml
 - ARGO/argo_to_zarr_example.yml
+- ARGO/rtraj_to_zarr_example.yml
+- DRIFTERS/aoml_drifter_to_zarr_example.yml
 - DRIFTERS/drifter_to_zarr_example.yml
 - DRIFTERS/drf_to_zarr_example.yml
 - postprocessing/README.md
@@ -26,5 +28,5 @@ This folder contains self-contained YAML examples for the main experiment config
 - Region-grid examples use `region_label: med_cpf`.
 - Scheduled-release examples show `release.continuous.max_age` both for classic continuous releases and for scheduled circle releases.
 - The ARGO example documents an external-data workflow, so its input path is a placeholder that should be adjusted locally.
-- The drifter example documents an external-data workflow, so its input path is a placeholder that should be adjusted locally.
+- The drifter examples document external-data workflows, so their input paths are placeholders that should be adjusted locally.
 - The `postprocessing/` subfolder is intentionally more exhaustive: it is a reference set for available postprocessing options, not a minimal experiment example set.

@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import argparse
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 import re
 from typing import Any
@@ -9,7 +9,12 @@ from typing import Any
 import numpy as np
 import pandas as pd
 import xarray as xr
-from tqdm import tqdm
+
+try:
+    from tqdm import tqdm
+except ModuleNotFoundError:  # pragma: no cover - exercised only in minimal environments
+    def tqdm(iterable, *args, **kwargs):
+        return iterable
 
 from kinematicparcels.tools.argo_to_zarr import (
     _apply_region_filter,
@@ -55,6 +60,29 @@ class SegmentConfig:
     mode: str = "ignore"
     step_hours: float = 6.0
     tolerance_minutes: float = 30.0
+
+
+@dataclass
+class DrifterConversionSummary:
+    input_files: int = 0
+    buffered_platforms: int = 0
+    buffered_observations: int = 0
+    segment_mode: str = ""
+    segmented_trajectories: int = 0
+    segmented_platforms: int = 0
+    segmented_observations: int = 0
+    region_names_or_labels: tuple[str, ...] = ()
+    region_input_trajectories: int = 0
+    region_input_platforms: int = 0
+    region_kept_trajectories: int = 0
+    region_kept_platforms: int = 0
+    resample_frequency: str | None = None
+    resample_dropped_empty: int = 0
+    final_trajectories: int = 0
+    final_platforms: int = 0
+    final_observations: int = 0
+    output_path: str = ""
+    output_counts: dict[str, int] = field(default_factory=dict)
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -261,6 +289,44 @@ def _merge_platform_points(frames: list[pd.DataFrame]) -> pd.DataFrame:
     return merged.reset_index(drop=True)
 
 
+def _trajectory_platform_code(trajectory: pd.DataFrame) -> int | None:
+    if trajectory.empty or "platform_code" not in trajectory.columns:
+        return None
+    value = pd.to_numeric(pd.Series([trajectory["platform_code"].iloc[0]]), errors="coerce").iloc[0]
+    if pd.isna(value):
+        return None
+    return int(value)
+
+
+def _count_platforms(trajectories: list[pd.DataFrame]) -> int:
+    platform_codes = {
+        platform_code
+        for trajectory in trajectories
+        if (platform_code := _trajectory_platform_code(trajectory)) is not None
+    }
+    return len(platform_codes)
+
+
+def _count_observations(trajectories: list[pd.DataFrame]) -> int:
+    return int(sum(len(trajectory) for trajectory in trajectories))
+
+
+def _normalize_trajectories(trajectories: list[pd.DataFrame]) -> list[pd.DataFrame]:
+    normalized: list[pd.DataFrame] = []
+    trajectory_iterator = (
+        tqdm(enumerate(trajectories), total=len(trajectories), desc="Normalizing trajectories", unit="traj")
+        if len(trajectories) > 1
+        else enumerate(trajectories)
+    )
+    for trajectory_index, trajectory in trajectory_iterator:
+        current = trajectory.sort_values("time", kind="stable").reset_index(drop=True).copy()
+        current["trajectory"] = trajectory_index
+        current["obs"] = np.arange(len(current), dtype=np.int32)
+        normalized.append(current)
+
+    return normalized
+
+
 def _resolve_platform_drogue_length_m(df: pd.DataFrame) -> float | None:
     if "drogue_length_m" not in df.columns:
         return None
@@ -325,13 +391,21 @@ def _apply_segment_policy(df: pd.DataFrame, *, config: SegmentConfig) -> list[pd
     return [segment.copy() for segment in segments]
 
 
-def convert_drifter_to_dataframe(config: dict[str, Any]) -> list[pd.DataFrame]:
+def _convert_drifter_to_processed_trajectories(
+    config: dict[str, Any],
+) -> tuple[list[pd.DataFrame], DrifterConversionSummary]:
     columns = _resolve_columns(config)
     files = _resolve_input_files(config)
     drogue_config = _resolve_drogue_config(config)
     segment_config = _resolve_segment_config(config)
     region_config = _resolve_region_filter_config(config)
     resample_config = _resolve_resample_config(config)
+    summary = DrifterConversionSummary(
+        input_files=len(files),
+        segment_mode=segment_config.mode,
+        region_names_or_labels=region_config.names_or_labels,
+        resample_frequency=resample_config.frequency,
+    )
 
     print(f"Resolved {len(files)} drifter CSV file(s)")
     file_iterator = tqdm(files, desc="Reading drifter CSV files", unit="file") if len(files) > 1 else files
@@ -353,6 +427,9 @@ def convert_drifter_to_dataframe(config: dict[str, Any]) -> list[pd.DataFrame]:
     }
 
     print(f"Buffered drifter fixes for {len(merged_platform_buffers)} platform(s)")
+    summary.buffered_platforms = len(merged_platform_buffers)
+    summary.buffered_observations = int(sum(len(platform_df) for platform_df in merged_platform_buffers.values()))
+
     print(f"Applying segmentation policy: {segment_config.mode}")
     trajectories: list[pd.DataFrame] = []
     platform_iterator = (
@@ -379,11 +456,20 @@ def convert_drifter_to_dataframe(config: dict[str, Any]) -> list[pd.DataFrame]:
         trajectories.extend(_apply_segment_policy(prepared, config=segment_config))
 
     print(f"Built {len(trajectories)} trajectory segment(s) after segmentation")
+    summary.segmented_trajectories = len(trajectories)
+    summary.segmented_platforms = _count_platforms(trajectories)
+    summary.segmented_observations = _count_observations(trajectories)
+
     if region_config.names_or_labels:
         print(f"Filtering trajectories by region(s): {', '.join(region_config.names_or_labels)}")
+    summary.region_input_trajectories = len(trajectories)
+    summary.region_input_platforms = _count_platforms(trajectories)
     trajectories = _apply_region_filter(trajectories, config=region_config)
 
     print(f"Kept {len(trajectories)} trajectory segment(s) after region filtering")
+    summary.region_kept_trajectories = len(trajectories)
+    summary.region_kept_platforms = _count_platforms(trajectories)
+
     if resample_config.frequency:
         print(f"Resampling trajectories at frequency: {resample_config.frequency}")
     if resample_config.shared_time and resample_config.reference_time is not None:
@@ -399,24 +485,66 @@ def convert_drifter_to_dataframe(config: dict[str, Any]) -> list[pd.DataFrame]:
     dropped_empty = pre_drop_count - len(trajectories)
     if dropped_empty > 0:
         print(f"Dropped {dropped_empty} empty trajectory segment(s) after resampling")
+    summary.resample_dropped_empty = int(dropped_empty)
+    summary.final_trajectories = len(trajectories)
+    summary.final_platforms = _count_platforms(trajectories)
+    summary.final_observations = _count_observations(trajectories)
 
-    normalized: list[pd.DataFrame] = []
-    trajectory_iterator = (
-        tqdm(enumerate(trajectories), total=len(trajectories), desc="Normalizing trajectories", unit="traj")
-        if len(trajectories) > 1
-        else enumerate(trajectories)
+    return trajectories, summary
+
+
+def convert_drifter_to_dataframe(config: dict[str, Any]) -> list[pd.DataFrame]:
+    trajectories, _ = _convert_drifter_to_processed_trajectories(config)
+    return _normalize_trajectories(trajectories)
+
+
+def _print_conversion_summary(summary: DrifterConversionSummary) -> None:
+    print("")
+    print("Drifter conversion summary")
+    print(f"  input files: {summary.input_files}")
+    print(
+        "  buffered fixes: "
+        f"{summary.buffered_observations} observation(s) across {summary.buffered_platforms} platform(s)"
     )
-    for trajectory_index, trajectory in trajectory_iterator:
-        current = trajectory.sort_values("time", kind="stable").reset_index(drop=True).copy()
-        current["trajectory"] = trajectory_index
-        current["obs"] = np.arange(len(current), dtype=np.int32)
-        normalized.append(current)
+    print(f"  segmentation mode: {summary.segment_mode}")
+    print(
+        "  after segmentation: "
+        f"{summary.segmented_trajectories} trajectory segment(s), "
+        f"{summary.segmented_platforms} platform(s), "
+        f"{summary.segmented_observations} observation(s)"
+    )
 
-    return normalized
+    if summary.region_names_or_labels:
+        print(f"  region filter: {', '.join(summary.region_names_or_labels)}")
+    else:
+        print("  region filter: disabled")
+    print(
+        "  trajectories entering region filter: "
+        f"{summary.region_input_trajectories} ({summary.region_input_platforms} platform(s))"
+    )
+    print(
+        "  trajectories kept after region filter: "
+        f"{summary.region_kept_trajectories} ({summary.region_kept_platforms} platform(s))"
+    )
+
+    if summary.resample_frequency:
+        print(f"  resampling frequency: {summary.resample_frequency}")
+    else:
+        print("  resampling: disabled")
+    print(f"  empty trajectories dropped after resampling: {summary.resample_dropped_empty}")
+    print(
+        "  final output: "
+        f"{summary.final_trajectories} trajectory segment(s), "
+        f"{summary.final_platforms} platform(s), "
+        f"{summary.final_observations} observation(s)"
+    )
+    if summary.output_path:
+        print(f"  output path: {summary.output_path}")
 
 
 def convert_drifter_to_zarr(config: dict[str, Any]) -> xr.Dataset:
-    trajectories = convert_drifter_to_dataframe(config)
+    processed_trajectories, summary = _convert_drifter_to_processed_trajectories(config)
+    trajectories = _normalize_trajectories(processed_trajectories)
     print("Building output dataset")
     ds = build_dataset_from_trajectories(
         trajectories,
@@ -429,6 +557,13 @@ def convert_drifter_to_zarr(config: dict[str, Any]) -> xr.Dataset:
     output_path.parent.mkdir(parents=True, exist_ok=True)
     print(f"Writing Zarr dataset to {output_path}")
     ds.to_zarr(output_path, mode="w", encoding=encoding)
+    summary.output_path = str(output_path)
+    summary.output_counts = {
+        "trajectories": len(trajectories),
+        "platforms": _count_platforms(trajectories),
+        "observations": _count_observations(trajectories),
+    }
+    _print_conversion_summary(summary)
     print("Drifter conversion completed")
     return ds
 

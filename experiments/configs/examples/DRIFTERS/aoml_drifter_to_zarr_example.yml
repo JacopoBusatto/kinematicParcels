@@ -1,0 +1,38 @@
+# Example configuration for converting AOML GDP 6-hour drifter NetCDF files
+# into a Parcels-compatible Zarr dataset.
+
+input:
+  # Use one glob when the GDP archive is split across numbered folders.
+  drifter_glob: F:/DRIFTERS/netcdf_6h/netcdf_*/drifter_6h_*.nc
+
+  # Equivalent explicit-directory form:
+  # drifter_dirs:
+  #   - F:/DRIFTERS/netcdf_6h/netcdf_1_5000
+  #   - F:/DRIFTERS/netcdf_6h/netcdf_5001_15000
+  #   - F:/DRIFTERS/netcdf_6h/netcdf_10001_15000
+  #   - F:/DRIFTERS/netcdf_6h/netcdf_15001_current
+  # pattern: "drifter_6h_*.nc"
+
+output:
+  path: F:/DRIFTERS/zarr/SO_aoml_6h.zarr
+
+processing:
+  drogue:
+    clip_to_drogued_period: true
+    minimum_length_m: 4.0
+
+  regions:
+    names_or_labels:
+      - iSO
+      - oSO
+      - ACC
+    selection_mode: from_first_entry
+    input_lon_mode: "-180_180"
+
+  resample:
+    enabled: true
+    frequency: 6h
+    interpolate: time
+    reference_time: 1950-01-01T00:00:00Z
+    shared_time: true
+    shift_start_to_reference: false

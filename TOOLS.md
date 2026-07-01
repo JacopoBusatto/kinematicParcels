@@ -306,6 +306,141 @@ Typical variables written:
 
 ---
 
+### `convert-aoml-drifter-to-zarr`
+
+**Purpose**
+
+Convert AOML Global Drifter Program interpolated 6-hour NetCDF files into a Parcels-compatible trajectory Zarr dataset.
+
+The converter:
+
+- reads files named like `drifter_6h_XXXX.nc`
+- keeps the AOML `ID` as trajectory-level `platform_code`
+- drops `WMO` while opening the dataset, because `ID` is the stable identifier and `WMO` can trigger xarray fill-value warnings in these files
+- filters drifters by metadata `DrogueLength`
+- clips observations to the drogued interval
+- optionally filters by region and resamples/interpolates the time axis using the shared RTRAJ-style pipeline
+- writes a `trajectory x obs` Zarr dataset readable by the repository postprocessing tools
+
+**Run**
+
+```bash
+convert-aoml-drifter-to-zarr experiments/configs/examples/DRIFTERS/aoml_drifter_to_zarr_example.yml
+```
+
+Southern Ocean configuration:
+
+```bash
+convert-aoml-drifter-to-zarr experiments/configs/southern_ocean/AOML_drifter_to_zarr.yml
+```
+
+Equivalent module form:
+
+```bash
+python -m kinematicparcels.tools.aoml_drifter_to_zarr experiments/configs/examples/DRIFTERS/aoml_drifter_to_zarr_example.yml
+```
+
+**CLI arguments**
+
+- `config`: path to the YAML configuration file
+
+**Configuration file structure**
+
+Supported top-level sections:
+
+- `input`
+- `output`
+- `processing`
+
+#### `input`
+
+Controls which NetCDF files are read.
+
+Supported keys:
+
+- `netcdf_files` or `drifter_files`: explicit list of file paths
+- `netcdf_glob` or `drifter_glob`: glob expression
+- `netcdf_dir`, `netcdf_dirs`, `drifter_dir`, or `drifter_dirs`: input directory/directories
+- `pattern`: filename pattern used with directory inputs, default `drifter_6h_*.nc`
+
+Example for the split AOML archive:
+
+```yaml
+input:
+  drifter_glob: F:/DRIFTERS/netcdf_6h/netcdf_*/drifter_6h_*.nc
+```
+
+Equivalent explicit-directory form:
+
+```yaml
+input:
+  drifter_dirs:
+    - F:/DRIFTERS/netcdf_6h/netcdf_1_5000
+    - F:/DRIFTERS/netcdf_6h/netcdf_5001_15000
+    - F:/DRIFTERS/netcdf_6h/netcdf_10001_15000
+    - F:/DRIFTERS/netcdf_6h/netcdf_15001_current
+  pattern: "drifter_6h_*.nc"
+```
+
+#### `output`
+
+Supported keys:
+
+- `path`: output Zarr path
+
+#### `processing.drogue`
+
+Supported keys:
+
+- `clip_to_drogued_period`: when true, keeps `start_date <= time < drogue_lost_date`; if no drogue-loss date exists, keeps `start_date <= time <= end_date`
+- `clip_after_loss`: accepted alias for `clip_to_drogued_period`
+- `minimum_length_m`
+- `min_length_m`: accepted alias for `minimum_length_m`
+
+#### `processing.regions`
+
+Optional trajectory selection by geographical region.
+
+Supported keys:
+
+- `names_or_labels`
+- `selection_mode`: `from_first_entry`, `full_if_enters`, or `initial_inside`
+- `input_lon_mode`
+
+#### `processing.resample`
+
+Optional temporal resampling and interpolation.
+
+Supported keys:
+
+- `enabled`
+- `frequency`
+- `interpolate`
+- `reference_time`
+- `shared_time`
+- `shift_start_to_reference`
+- `align_start`
+
+**Output**
+
+Variables written:
+
+- `time`
+- `lon`
+- `lat`
+- `z`
+- `platform_code`
+
+`z` is set to `0.0` for all observations.
+
+**Examples**
+
+- Example YAML: `experiments/configs/examples/DRIFTERS/aoml_drifter_to_zarr_example.yml`
+- Southern Ocean YAML: `experiments/configs/southern_ocean/AOML_drifter_to_zarr.yml`
+- Example notes: `experiments/configs/examples/DRIFTERS/README.md`
+
+---
+
 ### `convert-drf-to-zarr`
 
 **Purpose**
@@ -511,7 +646,7 @@ It currently provides:
 - `build_dataset_from_trajectories(...)`
 - `build_zarr_encoding(...)`
 
-This module exists to avoid duplicating the same writer logic in both `argo_to_zarr.py` and `couple_trajectories.py`.
+This module exists to avoid duplicating the same writer logic in both `_to_zarr.py` converters and `couple_trajectories.py`.
 
 ---
 
@@ -539,8 +674,11 @@ Under `src/kinematicparcels/tools` the current files are:
 
 - `argo_to_zarr.py`: user-facing CLI tool
 - `drifter_to_zarr.py`: user-facing CLI tool
+- `aoml_drifter_to_zarr.py`: user-facing CLI tool
 - `drf_to_zarr.py`: user-facing CLI tool
+- `rtraj_to_zarr.py`: user-facing CLI tool
 - `couple_trajectories.py`: user-facing CLI tool
+- `trajectory_processing.py`: internal shared trajectory filtering/resampling helper
 - `zarr_writer.py`: internal shared helper
 - `check_argo_data.py`: development inspection script
 - `__init__.py`: package marker

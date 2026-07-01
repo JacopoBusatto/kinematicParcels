@@ -1,0 +1,62 @@
+# Example configuration for converting original ARGO Rtraj NetCDF files into a
+# Parcels-compatible Zarr dataset.
+# Update the input path to match your local ARGO Rtraj archive before running.
+
+input:
+  rtraj_dir: C:/data/ARGO/netcdf/Rtraj/core
+  pattern: "*_Rtraj.nc"
+
+# You can also provide explicit files instead of a directory:
+# input:
+#   rtraj_files:
+#     - C:/data/ARGO/netcdf/Rtraj/core/1902267_Rtraj.nc
+#     - C:/data/ARGO/netcdf/Rtraj/core/4903848_Rtraj.nc
+# or you can provide a glob pattern:
+# input:
+#   rtraj_glob: F:/ARGO/netcdf/Rtraj/*/*_Rtraj.nc
+
+processing:
+  parking_depth:
+    mode: representative_park_pressure
+    fallback_value: 1000.0
+
+  depth_bins:
+    enabled: true
+    output_mode: per_bin
+    bins:
+      - label: z0000_0750
+        min: 0.0
+        max: 750.0
+
+      - label: z0750_1250
+        min: 750.0
+        max: 1250.0
+
+      - label: z1250_1500
+        min: 1250.0
+        max: 1500.0
+
+      - label: z1500_2500
+        min: 1500.0
+        max: 2500.0
+
+      - label: z2500_inf
+        min: 2500.0
+        max: null
+
+  regions:
+    names_or_labels:
+      - DP
+    selection_mode: from_first_entry
+    input_lon_mode: "-180_180"
+
+  resample:
+    enabled: true
+    frequency: 10d
+    interpolate: time
+    reference_time: 2000-01-01T00:00:00Z
+    shared_time: true
+    shift_start_to_reference: false
+
+output:
+  path: ./outputs/argo/dp_rtraj_ARGO.zarr

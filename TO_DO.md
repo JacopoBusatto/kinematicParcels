@@ -1,209 +1,186 @@
-## **Parcels tail writing status**
-The remaining problem is that Parcels scheduled output is regular, but deleted particles/grouped entities can still be selected for writing and serialized with their deletion time, so the raw zarr gets off-grid tail points.
-The current tail cleaning works only because it rewrites the zarr after integration, but that rewrite is the bottleneck.
-The idea to investigate next is an online fix in the runner: intercept the Parcels write-selection/output path before ParticleFile.write and make sure only positions whose times are multiples of outputdt_hours are written.
+## Rtraj 2 zarr
+I want to add a new dedicated conversion tool, not modify the existing CSV converter too much.
 
-Prompt to send when tokens are back:
+Relevant existing files:
+- src/kinematicparcels/tools/argo_to_zarr.py
+- src/kinematicparcels/tools/zarr_writer.py
+- experiments/configs/southern_ocean/ARGO_to_zarr.yml
 
-We need to analyze again the Parcels tail-writing issue in this repo.
+Please inspect these files first to understand the existing output format and the current resampling / region filtering logic.
 
-Context from the latest work:
-- The duplicate initial record problem and the tail-writing problem are separate.
-- In src/kinematicparcels/runner/run_experiment.py we already narrowed the duplicate-start fix so it only checks obs=0 vs obs=1 and compacts that duplicate in place.
-- The remaining bottleneck is tail cleaning: Parcels still writes a particle/grouped-entity final state even when its status is Delete, and that state can have a time that is not a multiple of outputdt_hours.
-- The current post-hoc cleaner rewrites the zarr to nullify these off-grid tail points, but that zarr rewrite is expensive and is the bottleneck.
-- We previously reasoned that the raw output should ideally contain only records whose times are multiples of outputdt_hours.
-- We also investigated that Parcels scheduled output is regular, but deleted particles may still be selected for writing and serialized with their deletion time at the next output event.
+Goal:
+Create a new script:
 
-What I want now:
-1. Read the current repo state first, especially:
-  - src/kinematicparcels/runner/run_experiment.py
-  - src/kinematicparcels/runner/kernels.py
-  - src/kinematicparcels/runner/grouped_kernels.py
-  - tests/test_continuous_release.py
-  - TO_DO.md
-2. Inspect the currently installed local Parcels version/API as needed.
-3. Re-analyze the exact tail-writing control flow carefully.
-4. Decide the least invasive way to prevent off-grid tail points from being written online.
-5. Prefer avoiding a post-hoc zarr rewrite if possible.
-6. Do not assume previous edits are still present; verify the current files first.
+    src/kinematicparcels/tools/rtraj_to_zarr.py
 
-Please answer these questions clearly:
-- Exactly where in Parcels does a deleted particle/grouped entity remain eligible for output?
-- Is the correct hook point ParticleSet.execute, ParticleFile.write, particledata._to_write_particles, or something else?
-- If we patch the write-selection step, can we guarantee that only positions whose times are multiples of outputdt_hours are written?
-- Is filtering Delete-state particles enough, or do we need an explicit time-grid filter as well?
-- Could grouped entities behave differently from singleton particles in this output path?
-- What is the safest runner-local patch in this repo that minimizes maintenance risk against Parcels updates?
+This script should convert original Argo trajectory NetCDF files, named like:
 
-Please give me:
-1. A concise status recap of the issue
-2. The exact control-flow explanation for the tail write
-3. The best candidate implementation strategy
-4. The main risks/tradeoffs of that strategy
-5. A minimal validation plan before changing production behavior
+    1902267_Rtraj.nc
+    4903848_Rtraj.nc
 
-Important constraints:
-- Keep the solution local to this repo if possible
-- Prefer a small runner-side patch over broad postprocessing changes
-- Focus on preventing off-grid tail writes online
-- Be explicit about what is already solved (duplicate obs0/obs1) versus what remains (tail writing)
+into the same final Zarr format produced by the current ARGO CSV converter and compatible with my Lagrangian code outputs.
 
-or just trim the gifs maybe its easier
+Important:
+Do not try to preserve CSV compatibility inside this new script. The old CSV converter can stay as it is. This new script is only for original Argo Rtraj NetCDF files.
 
-
-## CLUSTER STRENGTH
-I want to add a new postprocessing analysis module to this repository:
-
-Please read the existing postprocessing architecture before editing. In particular inspect:
-- src/kinematicparcels/postprocessing/config/models.py
-- src/kinematicparcels/postprocessing/config/loader.py
-- src/kinematicparcels/postprocessing/core/gridding.py
-- src/kinematicparcels/postprocessing/runner/run_postprocessing.py
-- src/kinematicparcels/postprocessing/workflows/run_density.py
-- src/kinematicparcels/postprocessing/analyses/density.py
-- src/kinematicparcels/postprocessing/animations/density.py
-- POSTPROCESSING.md
-
-Add a new analysis called `cluster_strength`.
-
-Scientific definition
----------------------
-Use the cluster strength definition from Huntley et al. 2015, “Clusters, deformation, and dilation: Diagnostics for material accumulation regions”, stored in the repo reference folder (`references\JGR Oceans - 2015 - Huntley - Clusters  deformation  and dilation  Diagnostics for material accumulation regions.pdf`).
-
-For each target grid point x* and each time t, compute:
-```LaTex
-$ C(x*, t) = sum_n exp(- (d(x*, x_n(t)) / L)^2 ) $
-```
-where:
-- $x_n(t)$ is the position of particle n at time t
-- $d(x)$ is the selected distance metric
-- $L$ is the tunable length scale, provided by config as `scale_km`
-- the output variable should be named `cluster_strength`
-
-Configuration
--------------
-Add a new optional YAML section:
-
+Input:
+The new YAML config should support:
 ```yaml
-cluster_strength:
-  scale_km: float              # required, positive
-  distance: haversine          # default haversine;
-  mask: true                   # if true, compute/output only grid cells explored at least once
-  animate: false               # if true, create an animation
-  plot_snaps: false            # if true, plot selected snapshots
-  timestep_snaps: null         # int or list[int]; required if plot_snaps is true
-  vmin: 0
-  vmax: null
-  cmap: viridis
+    input:
+      rtraj_dir: F:/ARGO/netcdf/Rtraj/core
+      pattern: "*_Rtraj.nc"
 ```
-Please use the corrected spelling `cluster_strength` everywhere. Do not introduce the misspelled `cluster_strenght`.
 
-Integration points
-------------------
-Follow the existing postprocessing pattern.
+and optionally:
+```yaml
+    input:
+      rtraj_files:
+        - F:/ARGO/netcdf/Rtraj/core/1902267_Rtraj.nc
+        - F:/ARGO/netcdf/Rtraj/core/4903848_Rtraj.nc
+```
+Output:
+Use the existing build_dataset_from_trajectories(...) and build_zarr_encoding(...) functions so that the final dataset is compatible with the current Lagrangian trajectory Zarr outputs.
 
-Add:
-- `src/kinematicparcels/postprocessing/analyses/cluster_strength.py`
-- `src/kinematicparcels/postprocessing/workflows/run_cluster_strength.py`
-- `experiments/configs/examples/postprocessing/10_cluster_strength.yml`, an example postprocessing YAML
+Required per-observation dataframe columns:
+- platform_code
+- time
+- lat
+- lon
+- z
 
+Also preserve a trajectory index and obs index in the same way as the existing converter.
 
-Update:
-- `src/kinematicparcels/postprocessing/analyses/__init__.py`
-- `src/kinematicparcels/postprocessing/config/models.py`
-- `src/kinematicparcels/postprocessing/config/loader.py`
-- `src/kinematicparcels/postprocessing/runner/run_postprocessing.py`
-- `POSTPROCESSING.md`
+Data extraction from Rtraj:
+- platform_code: read `PLATFORM_NUMBER` and convert it to integer `WMO`.
+- time: prefer `JULD_ADJUSTED` when valid, otherwise use `JULD`.
+- lat/lon: use `LATITUDE` and `LONGITUDE`.
+- parking pressure: use `REPRESENTATIVE_PARK_PRESSURE` from the `N_CYCLE` group/axis.
+- cycle number: prefer `CYCLE_NUMBER_ADJUSTED` when valid, otherwise `CYCLE_NUMBER`. Cycle numbers should only be used internally to map `REPRESENTATIVE_PARK_PRESSURE` from the cycle axis to the measurement rows. Do not include `cycle_number` in the final output dataset unless it is explicitly useful for debugging. Since the trajectories are later resampled onto a different time grid, `cycle_number` should not be interpolated or treated as a physical trajectory variable.
+Parking pressure to z:
+- `REPRESENTATIVE_PARK_PRESSURE` is pressure in dbar, not exact geometric depth.
+- For now use the approximation:
 
-The workflow should:
-1. get the trajectory table using the existing base-products helpers;
-2. build/reuse the regular grid using the existing grid section and `build_grid_from_config`;
-3. compute cluster strength for every saved timestep;
-4. save:
-   - `cluster_strength.nc`
-   - optionally a table if consistent with existing products
-   - optional snapshot PNGs
-   - optional GIF animation
+      `z = REPRESENTATIVE_PARK_PRESSURE`
 
-Grid and mask behavior
-----------------------
-Use the regular grid already implemented in `postprocessing/core/gridding.py` that is defined in the `grid` section of the .
+  with positive values, consistent with the existing converter where `z = 1000.0`.
+- Add dataset attributes explaining that z is approximated from Argo `REPRESENTATIVE_PARK_PRESSURE` in dbar.
+- If later there is a clean local pattern for optional gsw support, you may add it, but do not make gsw a hard dependency.
 
-If `mask: true`, define valid target grid cells as cells that are visited by at least one particle at least once during the whole trajectory dataset. Compute/store cluster strength only on those cells; all other grid cells should be NaN.
+Mapping parking pressure to observations:
+- In Argo trajectory files, `REPRESENTATIVE_PARK_PRESSURE` is per cycle.
+- Map it to measurement rows using cycle numbers:
+  - Prefer `CYCLE_NUMBER_ADJUSTED` matched against `CYCLE_NUMBER_INDEX_ADJUSTED`.
+  - Fall back to `CYCLE_NUMBER` matched against `CYCLE_NUMBER_INDEX`.
+- If a row cannot be mapped to a valid representative park pressure:
+  - use `processing.parking_depth.fallback_value` if provided;
+  - otherwise keep z as NaN.
+- Print a summary of missing z values.
 
-If mask: true, apply the mask only to the target grid cells where cluster strength is evaluated/output. Do not use the mask to pre-filter the particle table. For each valid target grid cell, all particles present at that timestep may contribute if they are within the distance cutoff.
+Filtering:
+Do not implement the old segmentation logic in this new script.
+The trajectory is already complete per WMO, so we do not want `split_as_new` / `longest` / `max_gap_days` / `max_speed_km_per_day` logic here.
 
-Distance design
----------------
-Implement only the default distance now.
-`distance: haversine` should use great-circle/haversine distance in km.
+Do not use the old cut_from_first_entry boolean in this new script. Instead implement an explicit region selection policy.
 
-However, design the code so future distance backends can be added cleanly. In the future I want to add a fjord/skeleton distance:
-- user passes `distance: skeleton_kml`
-- user passes `kml_path`
-- the KML contains connected segments defining the fjord skeleton
-- distance between A and B is:
-  distance from A to closest point on skeleton
-  + shortest path length along the skeleton
-  + distance from closest skeleton point to B
+Keep region filtering, but simplify it:
+- Reuse the existing `RegionManager` / `ALL_REGIONS` logic from argo_to_zarr.py if possible.
+- Support config:
+```yaml
+    processing:
+      regions:
+        names_or_labels:
+          - DP
+        selection_mode: from_first_entry
+        input_lon_mode: "-180_180"
+```
+Behavior:
+- If no regions are provided, keep all trajectories unchanged.
+- If regions are provided, apply the selected selection_mode.
+- Drop trajectories that do not satisfy the selected region policy.
+- Do not cut a trajectory again if it later leaves the region.
 
-Do not implement this future skeleton/KML metric now, but avoid hard-coding the cluster-strength computation to one distance function.
+Allowed selection_mode values:
 
-Efficiency requirements
------------------------
-The naive computation is O(n_time * n_grid * n_particles), which can become too slow.
+1. from_first_entry
+   Keep trajectories that enter one of the selected regions at least once.
+   For each kept trajectory, cut it from the first point inside the selected region onward.
+   Do not cut it again if it later leaves the region.
 
-Please implement the default distance efficiently:
-- avoid building a full dense distance matrix for large datasets;
-- process one timestep at a time;
-- use a finite Gaussian cutoff, default internally to 4 * scale_km unless there is a better local convention;
-- preferably use scipy.spatial.cKDTree on local projected coordinates to find candidate particles near each target grid point, then compute the Gaussian only for candidates;
-- handle empty timesteps gracefully;
-- keep memory bounded by chunking grid points if needed.
+2. full_if_enters
+   Keep trajectories that enter one of the selected regions at least once.
+   Keep the full original trajectory.
 
-The exact haversine distance may be used for final candidate distances after the KDTree neighbor query. If you use a local projection for both neighbor query and distance approximation, document the approximation clearly and keep it appropriate for regional domains.
+3. initial_inside
+   Keep only trajectories whose first valid point is inside one of the selected regions.
+   Keep the full trajectory for those selected floats.
+   This corresponds to floats effectively starting/released inside the region of interest.
 
-Outputs
--------
-The NetCDF should have dimensions:
+Resampling:
+Keep the same resampling strategy as the existing argo_to_zarr.py.
+During resampling, do not linearly interpolate `platform_code` or z. Treat z as a non-interpolated variable and fill it with nearest/forward-backward fill, because parking pressure is a cycle-level property rather than a continuously sampled depth.
+If the existing shared resampling code currently interpolates all numeric columns except `platform_code`, update the new script so that z is also excluded from numeric interpolation.
 
-time, lat, lon
+It should support:
+- enabled
+- frequency
+- interpolate
+- reference_time
+- shared_time
+- shift_start_to_reference
 
-and variable:
+Reuse the existing helper functions if reasonable, or move shared code into a small internal helper module if that is cleaner. Do not do a large refactor unless necessary.
 
-cluster_strength(time, lat, lon)
+Example config:
+Create a new config file, for example:
 
-Include useful attributes:
-- scale_km
-- distance metric
-- formula
-- cutoff_factor or cutoff_km if used
-- grid metadata consistent with existing gridded outputs
+    experiments/configs/southern_ocean/RTRAJ_to_zarr.yml
 
-Plotting
---------
-For snapshots:
-- `plot_snaps: true` requires `timestep_snaps`.
-- `timestep_snaps` can be one integer or a list of integers.
-- Support negative indices like Python indexing: -1 means the last timestep.
-- Save files with clear names such as `cluster_strength_timestep_DATE:TIME.png`.
+with:
+```yaml
+    input:
+      rtraj_dir: F:/ARGO/netcdf/Rtraj/core
+      pattern: "*_Rtraj.nc"
 
-For animation:
-- reuse the style of the existing density animation where practical.
-- respect `vmin`, `vmax`, and `cmap`.
+    output:
+      path: F:/ARGO/zarr/DP_rtraj.zarr
 
-Validation and tests
---------------------
-Add focused tests if the test structure supports it.
+    processing:
+      parking_depth:
+        mode: representative_park_pressure
+        fallback_value: 1000.0
 
-At minimum test:
-1. a tiny synthetic dataset where one particle exactly on one grid point gives contribution 1 at that point;
-2. two particles give the sum of two Gaussian contributions;
-3. `mask: true` leaves never-explored cells as NaN;
-4. invalid config: missing or non-positive `scale_km`;
-5. snapshot index parsing including negative indices.
+    regions:
+      names_or_labels:
+        - DP
+      selection_mode: from_first_entry
+      input_lon_mode: "-180_180"
 
-Please run the relevant tests or, if the environment cannot run them, report exactly what could not be run and why.
+    resample:
+      enabled: true
+      frequency: 10d
+      interpolate: time
+      reference_time: 2000-01-01T00:00:00Z
+      shared_time: true
+      shift_start_to_reference: false
+```
 
-Before implementing, ask me all the questions you might have.
+CLI:
+The script should be runnable like:
+
+    `python -m kinematicparcels.tools.rtraj_to_zarr experiments/configs/southern_ocean/RTRAJ_to_zarr.yml`
+
+Testing / validation:
+- Add focused tests if the repo has a test framework.
+- At minimum, make helper functions small and testable.
+- Run a minimal import/CLI help check.
+- If possible, create a tiny synthetic xarray Dataset mimicking an Rtraj file and test:
+  - PLATFORM_NUMBER extraction
+  - JULD_ADJUSTED fallback to JULD
+  - cycle-to-REPRESENTATIVE_PARK_PRESSURE mapping
+  - resampling does not break the final dataframe shape
+  - region selection_mode behavior
+Implementation style:
+- Keep the new script close in style to argo_to_zarr.py.
+- Avoid broad refactors.
+- Do not modify the old CSV converter unless extracting shared helper functions is clearly useful and low risk.
+- Keep error messages explicit.
