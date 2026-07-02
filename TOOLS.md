@@ -630,6 +630,8 @@ Supported keys:
 - `output_mode`: currently `per_bin`
 - `bins`: list of `label`, `min`, and `max` mappings
 
+When depth bins are enabled, the converter also writes a parking-depth histogram PNG beside the configured output path. The plot uses 100 m bins centered at `0, 100, ..., 2500`, with the final `2450+` bin collecting all deeper points, and a log-scaled frequency axis.
+
 #### `processing.regions`
 
 Optional trajectory selection by geographical region.

@@ -55,6 +55,8 @@ SECONDS_PER_HOUR = 3600.0
 SECONDS_PER_DAY = 86400.0
 DEFAULT_TRANSMISSION_FALLBACK_HOURS = 1.0
 DEFAULT_VERTICAL_SPEED_M_PER_S = 0.1
+DEPTH_HISTOGRAM_CENTERS = np.arange(0.0, 2500.0 + 100.0, 100.0)
+DEPTH_HISTOGRAM_EDGES = np.concatenate((np.arange(-50.0, 2450.0 + 100.0, 100.0), [np.inf]))
 
 
 @dataclass(frozen=True)
@@ -123,6 +125,7 @@ class RtrajConversionSummary:
     depth_bins_enabled: bool = False
     depth_bin_segments: int = 0
     depth_bin_counts: dict[str, dict[str, int]] = field(default_factory=dict)
+    depth_histogram_path: str | None = None
     region_names_or_labels: tuple[str, ...] = ()
     region_selection_mode: str = ""
     region_input_trajectories: int = 0
@@ -359,6 +362,65 @@ def _summarize_by_depth_bin(trajectories: list[pd.DataFrame]) -> dict[str, dict[
         }
         for label, frames in sorted(grouped.items())
     }
+
+
+def _depth_histogram_output_path(output_path: Path) -> Path:
+    if output_path.suffix:
+        return output_path.with_name(f"{output_path.stem}_depth_histogram.png")
+    return output_path.with_name(f"{output_path.name}_depth_histogram.png")
+
+
+def _depth_histogram_counts(trajectories: list[pd.DataFrame]) -> np.ndarray:
+    depth_values: list[np.ndarray] = []
+    for trajectory in trajectories:
+        if trajectory.empty or "z" not in trajectory.columns:
+            continue
+        values = pd.to_numeric(trajectory["z"], errors="coerce").to_numpy(dtype=float)
+        values = values[np.isfinite(values)]
+        if values.size > 0:
+            depth_values.append(values)
+
+    if not depth_values:
+        return np.zeros(len(DEPTH_HISTOGRAM_CENTERS), dtype=np.int64)
+
+    counts, _ = np.histogram(np.concatenate(depth_values), bins=DEPTH_HISTOGRAM_EDGES)
+    return counts.astype(np.int64, copy=False)
+
+
+def _write_depth_histogram_plot(trajectories: list[pd.DataFrame], output_path: Path) -> Path | None:
+    counts = _depth_histogram_counts(trajectories)
+    if not np.any(counts > 0):
+        print("Skipping depth histogram plot because no finite z values are available")
+        return None
+
+    import matplotlib
+
+    matplotlib.use("Agg")
+    import matplotlib.pyplot as plt
+
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    fig, ax = plt.subplots(figsize=(12, 5), dpi=150)
+    ax.bar(
+        DEPTH_HISTOGRAM_CENTERS,
+        counts,
+        width=90.0,
+        align="center",
+        color="#2878b5",
+        edgecolor="#1f2933",
+    )
+    ax.set_yscale("log")
+    ax.set_ylim(0.8, max(float(counts.max()) * 1.25, 1.2))
+    ax.set_xlim(-75.0, 2575.0)
+    ax.set_xticks([0, 500, 1000, 1500, 2000, 2500])
+    ax.set_xticklabels(["0", "500", "1000", "1500", "2000", "2450+"])
+    ax.set_xlabel("Parking depth bin center (m)")
+    ax.set_ylabel("Point frequency (log scale)")
+    ax.set_title("Rtraj parking-depth point histogram")
+    ax.grid(axis="y", which="both", linestyle=":", linewidth=0.7, alpha=0.6)
+    fig.tight_layout()
+    fig.savefig(output_path)
+    plt.close(fig)
+    return output_path
 
 
 @contextmanager
@@ -1136,6 +1198,13 @@ def _convert_rtraj_to_processed_trajectories(
         print(f"Built {len(trajectories)} depth-bin trajectory segment(s)")
         conversion_summary.depth_bin_segments = len(trajectories)
         conversion_summary.depth_bin_counts = _summarize_by_depth_bin(trajectories)
+        histogram_path = _write_depth_histogram_plot(
+            trajectories,
+            _depth_histogram_output_path(_resolve_output_path(config)),
+        )
+        if histogram_path is not None:
+            print(f"Saved depth histogram plot to {histogram_path}")
+            conversion_summary.depth_histogram_path = str(histogram_path)
 
     if region_config.names_or_labels:
         print(
@@ -1263,6 +1332,8 @@ def _print_conversion_summary(summary: RtrajConversionSummary) -> None:
                 f"    {label}: {counts['trajectories']} trajectory segment(s), "
                 f"{counts['platforms']} platform(s), {counts['observations']} observation(s)"
             )
+        if summary.depth_histogram_path:
+            print(f"  depth histogram plot: {summary.depth_histogram_path}")
     else:
         print("  depth-bin splitting: disabled")
 

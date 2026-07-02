@@ -11,6 +11,7 @@ from kinematicparcels.tools.rtraj_to_zarr import (
     DepthBinConfig,
     RegionSelectionConfig,
     _depth_bin_output_path,
+    _depth_histogram_counts,
     _apply_region_selection,
     _split_trajectory_by_depth_bin,
     convert_rtraj_to_dataframe,
@@ -336,6 +337,21 @@ def test_depth_bins_are_applied_before_dataframe_normalization(tmp_path: Path) -
 
 def test_depth_bin_output_path_appends_label_before_zarr_suffix() -> None:
     assert _depth_bin_output_path(Path("out/DP_rtraj.zarr"), "z0750_1250") == Path("out/DP_rtraj_z0750_1250.zarr")
+
+
+def test_depth_histogram_counts_use_100m_bins_and_overflow() -> None:
+    trajectory = pd.DataFrame(
+        {
+            "z": [-10.0, 0.0, 49.9, 50.0, 149.9, 2450.0, 3000.0, np.nan],
+        }
+    )
+
+    counts = _depth_histogram_counts([trajectory])
+
+    assert counts[0] == 3
+    assert counts[1] == 2
+    assert counts[-1] == 2
+    assert int(counts.sum()) == 7
 
 
 def test_convert_rtraj_to_zarr_creates_parcels_compatible_dataset(tmp_path: Path) -> None:

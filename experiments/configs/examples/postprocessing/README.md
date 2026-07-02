@@ -12,6 +12,7 @@ This folder contains one self-contained YAML example for each supported postproc
 - `08_transition_probability.yml`
 - `09_exponent_maps.yml`
 - `10_cluster_strength.yml`
+- `11_meridional_excursion.yml`
 
 Each file is intended as an option reference rather than a minimal runnable config.
 The shared sections (`dataset`, `analysis`, `output`, `exports`, `cleaning`, `release`, `plotting`, and `grid` where relevant) are kept explicit so a user can copy a single file and edit it locally.

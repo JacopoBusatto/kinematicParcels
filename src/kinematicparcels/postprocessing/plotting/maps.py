@@ -131,6 +131,124 @@ def plot_grid_map(
     plt.close(fig)
 
 
+def plot_point_map(
+    df,
+    *,
+    lon_col: str,
+    lat_col: str,
+    value_col: str,
+    outpath: str | Path,
+    projection: str = "PlateCarree",
+    title: str = "",
+    figsize: tuple[float, float] = (12, 8),
+    vmin: float | None = None,
+    vmax: float | None = None,
+    cmap: str | None = None,
+    colorbar_label: str | None = None,
+    title_fontsize: int | None = None,
+    colorbar_fontsize: int | None = None,
+    colorbar_tick_fontsize: int | None = None,
+    axis_tick_fontsize: int | None = None,
+    add_land: bool = True,
+    add_coastlines: bool = True,
+    add_gridlines: bool = True,
+) -> None:
+    """
+    Plot point values on a map using exact lon/lat columns.
+    """
+    required = [lon_col, lat_col, value_col]
+    missing = [col for col in required if col not in df.columns]
+    if missing:
+        raise KeyError(f"Input dataframe missing required columns: {missing}")
+
+    if vmin is not None and vmax is not None and vmin > vmax:
+        raise ValueError("vmin must be less than or equal to vmax.")
+
+    work = df[required].dropna()
+    if work.empty:
+        raise ValueError(f"No finite point values available for '{value_col}'.")
+
+    values = work[value_col].to_numpy(dtype=float)
+    colorbar_extend = infer_colorbar_extend(values, vmin=vmin, vmax=vmax)
+    cmap_for_plot = cmap
+    if colorbar_extend != "neither":
+        cmap_for_plot = plt.get_cmap(cmap).copy() if cmap is not None else plt.get_cmap().copy()
+        if colorbar_extend in {"min", "both"}:
+            cmap_for_plot.set_under("magenta")
+        if colorbar_extend in {"max", "both"}:
+            cmap_for_plot.set_over("red")
+
+    norm = None
+    if vmin is not None or vmax is not None:
+        norm = mcolors.Normalize(vmin=vmin, vmax=vmax, clip=False)
+
+    outpath = Path(outpath)
+    outpath.parent.mkdir(parents=True, exist_ok=True)
+
+    proj = get_projection(projection)
+
+    fig = plt.figure(figsize=figsize)
+    ax = plt.axes(projection=proj)
+
+    if add_land:
+        land = cfeature.NaturalEarthFeature(
+            "physical",
+            "land",
+            "10m",
+            edgecolor="none",
+            facecolor=cfeature.COLORS["land"],
+        )
+        ax.add_feature(land, zorder=0)
+
+    if add_coastlines:
+        ax.coastlines(resolution="10m", linewidth=0.8)
+
+    if add_gridlines:
+        gl = ax.gridlines(draw_labels=True, linestyle="--", alpha=0.4)
+        gl.top_labels = False
+        gl.right_labels = False
+        if axis_tick_fontsize is not None:
+            gl.xlabel_style = {"size": axis_tick_fontsize}
+            gl.ylabel_style = {"size": axis_tick_fontsize}
+
+    scatter = ax.scatter(
+        work[lon_col].to_numpy(dtype=float),
+        work[lat_col].to_numpy(dtype=float),
+        c=values,
+        s=18,
+        cmap=cmap_for_plot,
+        norm=norm,
+        transform=ccrs.PlateCarree(),
+        linewidths=0.0,
+        alpha=0.85,
+        zorder=4,
+    )
+
+    cbar = plt.colorbar(
+        scatter,
+        ax=ax,
+        shrink=0.9,
+        pad=0.03,
+        extend=colorbar_extend,
+    )
+    cbar.set_label(colorbar_label or value_col, fontsize=colorbar_fontsize)
+    if colorbar_tick_fontsize is not None:
+        cbar.ax.tick_params(labelsize=colorbar_tick_fontsize)
+
+    if axis_tick_fontsize is not None:
+        ax.tick_params(labelsize=axis_tick_fontsize)
+
+    if title_fontsize != 0:
+        if title:
+            ax.set_title(title, fontsize=title_fontsize)
+        else:
+            ax.set_title(value_col, fontsize=title_fontsize)
+
+    plt.tight_layout()
+    plt.savefig(outpath, dpi=150, bbox_inches="tight")
+    plt.close(fig)
+
+
 def plot_discrete_grid_map(
     ds: xr.Dataset,
     *,

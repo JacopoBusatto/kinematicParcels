@@ -4,6 +4,7 @@ from .density import compute_time_density
 from .exponent_maps import compute_exponent_maps
 from .fsle import build_fsle_pair_trajectories, compute_fsle
 from .meridional_crossing import compute_meridional_crossing
+from .meridional_excursion import compute_meridional_excursion
 from ..core.regions import build_region_manager, classify_region_points
 from .start_end_regions import (
     classify_start_end_regions,
@@ -21,6 +22,7 @@ __all__ = [
     "build_fsle_pair_trajectories",
     "compute_fsle",
     "compute_meridional_crossing",
+    "compute_meridional_excursion",
     "build_region_manager",
     "classify_region_points",
     "classify_start_end_regions",

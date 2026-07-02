@@ -15,6 +15,7 @@ Typical diagnostics produced include:
 - beaching time maps
 - start/end region classification
 - transition probability matrices
+- meridional excursion tables and maps
 - trajectory visualisation
 - FSLE spectra
 - FSLE and FTLE exponent maps
@@ -406,6 +407,7 @@ analysis:
     - beaching_times
     - fsle
     - meridional_crossing
+    - meridional_excursion
     - start_end_regions
     - transition_probability
     - trajectories
@@ -469,6 +471,7 @@ analyses/
     - beaching_times
     - exponent_maps
   - meridional_crossing
+    - meridional_excursion
     - start_end_regions
     - transition_probability
 
@@ -491,6 +494,7 @@ workflows/
   - run_exponent_maps
     - run_fsle
     - run_meridional_crossing
+    - run_meridional_excursion
     - run_start_end_regions
     - run_trajectories
     - run_transition_probability
@@ -510,6 +514,7 @@ The currently supported analysis types are:
 - exponent_maps
 - fsle
 - meridional_crossing
+- meridional_excursion
 - start_end_regions
 - transition_probability
 - trajectories
@@ -526,6 +531,7 @@ analysis:
     - exponent_maps
     - fsle
     - meridional_crossing
+    - meridional_excursion
     - start_end_regions
     - transition_probability
     - trajectories
@@ -545,8 +551,7 @@ All analyses share the same top-level configuration structure.
 
 `analysis`
 
-- `types`: ordered list of analyses to execute; supported values are `summary`, `density`, `cluster_strength`, `beaching_times`, `fsle`, `meridional_crossing`, `start_end_regions`, `transition_probability`, and `trajectories`
-- `types`: ordered list of analyses to execute; supported values are `summary`, `density`, `cluster_strength`, `beaching_times`, `exponent_maps`, `fsle`, `meridional_crossing`, `start_end_regions`, `transition_probability`, and `trajectories`
+- `types`: ordered list of analyses to execute; supported values are `summary`, `density`, `cluster_strength`, `beaching_times`, `exponent_maps`, `fsle`, `meridional_crossing`, `meridional_excursion`, `start_end_regions`, `transition_probability`, and `trajectories`
 
 `output`
 
@@ -1057,6 +1062,99 @@ meridional_crossing:
 The preferred keys are the nested `plotting.probability.enabled` and `plotting.count.enabled`. The loader also accepts the older aliases `show_probability` and `show_counts` for backward compatibility.
 
 ------------------------------------------------------------
+MERIDIONAL EXCURSION
+------------------------------------------------------------
+
+Computes the southernmost and northernmost latitude reached by each trajectory,
+then derives positive southward and northward excursions from the initial latitude.
+
+Input:
+- trajectory_table
+
+Outputs:
+- exact per-trajectory table (`meridional_excursion_table.parquet` or `.csv`)
+- long-form gridded table
+- gridded NetCDF on the configured regular `grid`
+- optional scatter and gridded maps
+
+The exact table keeps the true trajectory coordinates:
+
+```
+lon0
+lat0
+time0
+lat_min
+lon_at_lat_min
+time_at_lat_min
+age_at_lat_min_days
+lat_max
+lon_at_lat_max
+time_at_lat_max
+age_at_lat_max_days
+southward_excursion_deg
+northward_excursion_deg
+duration_days
+```
+
+The NetCDF does not use these exact positions as coordinates. It uses the
+regular grid from the top-level `grid` section. Variable names encode which
+position was used for binning:
+
+```
+southward_excursion_deg_at_initial_position_mean
+southward_excursion_deg_at_southmost_point_mean
+northward_excursion_deg_at_northmost_point_mean
+```
+
+Options:
+```yaml
+meridional_excursion:
+  min_duration_days: null
+
+  output:
+    save_table: true
+    save_grid_table: true
+    save_netcdf: true
+    save_figures: true
+
+  gridding:
+    merge: mean
+    variables:
+      - southward_excursion_deg
+      - northward_excursion_deg
+    over:
+      - initial_position
+      - southmost_point
+      - northmost_point
+
+  plotting:
+    enabled: true
+    type:
+      - scatter
+      - gridded
+    variables:
+      southward_excursion_deg:
+        over:
+          - initial_position
+          - southmost_point
+        vmin: null
+        vmax: null
+        cmap: viridis
+        title: null
+        cbar_label: null
+```
+
+- `min_duration_days` excludes trajectories shorter than the configured full-trajectory duration
+- `gridding.merge` controls how multiple trajectories in the same grid cell are aggregated; supported values are `mean`, `min`, `max`, and `median`
+- `gridding.variables` selects exact-table variables to aggregate
+- `gridding.over` selects the coordinate anchor used for binning: `initial_position`, `southmost_point`, or `northmost_point`
+- `plotting.type` can include `scatter`, `gridded`, or both
+- `plotting.variables.<name>.cmap` sets the Matplotlib colormap for that variable's scatter and gridded plots
+- `plotting.variables.<name>.title` sets the plot title; `null` omits it
+- `plotting.variables.<name>.cbar_label` sets the colorbar label; `null` uses the plotted variable name
+- ties for minimum or maximum latitude use the first occurrence in trajectory time
+
+------------------------------------------------------------
 START / END REGIONS
 ------------------------------------------------------------
 
@@ -1310,6 +1408,7 @@ analysis:
     - beaching_times
     - fsle
     - meridional_crossing
+    - meridional_excursion
     - start_end_regions
     - transition_probability
     - trajectories
@@ -1422,6 +1521,47 @@ meridional_crossing:
       enabled: false
       vmin: null
       vmax: null
+
+meridional_excursion:
+  min_duration_days: null
+  output:
+    save_table: true
+    save_grid_table: true
+    save_netcdf: true
+    save_figures: true
+  gridding:
+    merge: mean
+    variables:
+      - southward_excursion_deg
+      - northward_excursion_deg
+    over:
+      - initial_position
+      - southmost_point
+      - northmost_point
+  plotting:
+    enabled: true
+    type:
+      - scatter
+      - gridded
+    variables:
+      southward_excursion_deg:
+        over:
+          - initial_position
+          - southmost_point
+        vmin: null
+        vmax: null
+        cmap: viridis
+        title: null
+        cbar_label: null
+      northward_excursion_deg:
+        over:
+          - initial_position
+          - northmost_point
+        vmin: null
+        vmax: null
+        cmap: viridis
+        title: null
+        cbar_label: null
 
 start_end_regions:
   region_labels: null

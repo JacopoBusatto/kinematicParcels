@@ -36,6 +36,11 @@ from .models import (
     MeridionalCrossingOutputConfig,
     MeridionalCrossingPlottingConfig,
     MeridionalCrossingSegmentationConfig,
+    MeridionalExcursionConfig,
+    MeridionalExcursionGriddingConfig,
+    MeridionalExcursionOutputConfig,
+    MeridionalExcursionPlottingConfig,
+    MeridionalExcursionVariablePlotConfig,
 )
 
 
@@ -70,6 +75,20 @@ def _parse_optional_number(value: Any, name: str) -> float | None:
     if value is None:
         return None
     return _require_number(value, name)
+
+
+def _parse_string_tuple(value: Any, name: str) -> tuple[str, ...]:
+    if not isinstance(value, list):
+        raise ValueError(f"'{name}' must be a list of strings.")
+
+    parsed: list[str] = []
+    for i, item in enumerate(value):
+        parsed.append(_require_nonempty_string(item, f"{name}[{i}]"))
+
+    if len(parsed) == 0:
+        raise ValueError(f"'{name}' cannot be empty.")
+
+    return tuple(parsed)
 
 
 def _parse_optional_positive_int(value: Any, name: str) -> int | None:
@@ -1402,6 +1421,136 @@ def _parse_meridional_crossing(section: dict[str, Any] | None) -> MeridionalCros
     )
 
 
+def _parse_meridional_excursion(section: dict[str, Any] | None) -> MeridionalExcursionConfig:
+    """
+    Parse the optional meridional_excursion section.
+    """
+    if section is None:
+        return MeridionalExcursionConfig()
+
+    section = _require_dict(section, "meridional_excursion")
+
+    min_duration_days = _parse_optional_number(
+        section.get("min_duration_days", None),
+        "meridional_excursion.min_duration_days",
+    )
+
+    output_section = section.get("output", None)
+    if output_section is None:
+        output = MeridionalExcursionOutputConfig()
+    else:
+        output_section = _require_dict(output_section, "meridional_excursion.output")
+        output = MeridionalExcursionOutputConfig(
+            save_table=bool(output_section.get("save_table", True)),
+            save_grid_table=bool(output_section.get("save_grid_table", True)),
+            save_netcdf=bool(output_section.get("save_netcdf", True)),
+            save_figures=bool(output_section.get("save_figures", True)),
+        )
+
+    gridding_section = section.get("gridding", None)
+    if gridding_section is None:
+        gridding = MeridionalExcursionGriddingConfig()
+    else:
+        gridding_section = _require_dict(gridding_section, "meridional_excursion.gridding")
+        merge = _require_nonempty_string(
+            gridding_section.get("merge", "mean"),
+            "meridional_excursion.gridding.merge",
+        )
+        variables = _parse_string_tuple(
+            gridding_section.get(
+                "variables",
+                ["southward_excursion_deg", "northward_excursion_deg"],
+            ),
+            "meridional_excursion.gridding.variables",
+        )
+        over = _parse_string_tuple(
+            gridding_section.get(
+                "over",
+                ["initial_position", "southmost_point", "northmost_point"],
+            ),
+            "meridional_excursion.gridding.over",
+        )
+        gridding = MeridionalExcursionGriddingConfig(
+            merge=merge,
+            variables=variables,
+            over=over,
+        )
+
+    plotting_section = section.get("plotting", None)
+    if plotting_section is None:
+        plotting = MeridionalExcursionPlottingConfig()
+    else:
+        plotting_section = _require_dict(plotting_section, "meridional_excursion.plotting")
+        plot_types = _parse_string_tuple(
+            plotting_section.get("type", ["gridded"]),
+            "meridional_excursion.plotting.type",
+        )
+
+        variables_section = plotting_section.get("variables", None)
+        variable_configs: dict[str, MeridionalExcursionVariablePlotConfig] = {}
+        if variables_section is not None:
+            variables_section = _require_dict(
+                variables_section,
+                "meridional_excursion.plotting.variables",
+            )
+            for variable_name, variable_section in variables_section.items():
+                variable_key = _require_nonempty_string(
+                    variable_name,
+                    "meridional_excursion.plotting.variables key",
+                )
+                variable_section = _require_dict(
+                    variable_section,
+                    f"meridional_excursion.plotting.variables.{variable_key}",
+                )
+                over_raw = variable_section.get("over", None)
+                over = None if over_raw is None else _parse_string_tuple(
+                    over_raw,
+                    f"meridional_excursion.plotting.variables.{variable_key}.over",
+                )
+                cmap_raw = variable_section.get("cmap", None)
+                cmap = None if cmap_raw is None else _require_nonempty_string(
+                    cmap_raw,
+                    f"meridional_excursion.plotting.variables.{variable_key}.cmap",
+                )
+                title_raw = variable_section.get("title", None)
+                title = None if title_raw is None else _require_nonempty_string(
+                    title_raw,
+                    f"meridional_excursion.plotting.variables.{variable_key}.title",
+                )
+                cbar_label_raw = variable_section.get("cbar_label", None)
+                cbar_label = None if cbar_label_raw is None else _require_nonempty_string(
+                    cbar_label_raw,
+                    f"meridional_excursion.plotting.variables.{variable_key}.cbar_label",
+                )
+                variable_configs[variable_key] = MeridionalExcursionVariablePlotConfig(
+                    over=over,
+                    vmin=_parse_optional_number(
+                        variable_section.get("vmin", None),
+                        f"meridional_excursion.plotting.variables.{variable_key}.vmin",
+                    ),
+                    vmax=_parse_optional_number(
+                        variable_section.get("vmax", None),
+                        f"meridional_excursion.plotting.variables.{variable_key}.vmax",
+                    ),
+                    cmap=cmap,
+                    title=title,
+                    cbar_label=cbar_label,
+                )
+
+        plotting = MeridionalExcursionPlottingConfig(
+            enabled=bool(plotting_section.get("enabled", True)),
+            type=plot_types,
+            variables=variable_configs,
+        )
+
+    return MeridionalExcursionConfig(
+        min_duration_days=min_duration_days,
+        output=output,
+        gridding=gridding,
+        plotting=plotting,
+    )
+
+
 def load_postprocess_config(path: str | Path) -> PostprocessConfig:
     """
     Load the post-processing YAML config.
@@ -1436,6 +1585,7 @@ def load_postprocess_config(path: str | Path) -> PostprocessConfig:
     start_end_regions = _parse_start_end_regions(raw.get("start_end_regions"))
     transition_probability = _parse_transition_probability(raw.get("transition_probability"))
     meridional_crossing = _parse_meridional_crossing(raw.get("meridional_crossing"))
+    meridional_excursion = _parse_meridional_excursion(raw.get("meridional_excursion"))
 
     return PostprocessConfig(
         dataset=dataset,
@@ -1455,4 +1605,5 @@ def load_postprocess_config(path: str | Path) -> PostprocessConfig:
         start_end_regions=start_end_regions,
         transition_probability=transition_probability,
         meridional_crossing=meridional_crossing,
+        meridional_excursion=meridional_excursion,
     )

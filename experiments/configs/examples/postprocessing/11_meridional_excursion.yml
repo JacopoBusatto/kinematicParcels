@@ -1,0 +1,95 @@
+# Example postprocessing config for the `meridional_excursion` analysis.
+
+dataset:
+  input_path: ./outputs/one_trajectory_test.zarr
+  coordinates:
+    trajectory: trajectory
+    obs: obs
+    time: time
+    lon: lon
+    lat: lat
+    z: z
+
+analysis:
+  types:
+    - meridional_excursion
+
+output:
+  output_dir: ./outputs/postprocessing/examples/meridional_excursion
+
+exports:
+  save_trajectory_table: false
+  save_particle_summary: true
+  table_format: parquet  # parquet | csv
+
+cleaning:
+  truncate_stagnant: false
+  stagnant_tol: 1.0e-6
+  stagnant_min_consecutive: 2
+
+grid:
+  mode: explicit_edges  # explicit_edges | from_initial_centers
+  lon_min: 13.0
+  lon_max: 15.0
+  lat_min: 36.0
+  lat_max: 38.0
+  dlon: 0.1
+  dlat: 0.1
+
+release:
+  mode: region_grid  # point_list | region_grid | circle | lkm
+  continuous: false
+
+plotting:
+  projection: PlateCarree
+  # title_fontsize: 14       # set to 0 to omit titles entirely
+  # colorbar_fontsize: 12
+  # colorbar_tick_fontsize: 10
+  # axis_tick_fontsize: 10
+
+meridional_excursion:
+  # Full trajectories shorter than this are excluded. Use null to keep all.
+  min_duration_days: null
+
+  output:
+    save_table: true       # exact per-trajectory table
+    save_grid_table: true  # long-form aggregated table
+    save_netcdf: true      # regular lon/lat gridded products
+    save_figures: true
+
+  gridding:
+    merge: mean  # mean | min | max | median
+    variables:
+      - southward_excursion_deg
+      - northward_excursion_deg
+      - lat_min
+      - lat_max
+    over:
+      - initial_position
+      - southmost_point
+      - northmost_point
+
+  plotting:
+    enabled: true
+    type:
+      - scatter
+      - gridded
+    variables:
+      southward_excursion_deg:
+        over:
+          - initial_position
+          - southmost_point
+        vmin: null
+        vmax: null
+        cmap: viridis
+        title: null
+        cbar_label: null
+      northward_excursion_deg:
+        over:
+          - initial_position
+          - northmost_point
+        vmin: null
+        vmax: null
+        cmap: viridis
+        title: null
+        cbar_label: null

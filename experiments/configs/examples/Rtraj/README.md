@@ -262,6 +262,9 @@ Behavior details:
 - Bins must not overlap.
 - Gaps between bins are allowed. Rows whose `z` does not fall in any bin are dropped from depth-bin output.
 - Splitting preserves contiguous runs. The converter does not merge separated runs from the same bin.
+- When depth bins are enabled, the converter also saves a parking-depth histogram plot next to the configured output path.
+- The histogram uses 100 m bins centered at `0, 100, ..., 2500`; the final `2450+` bin includes all points with `z >= 2450`.
+- Histogram frequencies are plotted on a log-scaled y axis.
 
 Example depth sequence:
 
@@ -291,6 +294,7 @@ with labels `z0750_1250` and `z1500_2500` writes:
 ```text
 ./outputs/argo/dp_rtraj_ARGO_z0750_1250.zarr
 ./outputs/argo/dp_rtraj_ARGO_z1500_2500.zarr
+./outputs/argo/dp_rtraj_ARGO_depth_histogram.png
 ```
 
 ### `processing.regions`

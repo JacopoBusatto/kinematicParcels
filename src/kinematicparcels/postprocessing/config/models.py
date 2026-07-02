@@ -597,6 +597,108 @@ class MeridionalCrossingConfig:
 
 
 @dataclass(frozen=True)
+class MeridionalExcursionOutputConfig:
+    save_table: bool = True
+    save_grid_table: bool = True
+    save_netcdf: bool = True
+    save_figures: bool = True
+
+
+@dataclass(frozen=True)
+class MeridionalExcursionGriddingConfig:
+    merge: str = "mean"
+    variables: tuple[str, ...] = (
+        "southward_excursion_deg",
+        "northward_excursion_deg",
+    )
+    over: tuple[str, ...] = (
+        "initial_position",
+        "southmost_point",
+        "northmost_point",
+    )
+
+    def __post_init__(self) -> None:
+        if self.merge not in {"mean", "min", "max", "median"}:
+            raise ValueError(
+                "meridional_excursion.gridding.merge must be one of: "
+                "'mean', 'min', 'max', 'median'."
+            )
+
+        if len(self.variables) == 0:
+            raise ValueError("meridional_excursion.gridding.variables cannot be empty.")
+
+        if len(self.over) == 0:
+            raise ValueError("meridional_excursion.gridding.over cannot be empty.")
+
+        valid_anchors = {"initial_position", "southmost_point", "northmost_point"}
+        invalid_anchors = [anchor for anchor in self.over if anchor not in valid_anchors]
+        if invalid_anchors:
+            raise ValueError(
+                "meridional_excursion.gridding.over contains unsupported anchors: "
+                f"{invalid_anchors}. Supported: {sorted(valid_anchors)}"
+            )
+
+
+@dataclass(frozen=True)
+class MeridionalExcursionVariablePlotConfig:
+    over: tuple[str, ...] | None = None
+    vmin: float | None = None
+    vmax: float | None = None
+    cmap: str | None = None
+    title: str | None = None
+    cbar_label: str | None = None
+
+    def __post_init__(self) -> None:
+        _validate_plot_limits("meridional_excursion.plotting.variables", self.vmin, self.vmax)
+
+        if self.over is not None:
+            valid_anchors = {"initial_position", "southmost_point", "northmost_point"}
+            invalid_anchors = [anchor for anchor in self.over if anchor not in valid_anchors]
+            if invalid_anchors:
+                raise ValueError(
+                    "meridional_excursion.plotting.variables.*.over contains unsupported anchors: "
+                    f"{invalid_anchors}. Supported: {sorted(valid_anchors)}"
+                )
+
+
+@dataclass(frozen=True)
+class MeridionalExcursionPlottingConfig:
+    enabled: bool = True
+    type: tuple[str, ...] = ("gridded",)
+    variables: dict[str, MeridionalExcursionVariablePlotConfig] = field(default_factory=dict)
+
+    def __post_init__(self) -> None:
+        if len(self.type) == 0:
+            raise ValueError("meridional_excursion.plotting.type cannot be empty.")
+
+        valid_types = {"scatter", "gridded"}
+        invalid_types = [plot_type for plot_type in self.type if plot_type not in valid_types]
+        if invalid_types:
+            raise ValueError(
+                "meridional_excursion.plotting.type contains unsupported values: "
+                f"{invalid_types}. Supported: {sorted(valid_types)}"
+            )
+
+
+@dataclass(frozen=True)
+class MeridionalExcursionConfig:
+    min_duration_days: float | None = None
+    output: MeridionalExcursionOutputConfig = field(
+        default_factory=MeridionalExcursionOutputConfig
+    )
+    gridding: MeridionalExcursionGriddingConfig = field(
+        default_factory=MeridionalExcursionGriddingConfig
+    )
+    plotting: MeridionalExcursionPlottingConfig = field(
+        default_factory=MeridionalExcursionPlottingConfig
+    )
+
+    def __post_init__(self) -> None:
+        if self.min_duration_days is not None and self.min_duration_days < 0:
+            raise ValueError("meridional_excursion.min_duration_days must be >= 0 or null.")
+
+
+@dataclass(frozen=True)
 class ReleaseConfig:
     """
     Describes how particles were released in the simulation.
@@ -659,6 +761,7 @@ class PostprocessConfig:
         default_factory=lambda: TransitionProbabilityConfig(region_labels=("sesc-mod", "sesc-sir"))
     )
     meridional_crossing: MeridionalCrossingConfig = field(default_factory=MeridionalCrossingConfig)
+    meridional_excursion: MeridionalExcursionConfig = field(default_factory=MeridionalExcursionConfig)
 
 
 @dataclass(frozen=True)
