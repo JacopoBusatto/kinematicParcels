@@ -69,6 +69,59 @@ def _write_depth_switch_rtraj(path: Path) -> None:
     ds.to_netcdf(path)
 
 
+def _write_segmented_rtraj(path: Path, *, juld: list[float] | None = None, bad_cycle: int | None = None) -> None:
+    cycles = np.arange(1, 6, dtype=float)
+    if juld is None:
+        juld = [0.0, 10.0, 20.0, 30.0, 40.0]
+    juld_values = np.asarray(juld, dtype=float)
+    base = cycles * 10.0
+    transmission_end = base + 5.4
+    if bad_cycle is not None:
+        transmission_end[bad_cycle - 1] = base[bad_cycle - 1] + 7.0
+
+    data_vars = {
+        "PLATFORM_NUMBER": (("STRING8",), _char_array("1902267")),
+        "JULD": (("N_MEASUREMENT",), juld_values),
+        "JULD_ADJUSTED": (("N_MEASUREMENT",), np.full(len(cycles), np.nan, dtype=float)),
+        "LATITUDE": (("N_MEASUREMENT",), np.asarray([-60.0, -60.5, -61.0, -61.5, -62.0], dtype=float)),
+        "LONGITUDE": (("N_MEASUREMENT",), np.asarray([-70.0, -69.5, -69.0, -68.5, -68.0], dtype=float)),
+        "CYCLE_NUMBER": (("N_MEASUREMENT",), cycles),
+        "CYCLE_NUMBER_ADJUSTED": (("N_MEASUREMENT",), np.full(len(cycles), np.nan, dtype=float)),
+        "CYCLE_NUMBER_INDEX": (("N_CYCLE",), cycles),
+        "CYCLE_NUMBER_INDEX_ADJUSTED": (("N_CYCLE",), cycles),
+        "REPRESENTATIVE_PARK_PRESSURE": (("N_CYCLE",), np.full(len(cycles), 1000.0, dtype=float)),
+        "PRES": (("N_MEASUREMENT",), np.full(len(cycles), 2000.0, dtype=float)),
+        "JULD_DESCENT_START": (("N_CYCLE",), base),
+        "JULD_DESCENT_END": (("N_CYCLE",), base + 0.1),
+        "JULD_DEEP_DESCENT_END": (("N_CYCLE",), base + 0.2),
+        "JULD_PARK_START": (("N_CYCLE",), base + 0.3),
+        "JULD_PARK_END": (("N_CYCLE",), base + 4.3),
+        "JULD_DEEP_ASCENT_START": (("N_CYCLE",), base + 5.1),
+        "JULD_ASCENT_START": (("N_CYCLE",), base + 5.2),
+        "JULD_ASCENT_END": (("N_CYCLE",), base + 5.3),
+        "JULD_TRANSMISSION_START": (("N_CYCLE",), base + 5.3),
+        "JULD_TRANSMISSION_END": (("N_CYCLE",), transmission_end),
+    }
+    ds = xr.Dataset(data_vars=data_vars)
+    for name in [
+        "JULD",
+        "JULD_ADJUSTED",
+        "JULD_DESCENT_START",
+        "JULD_DESCENT_END",
+        "JULD_DEEP_DESCENT_END",
+        "JULD_PARK_START",
+        "JULD_PARK_END",
+        "JULD_DEEP_ASCENT_START",
+        "JULD_ASCENT_START",
+        "JULD_ASCENT_END",
+        "JULD_TRANSMISSION_START",
+        "JULD_TRANSMISSION_END",
+    ]:
+        ds[name].attrs["units"] = "days since 2000-01-01 00:00:00"
+        ds[name].attrs["calendar"] = "gregorian"
+    ds.to_netcdf(path)
+
+
 def test_rtraj_extracts_platform_time_fallback_and_parking_pressure(tmp_path: Path) -> None:
     rtraj_path = tmp_path / "1902267_Rtraj.nc"
     _write_rtraj(rtraj_path)
@@ -130,6 +183,54 @@ def test_rtraj_resampling_fills_z_without_interpolation(tmp_path: Path) -> None:
     ]
     assert np.allclose(trajectory["z"].to_numpy(dtype=float), [900.0, 900.0, 1000.0])
     assert np.isclose(float(trajectory["lat"].iloc[1]), -59.81818181818182)
+
+
+def test_rtraj_frequency_segmentation_splits_large_raw_juld_gap(tmp_path: Path) -> None:
+    rtraj_path = tmp_path / "1902267_Rtraj.nc"
+    _write_segmented_rtraj(rtraj_path, juld=[0.0, 10.0, 20.0, 60.0, 70.0])
+
+    config = {
+        "input": {"rtraj_files": [str(rtraj_path)]},
+        "output": {"path": str(tmp_path / "rtraj_frequency.zarr")},
+        "processing": {
+            "parking_depth": {"mode": "representative_park_pressure"},
+            "frequency": {
+                "enabled": True,
+                "source_max_gap_days": 29,
+            },
+        },
+    }
+
+    trajectories = convert_rtraj_to_dataframe(config)
+
+    assert len(trajectories) == 2
+    assert [len(trajectory) for trajectory in trajectories] == [3, 2]
+    assert trajectories[0]["time"].tolist() == pd.to_datetime(["2000-01-01", "2000-01-11", "2000-01-21"]).tolist()
+    assert trajectories[1]["time"].tolist() == pd.to_datetime(["2000-03-01", "2000-03-11"]).tolist()
+
+
+def test_rtraj_near_surface_filter_discards_flagged_cycle_and_splits(tmp_path: Path) -> None:
+    rtraj_path = tmp_path / "1902267_Rtraj.nc"
+    _write_segmented_rtraj(rtraj_path, bad_cycle=3)
+
+    config = {
+        "input": {"rtraj_files": [str(rtraj_path)]},
+        "output": {"path": str(tmp_path / "rtraj_near_surface.zarr")},
+        "processing": {
+            "parking_depth": {"mode": "representative_park_pressure"},
+            "near_surface": {
+                "enabled": True,
+                "near_surface_max_hours": 18,
+            },
+        },
+    }
+
+    trajectories = convert_rtraj_to_dataframe(config)
+
+    assert len(trajectories) == 2
+    assert [len(trajectory) for trajectory in trajectories] == [2, 2]
+    assert trajectories[0]["time"].tolist() == pd.to_datetime(["2000-01-01", "2000-01-11"]).tolist()
+    assert trajectories[1]["time"].tolist() == pd.to_datetime(["2000-01-31", "2000-02-10"]).tolist()
 
 
 def test_rtraj_region_selection_modes() -> None:

@@ -20,6 +20,16 @@ processing:
     mode: representative_park_pressure
     fallback_value: 1000.0
 
+  frequency:
+    enabled: true
+    source_max_gap_days: 29
+
+  near_surface:
+    enabled: true
+    parking_to_near_surface_ratio: 4
+    near_surface_max_hours: 18
+    parking_min_hours: 72
+
   depth_bins:
     enabled: true
     output_mode: per_bin

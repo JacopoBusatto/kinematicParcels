@@ -29,12 +29,15 @@ For each selected Rtraj file the tool currently does the following:
 5. Maps cycle-level `REPRESENTATIVE_PARK_PRESSURE` onto measurement rows using cycle numbers.
 6. Writes that mapped pressure directly to `z`, using positive values in dbar.
 7. Sorts the platform trajectory by time.
-8. Optionally splits each trajectory into contiguous depth-bin segments.
-9. Applies optional region selection to each resulting segment.
-10. Applies optional time resampling and interpolation.
-11. Writes Parcels-compatible `trajectory x obs` Zarr dataset(s).
+8. Optionally splits each trajectory at large raw-`JULD` gaps.
+9. Optionally discards cycles with excessive near-surface time or insufficient parking time, splitting around discarded cycles.
+10. Drops singleton fragments produced by the Rtraj cleaning segmentation.
+11. Optionally splits each trajectory into contiguous depth-bin segments.
+12. Applies optional region selection to each resulting segment.
+13. Applies optional time resampling and interpolation.
+14. Writes Parcels-compatible `trajectory x obs` Zarr dataset(s).
 
-The converter does not apply the ARGO CSV segmentation logic. Each Rtraj file already represents one platform trajectory, so there is no `split_as_new`, `longest`, `max_gap_days`, or `max_speed_km_per_day` policy in this tool.
+The converter does not apply the ARGO CSV `split_as_new`, `longest`, or speed policy. Rtraj-specific cleaning is controlled by `processing.frequency` and `processing.near_surface`, and it happens before depth-bin splitting and region selection.
 
 ## Output Schema
 
@@ -133,6 +136,87 @@ Rows that cannot be mapped through adjusted cycle values fall back to:
 - cycle-axis index: `CYCLE_NUMBER_INDEX`
 
 Cycle numbers are used only internally for parking-pressure mapping. They are not written to the final dataset.
+
+### `processing.frequency`
+
+Controls optional splitting when consecutive source Rtraj fixes are separated by too much time.
+
+Supported keys:
+
+- `enabled`
+- `source_max_gap_days`
+
+Example:
+
+```yaml
+processing:
+  frequency:
+    enabled: true
+    source_max_gap_days: 29
+```
+
+Behavior details:
+
+- If `enabled` is `false` or the section is omitted, this cleaning rule is skipped.
+- Gaps are computed from consecutive raw `JULD` values.
+- If `delta_days > source_max_gap_days`, the trajectory is split between the two fixes.
+- Both fixes are kept, but they are placed in different segments.
+- Segments produced by this rule must contain more than one point; singleton fragments are dropped.
+- This rule runs before depth-bin splitting and before region selection.
+
+### `processing.near_surface`
+
+Controls optional cycle filtering based on the ratio between parking time and time spent outside parking phases.
+
+Supported keys:
+
+- `enabled`
+- `parking_to_near_surface_ratio`
+- `near_surface_max_hours`
+- `parking_min_hours`
+- `vertical_speed_m_per_s`
+- `transmission_fallback_hours`
+
+Example:
+
+```yaml
+processing:
+  near_surface:
+    enabled: true
+    parking_to_near_surface_ratio: 4
+    near_surface_max_hours: 18
+    parking_min_hours: 72
+```
+
+Behavior details:
+
+- If `enabled` is `false` or the section is omitted, this cleaning rule is skipped.
+- Any omitted threshold is not checked.
+- A cycle is discarded when `parking_hours / near_surface_hours < parking_to_near_surface_ratio`.
+- A cycle is discarded when `near_surface_hours > near_surface_max_hours`.
+- A cycle is discarded when `parking_hours < parking_min_hours`.
+- The discarded cycle's measurement rows are removed, and the trajectory is split around it.
+- Segments produced by this rule must contain more than one point; singleton fragments are dropped.
+- This rule runs before depth-bin splitting and before region selection.
+
+Near-surface duration is the sum of:
+
+- `JULD_DESCENT_END - JULD_DESCENT_START`
+- `JULD_DEEP_DESCENT_END - JULD_DESCENT_END`
+- `JULD_ASCENT_END - JULD_ASCENT_START`
+- `JULD_ASCENT_START - JULD_DEEP_ASCENT_START`
+- `JULD_TRANSMISSION_END - JULD_TRANSMISSION_START`
+
+Parking duration is `JULD_PARK_END - JULD_PARK_START`. Deep-park timing is not included.
+
+When a near-surface phase duration cannot be computed from timestamps, the converter uses these fallbacks:
+
+- transmission: `transmission_fallback_hours`, default `1`
+- descent/ascent: `REPRESENTATIVE_PARK_PRESSURE / vertical_speed_m_per_s` seconds
+- deep descent: `(max(PRES) for the cycle - REPRESENTATIVE_PARK_PRESSURE) / vertical_speed_m_per_s` seconds, clamped at zero distance
+- deep ascent: `max(PRES) for the cycle / vertical_speed_m_per_s` seconds
+
+The default vertical speed is `0.1 m/s`. Parking-duration checks require valid `JULD_PARK_START` and `JULD_PARK_END`; the converter does not invent a parking duration if those timestamps are missing.
 
 ### `processing.depth_bins`
 

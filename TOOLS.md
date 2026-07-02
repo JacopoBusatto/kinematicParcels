@@ -536,6 +536,144 @@ Cadence diagnostics are persisted in attrs including:
 
 ---
 
+### `convert-rtraj-to-zarr`
+
+**Purpose**
+
+Convert original ARGO Rtraj NetCDF files into Parcels-compatible trajectory Zarr datasets.
+
+The converter:
+
+- reads files named like `1902267_Rtraj.nc`
+- keeps the ARGO WMO identifier in `platform_code`
+- maps cycle-level `REPRESENTATIVE_PARK_PRESSURE` to observation rows as `z`
+- optionally splits source trajectories at large raw-`JULD` gaps
+- optionally discards cycles with excessive near-surface time or insufficient parking time
+- optionally splits by parking-depth bins before writing one Zarr per non-empty bin
+- optionally filters by region and resamples/interpolates the time axis
+
+**Run**
+
+```bash
+convert-rtraj-to-zarr experiments/configs/examples/Rtraj/rtraj_to_zarr_example.yml
+```
+
+Equivalent module form:
+
+```bash
+python -m kinematicparcels.tools.rtraj_to_zarr experiments/configs/examples/Rtraj/rtraj_to_zarr_example.yml
+```
+
+**CLI arguments**
+
+- `config`: path to the YAML configuration file
+
+**Configuration file structure**
+
+Supported top-level sections:
+
+- `input`
+- `output`
+- `processing`
+
+#### `input`
+
+Controls which Rtraj NetCDF files are read.
+
+Supported keys:
+
+- `rtraj_files`: explicit list of file paths
+- `rtraj_glob`: glob expression
+- `rtraj_dir`: input directory
+- `pattern`: filename pattern used with `rtraj_dir`, default `*_Rtraj.nc`
+
+#### `processing.parking_depth`
+
+Supported keys:
+
+- `mode`: currently only `representative_park_pressure`
+- `fallback_value`: optional value used when a measurement row cannot be mapped to a representative parking pressure
+
+#### `processing.frequency`
+
+Optional Rtraj source-cadence cleaning.
+
+Supported keys:
+
+- `enabled`
+- `source_max_gap_days`
+
+When enabled, consecutive raw `JULD` fixes separated by more than `source_max_gap_days` are split into different trajectory segments. Singleton fragments produced by this cleaning step are dropped.
+
+#### `processing.near_surface`
+
+Optional cycle filtering before region selection.
+
+Supported keys:
+
+- `enabled`
+- `parking_to_near_surface_ratio`
+- `near_surface_max_hours`
+- `parking_min_hours`
+- `vertical_speed_m_per_s`
+- `transmission_fallback_hours`
+
+Omitted thresholds are skipped. A cycle is discarded if any configured threshold fails, and the trajectory is split around that discarded cycle. Near-surface time is computed from descent, deep-descent, ascent, deep-ascent, and transmission `JULD_*` phase variables; missing vertical phase durations fall back to pressure distance divided by the vertical speed, default `0.1 m/s`.
+
+#### `processing.depth_bins`
+
+Optional contiguous splitting by mapped parking pressure.
+
+Supported keys:
+
+- `enabled`
+- `output_mode`: currently `per_bin`
+- `bins`: list of `label`, `min`, and `max` mappings
+
+#### `processing.regions`
+
+Optional trajectory selection by geographical region.
+
+Supported keys:
+
+- `names_or_labels`
+- `selection_mode`: `from_first_entry`, `full_if_enters`, or `initial_inside`
+- `input_lon_mode`
+
+Rtraj frequency and near-surface cleaning run before this region stage.
+
+#### `processing.resample`
+
+Optional temporal resampling and interpolation.
+
+Supported keys:
+
+- `enabled`
+- `frequency`
+- `interpolate`
+- `reference_time`
+- `shared_time`
+- `shift_start_to_reference`
+
+**Output**
+
+Typical variables written:
+
+- `time`
+- `lon`
+- `lat`
+- `z`
+- `platform_code`
+- `depth_bin` and `depth_bin_interval` when depth-bin output is enabled
+
+**Examples**
+
+- Example YAML: `experiments/configs/examples/Rtraj/rtraj_to_zarr_example.yml`
+- Southern Ocean YAML: `experiments/configs/southern_ocean/RTRAJ_to_zarr.yml`
+- Example notes: `experiments/configs/examples/Rtraj/README.md`
+
+---
+
 ### `couple-trajectories`
 
 **Purpose**
