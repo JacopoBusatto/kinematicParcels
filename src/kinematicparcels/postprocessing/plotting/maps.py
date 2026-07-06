@@ -9,7 +9,7 @@ import matplotlib.colors as mcolors
 import numpy as np
 import xarray as xr
 
-from .colorbar import infer_colorbar_extend
+from .colorbar import colorbar_extend_from_limits
 from .projections import get_projection
 
 
@@ -54,7 +54,7 @@ def plot_grid_map(
         raise ValueError("vmin must be less than or equal to vmax.")
 
     raw_values = da.values
-    colorbar_extend = infer_colorbar_extend(raw_values, vmin=vmin, vmax=vmax)
+    colorbar_extend = colorbar_extend_from_limits(vmin=vmin, vmax=vmax)
     values = raw_values
     cmap_for_plot = cmap
     if colorbar_extend != "neither":
@@ -169,7 +169,7 @@ def plot_point_map(
         raise ValueError(f"No finite point values available for '{value_col}'.")
 
     values = work[value_col].to_numpy(dtype=float)
-    colorbar_extend = infer_colorbar_extend(values, vmin=vmin, vmax=vmax)
+    colorbar_extend = colorbar_extend_from_limits(vmin=vmin, vmax=vmax)
     cmap_for_plot = cmap
     if colorbar_extend != "neither":
         cmap_for_plot = plt.get_cmap(cmap).copy() if cmap is not None else plt.get_cmap().copy()

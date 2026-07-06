@@ -1,0 +1,80 @@
+# Configuration for converting original ARGO Rtraj NetCDF files into a
+# Parcels-compatible trajectory Zarr dataset.
+
+input:
+  rtraj_dir: F:/ARGO/netcdf/Rtraj/core
+  pattern: "*_Rtraj.nc"
+
+# input:
+  # rtraj_glob: F:/ARGO/netcdf/Rtraj/*/*_Rtraj.nc
+
+output:
+  path: F:/ARGO/zarr/SO_NO_QC_rtraj.zarr
+
+processing:
+  parking_depth:
+    mode: representative_park_pressure
+    fallback_value: 1000.0
+
+  frequency:
+    enabled: false
+    source_max_gap_days: 31
+
+  quality_control:
+    enabled: false
+    accepted_position_qc: ["1", "2"]
+    accepted_juld_qc: ["1", "2"]
+
+  speed_limit:
+    enabled: true
+    max_speed_m_s: 2.0
+
+  segment_merges:
+    enabled: true
+    max_gap_days: 62
+    max_speed_m_s: 1.5
+
+  near_surface:
+    enabled: false
+    parking_to_near_surface_ratio: 3.
+    near_surface_max_hours: null
+    parking_min_hours: 37
+
+  depth_bins:
+    enabled: true
+    output_mode: per_bin
+    bins:
+      - label: z0000_0900
+        min: 0.0
+        max: 900.0
+
+      - label: z0900_1100
+        min: 900.0
+        max: 1100.0
+
+      - label: z1100_1900
+        min: 1100.0
+        max: 1900.0
+
+      - label: z1900_2100
+        min: 1900.0
+        max: 2100.0
+
+      - label: z2100_inf
+        min: 2100.0
+        max: null
+
+  regions:
+    names_or_labels:
+      - SO
+    selection_mode: from_first_entry
+    input_lon_mode: "-180_180"
+
+  resample:
+    enabled: true
+    frequency: 10d
+    interpolate: time
+    min_duration_days: 21.0
+    reference_time: 2000-01-01T00:00:00Z
+    shared_time: true
+    shift_start_to_reference: false

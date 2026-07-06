@@ -17,6 +17,7 @@ src/kinematicparcels/postprocessing/analyses/density.py
 src/kinematicparcels/postprocessing/analyses/exponent_maps.py
 src/kinematicparcels/postprocessing/analyses/fsle.py
 src/kinematicparcels/postprocessing/analyses/meridional_crossing.py
+src/kinematicparcels/postprocessing/analyses/meridional_excursion.py
 src/kinematicparcels/postprocessing/analyses/start_end_regions.py
 src/kinematicparcels/postprocessing/analyses/transition_probability.py
 src/kinematicparcels/postprocessing/animations/__init__.py
@@ -57,6 +58,7 @@ src/kinematicparcels/postprocessing/workflows/run_density.py
 src/kinematicparcels/postprocessing/workflows/run_exponent_maps.py
 src/kinematicparcels/postprocessing/workflows/run_fsle.py
 src/kinematicparcels/postprocessing/workflows/run_meridional_crossing.py
+src/kinematicparcels/postprocessing/workflows/run_meridional_excursion.py
 src/kinematicparcels/postprocessing/workflows/run_start_end_regions.py
 src/kinematicparcels/postprocessing/workflows/run_summary.py
 src/kinematicparcels/postprocessing/workflows/run_trajectories.py
@@ -77,12 +79,15 @@ src/kinematicparcels/tools/__init__.py
 src/kinematicparcels/tools/aoml_drifter_to_zarr.py
 src/kinematicparcels/tools/argo_to_zarr.py
 src/kinematicparcels/tools/check_argo_data.py
+src/kinematicparcels/tools/check_bad_segments.py
 src/kinematicparcels/tools/couple_trajectories.py
 src/kinematicparcels/tools/drf_to_zarr.py
 src/kinematicparcels/tools/drifter_to_zarr.py
-src/kinematicparcels/tools/rtraj_to_zarr.py
+src/kinematicparcels/tools/rtraj_to_zarr_v2.py
 src/kinematicparcels/tools/trajectory_processing.py
 src/kinematicparcels/tools/zarr_writer.py
+src/kinematicparcels/tools/legacy/__init__.py
+src/kinematicparcels/tools/legacy/rtraj_to_zarr.py
 src/kinematicparcels/utilities/__init__.py
 src/kinematicparcels/utilities/circle_release.py
 src/kinematicparcels/utilities/compare_region_shape.py
@@ -109,6 +114,7 @@ tests/test_grouped_classes.py
 tests/test_integration.py
 tests/test_lkm_basic.py
 tests/test_meridional_crossing.py
+tests/test_meridional_excursion.py
 tests/test_parcels_api.py
 tests/test_plot_exponent_maps.py
 tests/test_plotting_colorbar.py
@@ -116,4 +122,5 @@ tests/test_postprocess_plotting_config.py
 tests/test_postprocessing_grouped.py
 tests/test_release_land_filter.py
 tests/test_rtraj_to_zarr.py
+tests/test_rtraj_to_zarr_v2.py
 tests/test_transition_probability.py

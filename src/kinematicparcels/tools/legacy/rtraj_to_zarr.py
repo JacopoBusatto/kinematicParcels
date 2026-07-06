@@ -22,6 +22,7 @@ except ModuleNotFoundError:  # pragma: no cover - exercised only in minimal envi
 from kinematicparcels.tools.trajectory_processing import (
     apply_resampling,
     apply_region_selection,
+    filter_trajectories_by_min_duration,
     normalize_trajectories,
     RegionSelectionConfig,
     resolve_region_selection_config,
@@ -50,6 +51,9 @@ INTERNAL_RTRAJ_COLUMNS = {
     "_rtraj_cycle_number",
     "_rtraj_juld",
     "_rtraj_invalid_near_surface_cycle",
+    "_rtraj_bad_position_qc",
+    "_rtraj_bad_juld_qc",
+    "_rtraj_bad_speed_limit",
 }
 SECONDS_PER_HOUR = 3600.0
 SECONDS_PER_DAY = 86400.0
@@ -69,6 +73,26 @@ class ParkingDepthConfig:
 class FrequencySegmentationConfig:
     enabled: bool = False
     source_max_gap_days: float | None = None
+
+
+@dataclass(frozen=True)
+class QualityControlConfig:
+    enabled: bool = False
+    accepted_position_qc: tuple[str, ...] = ("1", "2")
+    accepted_juld_qc: tuple[str, ...] = ("1", "2")
+
+
+@dataclass(frozen=True)
+class SpeedLimitConfig:
+    enabled: bool = False
+    max_speed_m_s: float | None = None
+
+
+@dataclass(frozen=True)
+class SegmentMergeConfig:
+    enabled: bool = False
+    max_gap_days: float | None = None
+    max_speed_m_s: float | None = None
 
 
 @dataclass(frozen=True)
@@ -117,6 +141,20 @@ class RtrajConversionSummary:
     missing_z_rows: int = 0
     frequency_segmentation_enabled: bool = False
     source_max_gap_days: float | None = None
+    quality_control_enabled: bool = False
+    accepted_position_qc: tuple[str, ...] = ()
+    accepted_juld_qc: tuple[str, ...] = ()
+    bad_position_qc_rows: int = 0
+    bad_juld_qc_rows: int = 0
+    speed_limit_enabled: bool = False
+    max_speed_m_s: float | None = None
+    speed_limit_pairs: int = 0
+    speed_limit_rows: int = 0
+    speed_limit_split_pairs: int = 0
+    segment_merges_enabled: bool = False
+    segment_merge_max_gap_days: float | None = None
+    segment_merge_max_speed_m_s: float | None = None
+    segment_merge_count: int = 0
     near_surface_enabled: bool = False
     invalid_near_surface_cycles: int = 0
     segmentation_input_trajectories: int = 0
@@ -133,6 +171,8 @@ class RtrajConversionSummary:
     region_kept_trajectories: int = 0
     region_kept_platforms: int = 0
     resample_frequency: str | None = None
+    resample_min_duration_days: float | None = None
+    resample_min_duration_dropped: int = 0
     resample_dropped_empty: int = 0
     final_trajectories: int = 0
     final_platforms: int = 0
@@ -222,6 +262,95 @@ def _resolve_frequency_segmentation_config(config: dict[str, Any]) -> FrequencyS
         raise ValueError("processing.frequency.source_max_gap_days must be a positive finite number")
 
     return FrequencySegmentationConfig(enabled=True, source_max_gap_days=source_max_gap_days)
+
+
+def _normalize_qc_values(values: Any, name: str) -> tuple[str, ...]:
+    if values is None:
+        raise ValueError(f"{name} must not be null")
+    if isinstance(values, (str, int)):
+        raw_values = [values]
+    elif isinstance(values, list):
+        raw_values = values
+    else:
+        raise ValueError(f"{name} must be a string, integer, or list of strings/integers")
+
+    normalized = tuple(str(value).strip() for value in raw_values)
+    if not normalized or any(value == "" for value in normalized):
+        raise ValueError(f"{name} must contain at least one non-empty QC flag")
+    return normalized
+
+
+def _resolve_quality_control_config(config: dict[str, Any]) -> QualityControlConfig:
+    raw = config.get("processing", {}).get("quality_control", {}) or {}
+    enabled = bool(raw.get("enabled", False))
+    if not enabled:
+        return QualityControlConfig(enabled=False)
+
+    return QualityControlConfig(
+        enabled=True,
+        accepted_position_qc=_normalize_qc_values(
+            raw.get("accepted_position_qc", ["1", "2"]),
+            "processing.quality_control.accepted_position_qc",
+        ),
+        accepted_juld_qc=_normalize_qc_values(
+            raw.get("accepted_juld_qc", ["1", "2"]),
+            "processing.quality_control.accepted_juld_qc",
+        ),
+    )
+
+
+def _parse_speed_m_s(value: Any, name: str) -> float:
+    if isinstance(value, str):
+        text = value.strip().lower()
+        match = re.fullmatch(r"([0-9]*\.?[0-9]+(?:[eE][-+]?[0-9]+)?)\s*(m/s|m s-1|m/s-1)?", text)
+        if not match:
+            raise ValueError(f"{name} must be a positive speed in m/s, e.g. 1.0 or '1 m/s'")
+        speed = float(match.group(1))
+    else:
+        speed = float(value)
+
+    if not np.isfinite(speed) or speed <= 0:
+        raise ValueError(f"{name} must be a positive finite speed in m/s")
+    return speed
+
+
+def _resolve_speed_limit_config(config: dict[str, Any]) -> SpeedLimitConfig:
+    raw = config.get("processing", {}).get("speed_limit", {}) or {}
+    enabled = bool(raw.get("enabled", raw.get("max_speed_m_s", raw.get("max_speed")) is not None))
+    if not enabled:
+        return SpeedLimitConfig(enabled=False)
+
+    if "max_speed_m_s" in raw:
+        max_speed = _parse_speed_m_s(raw["max_speed_m_s"], "processing.speed_limit.max_speed_m_s")
+    elif "max_speed" in raw:
+        max_speed = _parse_speed_m_s(raw["max_speed"], "processing.speed_limit.max_speed")
+    else:
+        raise ValueError("processing.speed_limit.max_speed_m_s is required when speed_limit is enabled")
+
+    return SpeedLimitConfig(enabled=True, max_speed_m_s=max_speed)
+
+
+def _resolve_segment_merge_config(config: dict[str, Any]) -> SegmentMergeConfig:
+    raw = config.get("processing", {}).get("segment_merges", {}) or {}
+    enabled = bool(raw.get("enabled", False))
+    if not enabled:
+        return SegmentMergeConfig(enabled=False)
+
+    if "max_gap_days" not in raw:
+        raise ValueError("processing.segment_merges.max_gap_days is required when segment_merges is enabled")
+    max_gap_days = float(raw["max_gap_days"])
+    if not np.isfinite(max_gap_days) or max_gap_days <= 0:
+        raise ValueError("processing.segment_merges.max_gap_days must be a positive finite number")
+
+    if "max_speed_m_s" not in raw:
+        raise ValueError("processing.segment_merges.max_speed_m_s is required when segment_merges is enabled")
+    max_speed = _parse_speed_m_s(raw["max_speed_m_s"], "processing.segment_merges.max_speed_m_s")
+
+    return SegmentMergeConfig(
+        enabled=True,
+        max_gap_days=max_gap_days,
+        max_speed_m_s=max_speed,
+    )
 
 
 def _optional_positive_float(raw: dict[str, Any], key: str) -> float | None:
@@ -486,6 +615,38 @@ def _numeric_variable(ds: xr.Dataset, name: str) -> np.ndarray | None:
     if name not in ds:
         return None
     return _decode_numeric_values(ds[name].values)
+
+
+def _qc_variable(ds: xr.Dataset, name: str) -> np.ndarray | None:
+    if name not in ds:
+        return None
+
+    arr = np.asarray(ds[name].values)
+    if arr.ndim == 1 and arr.dtype.kind in {"S", "U"}:
+        values = [_decode_byte(value).strip() for value in arr.tolist()]
+    else:
+        values = _decode_string_values(arr)
+    return np.asarray([str(value).strip() for value in values], dtype=object)
+
+
+def _bad_qc_mask(
+    values: np.ndarray | None,
+    *,
+    accepted: tuple[str, ...],
+    expected_length: int,
+    variable_name: str,
+    file_path: Path,
+) -> np.ndarray:
+    if values is None:
+        raise KeyError(f"Missing required Rtraj QC variable in {file_path}: {variable_name}")
+    if len(values) != expected_length:
+        raise ValueError(
+            f"Inconsistent measurement variable lengths in {file_path}: "
+            f"{variable_name}={len(values)}, expected={expected_length}"
+        )
+
+    accepted_set = set(accepted)
+    return np.asarray([str(value).strip() not in accepted_set for value in values], dtype=bool)
 
 
 def _datetime_variable(ds: xr.Dataset, name: str) -> pd.Series | None:
@@ -800,6 +961,7 @@ def _read_rtraj_file(
     file_path: Path,
     *,
     parking_config: ParkingDepthConfig,
+    quality_control_config: QualityControlConfig,
     near_surface_config: NearSurfaceConfig,
 ) -> tuple[pd.DataFrame, dict[str, int]]:
     with _suppress_xarray_time_serialization_warning():
@@ -825,6 +987,8 @@ def _read_rtraj_file(
         cycle_numbers = _numeric_variable(ds, "CYCLE_NUMBER")
         if cycle_numbers is None:
             raise KeyError(f"Missing required Rtraj variable in {file_path}: CYCLE_NUMBER")
+        position_qc = _qc_variable(ds, "POSITION_QC") if quality_control_config.enabled else None
+        juld_qc = _qc_variable(ds, "JULD_QC") if quality_control_config.enabled else None
 
         z, unmapped_z_count, missing_z_count = _map_parking_pressure_to_observations(
             ds,
@@ -850,6 +1014,24 @@ def _read_rtraj_file(
         z=z,
         cycle_numbers=cycle_numbers,
     )
+    bad_position_qc = np.zeros(n_rows, dtype=bool)
+    bad_juld_qc = np.zeros(n_rows, dtype=bool)
+    if quality_control_config.enabled:
+        bad_position_qc = _bad_qc_mask(
+            position_qc,
+            accepted=quality_control_config.accepted_position_qc,
+            expected_length=n_rows,
+            variable_name="POSITION_QC",
+            file_path=file_path,
+        )
+        bad_juld_qc = _bad_qc_mask(
+            juld_qc,
+            accepted=quality_control_config.accepted_juld_qc,
+            expected_length=n_rows,
+            variable_name="JULD_QC",
+            file_path=file_path,
+        )
+
     frame = pd.DataFrame(
         {
             "platform_code": np.full(n_rows, platform_code, dtype=np.int64),
@@ -859,6 +1041,8 @@ def _read_rtraj_file(
             "lon": lon,
             "z": z,
             "_rtraj_cycle_number": cycle_numbers,
+            "_rtraj_bad_position_qc": bad_position_qc,
+            "_rtraj_bad_juld_qc": bad_juld_qc,
         }
     )
     if invalid_cycles:
@@ -878,6 +1062,8 @@ def _read_rtraj_file(
         "unmapped_z": int(unmapped_z_count),
         "missing_z": int(missing_z_count),
         "invalid_near_surface_cycles": int(len(invalid_cycles)),
+        "bad_position_qc": int(np.count_nonzero(bad_position_qc)),
+        "bad_juld_qc": int(np.count_nonzero(bad_juld_qc)),
     }
     return frame, summary
 
@@ -908,18 +1094,193 @@ def _time_gap_days(previous: Any, current: Any) -> float | None:
     return float(days)
 
 
+def _haversine_distance_km(lon1: float, lat1: float, lon2: float, lat2: float) -> float | None:
+    values = (lon1, lat1, lon2, lat2)
+    if not all(np.isfinite(float(value)) for value in values):
+        return None
+
+    dlon_deg = ((float(lon2) - float(lon1) + 180.0) % 360.0) - 180.0
+    dlat_deg = float(lat2) - float(lat1)
+    lon_delta = np.deg2rad(dlon_deg)
+    lat_delta = np.deg2rad(dlat_deg)
+    lat1_rad = np.deg2rad(float(lat1))
+    lat2_rad = np.deg2rad(float(lat2))
+
+    a = (
+        np.sin(lat_delta / 2.0) ** 2
+        + np.cos(lat1_rad) * np.cos(lat2_rad) * np.sin(lon_delta / 2.0) ** 2
+    )
+    return float(2.0 * 6371.0088 * np.arcsin(np.sqrt(a)))
+
+
+def _speed_m_s(
+    previous: pd.Series | int,
+    current: pd.Series | int,
+    *,
+    ordered: pd.DataFrame | None = None,
+    source_times: pd.Series,
+) -> float | None:
+    if isinstance(previous, pd.Series):
+        previous_row = previous
+        previous_idx = int(previous.name)
+    else:
+        if ordered is None:
+            raise ValueError("ordered must be provided when previous/current are row indices")
+        previous_idx = int(previous)
+        previous_row = ordered.iloc[previous_idx]
+
+    if isinstance(current, pd.Series):
+        current_row = current
+        current_idx = int(current.name)
+    else:
+        if ordered is None:
+            raise ValueError("ordered must be provided when previous/current are row indices")
+        current_idx = int(current)
+        current_row = ordered.iloc[current_idx]
+
+    previous_time = source_times.iloc[previous_idx]
+    current_time = source_times.iloc[current_idx]
+    if pd.isna(previous_time) or pd.isna(current_time):
+        return None
+
+    dt_s = (pd.Timestamp(current_time) - pd.Timestamp(previous_time)).total_seconds()
+    if not np.isfinite(dt_s) or dt_s <= 0:
+        return None
+
+    distance_km = _haversine_distance_km(
+        float(previous_row["lon"]),
+        float(previous_row["lat"]),
+        float(current_row["lon"]),
+        float(current_row["lat"]),
+    )
+    if distance_km is None:
+        return None
+    return float(distance_km * 1000.0 / dt_s)
+
+
+def _speed_exceeds_limit(
+    previous_idx: int,
+    current_idx: int,
+    *,
+    ordered: pd.DataFrame,
+    source_times: pd.Series,
+    speed_limit_config: SpeedLimitConfig,
+) -> bool:
+    if not speed_limit_config.enabled or speed_limit_config.max_speed_m_s is None:
+        return False
+    speed = _speed_m_s(
+        previous_idx,
+        current_idx,
+        ordered=ordered,
+        source_times=source_times,
+    )
+    return speed is not None and speed > speed_limit_config.max_speed_m_s
+
+
+def _speed_within_limit(
+    previous_idx: int,
+    current_idx: int,
+    *,
+    ordered: pd.DataFrame,
+    source_times: pd.Series,
+    speed_limit_config: SpeedLimitConfig,
+) -> bool:
+    return not _speed_exceeds_limit(
+        previous_idx,
+        current_idx,
+        ordered=ordered,
+        source_times=source_times,
+        speed_limit_config=speed_limit_config,
+    )
+
+
+def _repair_speed_limited_run(
+    ordered: pd.DataFrame,
+    run_indices: list[int],
+    *,
+    source_times: pd.Series,
+    speed_limit_config: SpeedLimitConfig,
+) -> tuple[list[int], set[tuple[int, int]], int, int, int]:
+    if not speed_limit_config.enabled or speed_limit_config.max_speed_m_s is None:
+        return run_indices, set(), 0, 0, 0
+
+    kept = list(run_indices)
+    speed_split_pairs: set[tuple[int, int]] = set()
+    repaired_rows = 0
+    bad_edges_seen = 0
+    split_pairs = 0
+
+    scan_start = 0
+    while len(kept) >= 2:
+        bad_pos: int | None = None
+        for pos in range(scan_start, len(kept) - 1):
+            pair = (kept[pos], kept[pos + 1])
+            if pair in speed_split_pairs:
+                continue
+            if _speed_exceeds_limit(
+                pair[0],
+                pair[1],
+                ordered=ordered,
+                source_times=source_times,
+                speed_limit_config=speed_limit_config,
+            ):
+                bad_pos = pos
+                break
+
+        if bad_pos is None:
+            break
+
+        bad_edges_seen += 1
+        previous_idx = kept[bad_pos]
+        candidate_idx = kept[bad_pos + 1]
+        next_pos = bad_pos + 2
+
+        if next_pos >= len(kept):
+            kept.pop(bad_pos + 1)
+            repaired_rows += 1
+            scan_start = max(bad_pos - 1, 0)
+            continue
+
+        next_idx = kept[next_pos]
+        bridge_is_valid = _speed_within_limit(
+            previous_idx,
+            next_idx,
+            ordered=ordered,
+            source_times=source_times,
+            speed_limit_config=speed_limit_config,
+        )
+        candidate_to_next_is_bad = _speed_exceeds_limit(
+            candidate_idx,
+            next_idx,
+            ordered=ordered,
+            source_times=source_times,
+            speed_limit_config=speed_limit_config,
+        )
+
+        if bridge_is_valid or candidate_to_next_is_bad:
+            kept.pop(bad_pos + 1)
+            repaired_rows += 1
+            scan_start = max(bad_pos - 1, 0)
+            continue
+
+        speed_split_pairs.add((previous_idx, candidate_idx))
+        split_pairs += 1
+        scan_start = bad_pos + 1
+
+    return kept, speed_split_pairs, bad_edges_seen, repaired_rows, split_pairs
+
+
 def _append_cleaned_rtraj_segment(
     segments: list[pd.DataFrame],
     ordered: pd.DataFrame,
-    start_idx: int,
-    end_idx: int,
+    indices: list[int],
     *,
     drop_singletons: bool,
 ) -> int:
-    if end_idx <= start_idx:
+    if not indices:
         return 0
 
-    segment = _drop_internal_rtraj_columns(ordered.iloc[start_idx:end_idx].copy()).reset_index(drop=True)
+    segment = ordered.iloc[indices].copy().reset_index(drop=True)
     if drop_singletons and len(segment) <= 1:
         return 1
 
@@ -927,89 +1288,150 @@ def _append_cleaned_rtraj_segment(
     return 0
 
 
-def _split_rtraj_trajectory_before_region_selection(
-    trajectory: pd.DataFrame,
+def _append_segments_from_repaired_run(
+    segments: list[pd.DataFrame],
+    ordered: pd.DataFrame,
+    kept_indices: list[int],
     *,
+    speed_split_pairs: set[tuple[int, int]],
+    source_times: pd.Series,
     frequency_config: FrequencySegmentationConfig,
-    near_surface_config: NearSurfaceConfig,
-) -> tuple[list[pd.DataFrame], int]:
-    if trajectory.empty:
-        return [], 0
+    drop_singletons: bool,
+) -> int:
+    if not kept_indices:
+        return 0
 
-    drop_singletons = frequency_config.enabled or near_surface_config.enabled
-    ordered = trajectory.sort_values("time", kind="stable").reset_index(drop=True)
-    invalid_near_surface = (
-        ordered["_rtraj_invalid_near_surface_cycle"].fillna(False).to_numpy(dtype=bool)
-        if "_rtraj_invalid_near_surface_cycle" in ordered.columns
-        else np.zeros(len(ordered), dtype=bool)
-    )
-    source_times = ordered["_rtraj_juld"] if "_rtraj_juld" in ordered.columns else ordered["time"]
-
-    segments: list[pd.DataFrame] = []
     dropped_singletons = 0
-    start_idx: int | None = None
-    previous_valid_idx: int | None = None
+    current_indices = [kept_indices[0]]
 
-    for idx in range(len(ordered)):
-        if invalid_near_surface[idx]:
-            if start_idx is not None:
-                dropped_singletons += _append_cleaned_rtraj_segment(
-                    segments,
-                    ordered,
-                    start_idx,
-                    idx,
-                    drop_singletons=drop_singletons,
-                )
-            start_idx = None
-            previous_valid_idx = None
-            continue
-
-        if start_idx is None:
-            start_idx = idx
-            previous_valid_idx = idx
-            continue
-
-        should_split = False
+    for previous_idx, current_idx in zip(kept_indices[:-1], kept_indices[1:]):
+        should_split = (previous_idx, current_idx) in speed_split_pairs
         if (
-            frequency_config.enabled
+            not should_split
+            and frequency_config.enabled
             and frequency_config.source_max_gap_days is not None
-            and previous_valid_idx is not None
         ):
-            gap_days = _time_gap_days(source_times.iloc[previous_valid_idx], source_times.iloc[idx])
+            gap_days = _time_gap_days(source_times.iloc[previous_idx], source_times.iloc[current_idx])
             should_split = gap_days is not None and gap_days > frequency_config.source_max_gap_days
 
         if should_split:
             dropped_singletons += _append_cleaned_rtraj_segment(
                 segments,
                 ordered,
-                start_idx,
-                idx,
+                current_indices,
                 drop_singletons=drop_singletons,
             )
-            start_idx = idx
+            current_indices = [current_idx]
+        else:
+            current_indices.append(current_idx)
 
-        previous_valid_idx = idx
+    dropped_singletons += _append_cleaned_rtraj_segment(
+        segments,
+        ordered,
+        current_indices,
+        drop_singletons=drop_singletons,
+    )
+    return dropped_singletons
 
-    if start_idx is not None:
-        dropped_singletons += _append_cleaned_rtraj_segment(
+
+def _split_rtraj_trajectory_before_region_selection(
+    trajectory: pd.DataFrame,
+    *,
+    frequency_config: FrequencySegmentationConfig,
+    quality_control_config: QualityControlConfig,
+    speed_limit_config: SpeedLimitConfig,
+    near_surface_config: NearSurfaceConfig,
+) -> tuple[list[pd.DataFrame], int, int, int, int]:
+    if trajectory.empty:
+        return [], 0, 0, 0, 0
+
+    drop_singletons = (
+        frequency_config.enabled
+        or quality_control_config.enabled
+        or speed_limit_config.enabled
+        or near_surface_config.enabled
+    )
+    ordered = trajectory.sort_values("time", kind="stable").reset_index(drop=True)
+    invalid_near_surface = (
+        ordered["_rtraj_invalid_near_surface_cycle"].fillna(False).to_numpy(dtype=bool)
+        if "_rtraj_invalid_near_surface_cycle" in ordered.columns
+        else np.zeros(len(ordered), dtype=bool)
+    )
+    bad_position_qc = (
+        ordered["_rtraj_bad_position_qc"].fillna(False).to_numpy(dtype=bool)
+        if "_rtraj_bad_position_qc" in ordered.columns
+        else np.zeros(len(ordered), dtype=bool)
+    )
+    bad_juld_qc = (
+        ordered["_rtraj_bad_juld_qc"].fillna(False).to_numpy(dtype=bool)
+        if "_rtraj_bad_juld_qc" in ordered.columns
+        else np.zeros(len(ordered), dtype=bool)
+    )
+    source_times = ordered["_rtraj_juld"] if "_rtraj_juld" in ordered.columns else ordered["time"]
+    base_invalid = invalid_near_surface | bad_position_qc | bad_juld_qc
+
+    segments: list[pd.DataFrame] = []
+    dropped_singletons = 0
+    speed_limit_pairs = 0
+    speed_limit_rows = 0
+    speed_limit_split_pairs = 0
+    run_indices: list[int] = []
+
+    def _flush_run() -> None:
+        nonlocal dropped_singletons, speed_limit_pairs, speed_limit_rows, speed_limit_split_pairs, run_indices
+        if not run_indices:
+            return
+
+        (
+            kept_indices,
+            speed_split_pairs,
+            current_bad_edges,
+            current_repaired_rows,
+            current_split_pairs,
+        ) = _repair_speed_limited_run(
+            ordered,
+            run_indices,
+            source_times=source_times,
+            speed_limit_config=speed_limit_config,
+        )
+        speed_limit_pairs += current_bad_edges
+        speed_limit_rows += current_repaired_rows
+        speed_limit_split_pairs += current_split_pairs
+        dropped_singletons += _append_segments_from_repaired_run(
             segments,
             ordered,
-            start_idx,
-            len(ordered),
+            kept_indices,
+            speed_split_pairs=speed_split_pairs,
+            source_times=source_times,
+            frequency_config=frequency_config,
             drop_singletons=drop_singletons,
         )
+        run_indices = []
 
-    return segments, dropped_singletons
+    for idx in range(len(ordered)):
+        if base_invalid[idx]:
+            _flush_run()
+            continue
+        run_indices.append(idx)
+
+    _flush_run()
+
+    return segments, dropped_singletons, speed_limit_pairs, speed_limit_rows, speed_limit_split_pairs
 
 
 def _apply_rtraj_segmentation_before_region_selection(
     trajectories: list[pd.DataFrame],
     *,
     frequency_config: FrequencySegmentationConfig,
+    quality_control_config: QualityControlConfig,
+    speed_limit_config: SpeedLimitConfig,
     near_surface_config: NearSurfaceConfig,
-) -> tuple[list[pd.DataFrame], int]:
+) -> tuple[list[pd.DataFrame], int, int, int, int]:
     segmented: list[pd.DataFrame] = []
     dropped_singletons = 0
+    speed_limit_pairs = 0
+    speed_limit_rows = 0
+    speed_limit_split_pairs = 0
     trajectory_iterator = (
         tqdm(trajectories, desc="Applying Rtraj cleaning segmentation", unit="traj")
         if len(trajectories) > 1
@@ -1017,15 +1439,149 @@ def _apply_rtraj_segmentation_before_region_selection(
     )
 
     for trajectory in trajectory_iterator:
-        current_segments, current_dropped_singletons = _split_rtraj_trajectory_before_region_selection(
+        (
+            current_segments,
+            current_dropped_singletons,
+            current_speed_limit_pairs,
+            current_speed_limit_rows,
+            current_speed_limit_split_pairs,
+        ) = _split_rtraj_trajectory_before_region_selection(
             trajectory,
             frequency_config=frequency_config,
+            quality_control_config=quality_control_config,
+            speed_limit_config=speed_limit_config,
             near_surface_config=near_surface_config,
         )
         segmented.extend(current_segments)
         dropped_singletons += current_dropped_singletons
+        speed_limit_pairs += current_speed_limit_pairs
+        speed_limit_rows += current_speed_limit_rows
+        speed_limit_split_pairs += current_speed_limit_split_pairs
 
-    return segmented, dropped_singletons
+    return segmented, dropped_singletons, speed_limit_pairs, speed_limit_rows, speed_limit_split_pairs
+
+
+def _segment_source_time(segment: pd.DataFrame, position: str) -> pd.Timestamp | None:
+    if segment.empty:
+        return None
+    row = segment.iloc[0] if position == "start" else segment.iloc[-1]
+    value = row["_rtraj_juld"] if "_rtraj_juld" in segment.columns else row["time"]
+    if pd.isna(value):
+        return None
+    return pd.Timestamp(value)
+
+
+def _segment_metadata_value(segment: pd.DataFrame, column: str) -> Any:
+    if column not in segment.columns or segment.empty:
+        return None
+    value = segment[column].iloc[0]
+    if isinstance(value, np.ndarray):
+        if value.ndim == 0 or value.size == 1:
+            return value.item() if value.ndim == 0 else value.reshape(-1)[0]
+        return tuple(value.tolist())
+    return value
+
+
+def _segments_have_compatible_merge_metadata(left: pd.DataFrame, right: pd.DataFrame) -> bool:
+    for column in ("platform_code", "depth_bin", "depth_bin_interval"):
+        left_value = _segment_metadata_value(left, column)
+        right_value = _segment_metadata_value(right, column)
+        if left_value != right_value:
+            return False
+    return _segment_metadata_value(left, "platform_code") is not None
+
+
+def _segment_merge_gap_days(left: pd.DataFrame, right: pd.DataFrame) -> float | None:
+    left_time = _segment_source_time(left, "end")
+    right_time = _segment_source_time(right, "start")
+    if left_time is None or right_time is None:
+        return None
+    gap_days = (right_time - left_time).total_seconds() / SECONDS_PER_DAY
+    if not np.isfinite(gap_days):
+        return None
+    return float(gap_days)
+
+
+def _segment_merge_speed_m_s(left: pd.DataFrame, right: pd.DataFrame) -> float | None:
+    if left.empty or right.empty:
+        return None
+    left_row = left.iloc[-1]
+    right_row = right.iloc[0]
+    left_time = _segment_source_time(left, "end")
+    right_time = _segment_source_time(right, "start")
+    if left_time is None or right_time is None:
+        return None
+    dt_s = (right_time - left_time).total_seconds()
+    if not np.isfinite(dt_s) or dt_s <= 0:
+        return None
+    distance_km = _haversine_distance_km(
+        float(left_row["lon"]),
+        float(left_row["lat"]),
+        float(right_row["lon"]),
+        float(right_row["lat"]),
+    )
+    if distance_km is None:
+        return None
+    return float(distance_km * 1000.0 / dt_s)
+
+
+def _segments_can_merge(left: pd.DataFrame, right: pd.DataFrame, *, config: SegmentMergeConfig) -> bool:
+    if not config.enabled or config.max_gap_days is None or config.max_speed_m_s is None:
+        return False
+    if not _segments_have_compatible_merge_metadata(left, right):
+        return False
+
+    gap_days = _segment_merge_gap_days(left, right)
+    if gap_days is None or gap_days < 0 or gap_days > config.max_gap_days:
+        return False
+
+    speed = _segment_merge_speed_m_s(left, right)
+    if speed is None or speed > config.max_speed_m_s:
+        return False
+
+    return True
+
+
+def _merge_two_segments(left: pd.DataFrame, right: pd.DataFrame) -> pd.DataFrame:
+    merged = pd.concat([left, right], ignore_index=True)
+    sort_col = "_rtraj_juld" if "_rtraj_juld" in merged.columns else "time"
+    return merged.sort_values(sort_col, kind="stable").reset_index(drop=True)
+
+
+def _segment_sort_key(segment: pd.DataFrame) -> tuple[str, pd.Timestamp]:
+    platform_code = _segment_metadata_value(segment, "platform_code")
+    start_time = _segment_source_time(segment, "start")
+    return str(platform_code), start_time if start_time is not None else pd.Timestamp.max
+
+
+def _apply_segment_merges(
+    trajectories: list[pd.DataFrame],
+    *,
+    config: SegmentMergeConfig,
+) -> tuple[list[pd.DataFrame], int]:
+    if not config.enabled or len(trajectories) <= 1:
+        return trajectories, 0
+
+    ordered_segments = sorted(
+        [trajectory.reset_index(drop=True) for trajectory in trajectories if not trajectory.empty],
+        key=_segment_sort_key,
+    )
+    if not ordered_segments:
+        return [], 0
+
+    merged: list[pd.DataFrame] = []
+    current = ordered_segments[0]
+    merge_count = 0
+    for candidate in ordered_segments[1:]:
+        if _segments_can_merge(current, candidate, config=config):
+            current = _merge_two_segments(current, candidate)
+            merge_count += 1
+        else:
+            merged.append(current.reset_index(drop=True))
+            current = candidate
+
+    merged.append(current.reset_index(drop=True))
+    return merged, merge_count
 
 
 def _split_trajectory_by_depth_bin(
@@ -1112,6 +1668,9 @@ def _convert_rtraj_to_processed_trajectories(
     files = _resolve_input_files(config)
     parking_config = _resolve_parking_depth_config(config)
     frequency_config = _resolve_frequency_segmentation_config(config)
+    quality_control_config = _resolve_quality_control_config(config)
+    speed_limit_config = _resolve_speed_limit_config(config)
+    segment_merge_config = _resolve_segment_merge_config(config)
     near_surface_config = _resolve_near_surface_config(config)
     depth_bin_config = _resolve_depth_bin_config(config)
     region_config = resolve_region_selection_config(config)
@@ -1120,11 +1679,20 @@ def _convert_rtraj_to_processed_trajectories(
         input_files=len(files),
         frequency_segmentation_enabled=frequency_config.enabled,
         source_max_gap_days=frequency_config.source_max_gap_days,
+        quality_control_enabled=quality_control_config.enabled,
+        accepted_position_qc=quality_control_config.accepted_position_qc,
+        accepted_juld_qc=quality_control_config.accepted_juld_qc,
+        speed_limit_enabled=speed_limit_config.enabled,
+        max_speed_m_s=speed_limit_config.max_speed_m_s,
+        segment_merges_enabled=segment_merge_config.enabled,
+        segment_merge_max_gap_days=segment_merge_config.max_gap_days,
+        segment_merge_max_speed_m_s=segment_merge_config.max_speed_m_s,
         near_surface_enabled=near_surface_config.enabled,
         depth_bins_enabled=depth_bin_config.enabled,
         region_names_or_labels=region_config.names_or_labels,
         region_selection_mode=region_config.selection_mode,
         resample_frequency=resample_config.frequency,
+        resample_min_duration_days=resample_config.min_duration_days,
     )
 
     print(f"Resolved {len(files)} ARGO Rtraj NetCDF file(s)")
@@ -1136,10 +1704,13 @@ def _convert_rtraj_to_processed_trajectories(
     total_unmapped_z = 0
     total_missing_z = 0
     total_invalid_near_surface_cycles = 0
+    total_bad_position_qc = 0
+    total_bad_juld_qc = 0
     for file_path in file_iterator:
         trajectory, summary = _read_rtraj_file(
             file_path,
             parking_config=parking_config,
+            quality_control_config=quality_control_config,
             near_surface_config=near_surface_config,
         )
         total_rows += summary["rows"]
@@ -1147,6 +1718,8 @@ def _convert_rtraj_to_processed_trajectories(
         total_unmapped_z += summary["unmapped_z"]
         total_missing_z += summary["missing_z"]
         total_invalid_near_surface_cycles += summary["invalid_near_surface_cycles"]
+        total_bad_position_qc += summary["bad_position_qc"]
+        total_bad_juld_qc += summary["bad_juld_qc"]
         if not trajectory.empty:
             trajectories.append(trajectory)
 
@@ -1163,30 +1736,62 @@ def _convert_rtraj_to_processed_trajectories(
     conversion_summary.unmapped_z_rows = int(total_unmapped_z)
     conversion_summary.missing_z_rows = int(total_missing_z)
     conversion_summary.invalid_near_surface_cycles = int(total_invalid_near_surface_cycles)
+    conversion_summary.bad_position_qc_rows = int(total_bad_position_qc)
+    conversion_summary.bad_juld_qc_rows = int(total_bad_juld_qc)
 
     if frequency_config.enabled:
         print(
             "Applying Rtraj source-frequency segmentation with max gap "
             f"{frequency_config.source_max_gap_days:g} day(s)"
         )
+    if quality_control_config.enabled:
+        print(
+            "Applying Rtraj QC filtering; "
+            f"{total_bad_position_qc} bad POSITION_QC row(s), "
+            f"{total_bad_juld_qc} bad JULD_QC row(s)"
+        )
+    if speed_limit_config.enabled:
+        print(f"Applying Rtraj speed-limit filtering at {speed_limit_config.max_speed_m_s:g} m/s")
     if near_surface_config.enabled:
         print(
             "Applying Rtraj near-surface cycle filtering; "
             f"{total_invalid_near_surface_cycles} invalid cycle(s) flagged"
         )
     conversion_summary.segmentation_input_trajectories = len(trajectories)
-    trajectories, dropped_singletons = _apply_rtraj_segmentation_before_region_selection(
+    (
+        trajectories,
+        dropped_singletons,
+        speed_limit_pairs,
+        speed_limit_rows,
+        speed_limit_split_pairs,
+    ) = _apply_rtraj_segmentation_before_region_selection(
         trajectories,
         frequency_config=frequency_config,
+        quality_control_config=quality_control_config,
+        speed_limit_config=speed_limit_config,
         near_surface_config=near_surface_config,
     )
     conversion_summary.segmentation_output_trajectories = len(trajectories)
     conversion_summary.segmentation_dropped_singletons = int(dropped_singletons)
-    if frequency_config.enabled or near_surface_config.enabled:
+    conversion_summary.speed_limit_pairs = int(speed_limit_pairs)
+    conversion_summary.speed_limit_rows = int(speed_limit_rows)
+    conversion_summary.speed_limit_split_pairs = int(speed_limit_split_pairs)
+    if (
+        frequency_config.enabled
+        or quality_control_config.enabled
+        or speed_limit_config.enabled
+        or near_surface_config.enabled
+    ):
         print(
             "Built "
             f"{len(trajectories)} cleaned trajectory segment(s) before depth bins/region selection"
         )
+        if speed_limit_config.enabled:
+            print(
+                "Speed-limit repair removed "
+                f"{speed_limit_rows} row(s), split {speed_limit_split_pairs} unresolved "
+                f"too-fast edge(s), and inspected {speed_limit_pairs} too-fast edge(s)"
+            )
         if dropped_singletons > 0:
             print(f"Dropped {dropped_singletons} singleton segment(s) during Rtraj cleaning")
 
@@ -1206,6 +1811,22 @@ def _convert_rtraj_to_processed_trajectories(
             print(f"Saved depth histogram plot to {histogram_path}")
             conversion_summary.depth_histogram_path = str(histogram_path)
 
+    if segment_merge_config.enabled:
+        print(
+            "Merging compatible Rtraj segments with max gap "
+            f"{segment_merge_config.max_gap_days:g} day(s) and max speed "
+            f"{segment_merge_config.max_speed_m_s:g} m/s"
+        )
+    trajectories, segment_merge_count = _apply_segment_merges(
+        trajectories,
+        config=segment_merge_config,
+    )
+    conversion_summary.segment_merge_count = int(segment_merge_count)
+    if segment_merge_config.enabled:
+        print(f"Merged {segment_merge_count} compatible segment pair(s)")
+
+    trajectories = [_drop_internal_rtraj_columns(trajectory) for trajectory in trajectories]
+
     if region_config.names_or_labels:
         print(
             "Applying region selection "
@@ -1217,6 +1838,18 @@ def _convert_rtraj_to_processed_trajectories(
     print(f"Kept {len(trajectories)} trajectory/trajectories after region selection")
     conversion_summary.region_kept_trajectories = len(trajectories)
     conversion_summary.region_kept_platforms = _count_platforms(trajectories)
+
+    if resample_config.min_duration_days is not None:
+        trajectories, min_duration_dropped = filter_trajectories_by_min_duration(
+            trajectories,
+            resample_config.min_duration_days,
+        )
+        conversion_summary.resample_min_duration_dropped = int(min_duration_dropped)
+        print(
+            "Dropped "
+            f"{min_duration_dropped} trajectory segment(s) shorter than "
+            f"{resample_config.min_duration_days:g} day(s) before resampling"
+        )
 
     if resample_config.frequency:
         print(f"Resampling trajectories at frequency: {resample_config.frequency}")
@@ -1314,6 +1947,38 @@ def _print_conversion_summary(summary: RtrajConversionSummary) -> None:
     else:
         print("  source-frequency segmentation: disabled")
 
+    if summary.quality_control_enabled:
+        print(
+            "  QC filtering: "
+            f"POSITION_QC accepted={list(summary.accepted_position_qc)} "
+            f"({summary.bad_position_qc_rows} rejected row(s)); "
+            f"JULD_QC accepted={list(summary.accepted_juld_qc)} "
+            f"({summary.bad_juld_qc_rows} rejected row(s))"
+        )
+    else:
+        print("  QC filtering: disabled")
+
+    if summary.speed_limit_enabled:
+        print(
+            "  speed-limit filtering: "
+            f"max {summary.max_speed_m_s:g} m/s, "
+            f"{summary.speed_limit_pairs} too-fast edge(s) inspected, "
+            f"{summary.speed_limit_rows} row(s) repaired, "
+            f"{summary.speed_limit_split_pairs} unresolved edge(s) split"
+        )
+    else:
+        print("  speed-limit filtering: disabled")
+
+    if summary.segment_merges_enabled:
+        print(
+            "  segment merging: "
+            f"max gap {summary.segment_merge_max_gap_days:g} day(s), "
+            f"max speed {summary.segment_merge_max_speed_m_s:g} m/s, "
+            f"{summary.segment_merge_count} compatible pair(s) merged"
+        )
+    else:
+        print("  segment merging: disabled")
+
     if summary.near_surface_enabled:
         print(f"  near-surface filtering: {summary.invalid_near_surface_cycles} invalid cycle(s)")
     else:
@@ -1355,6 +2020,14 @@ def _print_conversion_summary(summary: RtrajConversionSummary) -> None:
         print(f"  resampling frequency: {summary.resample_frequency}")
     else:
         print("  resampling: disabled")
+    if summary.resample_min_duration_days is not None:
+        print(
+            "  pre-resampling min duration: "
+            f"{summary.resample_min_duration_days:g} day(s), "
+            f"{summary.resample_min_duration_dropped} trajectory segment(s) dropped"
+        )
+    else:
+        print("  pre-resampling min duration: disabled")
     print(f"  empty trajectories dropped after resampling: {summary.resample_dropped_empty}")
     print(
         "  final trajectories after resampling: "

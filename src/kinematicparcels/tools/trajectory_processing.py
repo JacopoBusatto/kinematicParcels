@@ -22,6 +22,7 @@ class ResampleConfig:
     reference_time: pd.Timestamp | None = None
     shared_time: bool = False
     shift_start_to_reference: bool = False
+    min_duration_days: float | None = None
 
 
 @dataclass(frozen=True)
@@ -63,12 +64,20 @@ def resolve_resample_config(config: dict[str, Any]) -> ResampleConfig:
     if shared_time and frequency is None:
         raise ValueError("processing.resample.frequency is required when shared_time is true")
 
+    min_duration_raw = raw.get("min_duration_days", None)
+    min_duration_days: float | None = None
+    if min_duration_raw is not None:
+        min_duration_days = float(min_duration_raw)
+        if not np.isfinite(min_duration_days) or min_duration_days < 0:
+            raise ValueError("processing.resample.min_duration_days must be a finite number >= 0 or null")
+
     return ResampleConfig(
         frequency=frequency,
         interpolate=str(raw.get("interpolate", "time")),
         reference_time=reference_time,
         shared_time=shared_time,
         shift_start_to_reference=shift_start_to_reference,
+        min_duration_days=min_duration_days,
     )
 
 
@@ -93,11 +102,15 @@ def resolve_region_selection_config(config: dict[str, Any]) -> RegionSelectionCo
     )
 
 
-def normalize_trajectories(trajectories: list[pd.DataFrame]) -> list[pd.DataFrame]:
+def normalize_trajectories(
+    trajectories: list[pd.DataFrame],
+    *,
+    show_progress: bool = True,
+) -> list[pd.DataFrame]:
     normalized: list[pd.DataFrame] = []
     trajectory_iterator = (
         tqdm(enumerate(trajectories), total=len(trajectories), desc="Normalizing trajectories", unit="traj")
-        if len(trajectories) > 1
+        if show_progress and len(trajectories) > 1
         else enumerate(trajectories)
     )
     for trajectory_index, trajectory in trajectory_iterator:
@@ -255,6 +268,42 @@ def collapse_shared_time_trajectory(trajectory: pd.DataFrame) -> pd.DataFrame:
     return trajectory.loc[valid_mask].reset_index(drop=True).copy()
 
 
+def trajectory_duration_days(trajectory: pd.DataFrame) -> float | None:
+    if trajectory.empty or "time" not in trajectory.columns:
+        return None
+
+    time = pd.to_datetime(trajectory["time"], errors="coerce")
+    valid = time.dropna()
+    if valid.empty:
+        return None
+
+    duration_days = (valid.max() - valid.min()).total_seconds() / 86400.0
+    if not np.isfinite(duration_days):
+        return None
+    return float(duration_days)
+
+
+def filter_trajectories_by_min_duration(
+    trajectories: list[pd.DataFrame],
+    min_duration_days: float | None,
+) -> tuple[list[pd.DataFrame], int]:
+    if min_duration_days is None:
+        return trajectories, 0
+    if not np.isfinite(min_duration_days) or min_duration_days < 0:
+        raise ValueError("min_duration_days must be a finite number >= 0 or null")
+
+    kept: list[pd.DataFrame] = []
+    dropped = 0
+    for trajectory in trajectories:
+        duration_days = trajectory_duration_days(trajectory)
+        if duration_days is None or duration_days < min_duration_days:
+            dropped += 1
+            continue
+        kept.append(trajectory)
+
+    return kept, dropped
+
+
 def resample_single_trajectory(
     df: pd.DataFrame,
     *,
@@ -319,6 +368,7 @@ def apply_resampling(
     *,
     config: ResampleConfig,
     non_interpolated_columns: set[str],
+    show_progress: bool = True,
 ) -> list[pd.DataFrame]:
     working_trajectories = trajectories
     if config.shift_start_to_reference:
@@ -351,7 +401,7 @@ def apply_resampling(
 
         trajectory_iterator = (
             tqdm(working_trajectories, desc="Resampling trajectories", unit="traj")
-            if len(working_trajectories) > 1
+            if show_progress and len(working_trajectories) > 1
             else working_trajectories
         )
         return [
@@ -374,7 +424,7 @@ def apply_resampling(
         resampled: list[pd.DataFrame] = []
         trajectory_iterator = (
             tqdm(working_trajectories, desc="Resampling trajectories", unit="traj")
-            if len(working_trajectories) > 1
+            if show_progress and len(working_trajectories) > 1
             else working_trajectories
         )
         for trajectory in trajectory_iterator:
@@ -392,7 +442,7 @@ def apply_resampling(
             )
         return resampled
 
-    if len(working_trajectories) <= 1:
+    if not show_progress or len(working_trajectories) <= 1:
         return [
             resample_single_trajectory(
                 trajectory,

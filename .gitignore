@@ -62,5 +62,12 @@ experiments/configs/postprocessing/*
 # Legacy local-only sources
 cpp_legacy/
 legacy/
+!src/kinematicparcels/tools/legacy/
+!src/kinematicparcels/tools/legacy/**
+!experiments/configs/examples/Rtraj/legacy/
+!experiments/configs/examples/Rtraj/legacy/**
+!experiments/configs/southern_ocean/
+!experiments/configs/southern_ocean/legacy/
+!experiments/configs/southern_ocean/legacy/**
 *.pem
 *.key

@@ -1,0 +1,134 @@
+# Example configuration for the staged ARGO Rtraj-to-Zarr converter.
+# Update paths before running.
+
+run:
+  name: example_rtraj_to_zarr_v2
+  max_files: 50
+  mode: diagnostics # diagnostics | convert
+
+input:
+  rtraj_dir: C:/data/ARGO/netcdf/Rtraj/core
+  pattern: "*_Rtraj.nc"
+
+output:
+  zarr_path: ./outputs/argo/rtraj_v2.zarr
+  write_zarr: false
+  overwrite: false
+
+source_variables:
+  time: JULD
+  lon: LONGITUDE
+  lat: LATITUDE
+  depth: REPRESENTATIVE_PARK_PRESSURE
+  position_qc: POSITION_QC
+  time_qc: JULD_QC
+
+normalized_variables:
+  time: time
+  lon: lon
+  lat: lat
+  depth: depth
+
+trajectory_fixes:
+  one_per_cycle: true
+  cycle_selection:
+    require_finite_cycle: true
+    prefer_valid_position_qc: true
+    prefer_valid_time_qc: true
+    prefer_repeated_position: true
+    position_round_decimals: 5
+    tie_breaker: first
+
+parking_depth:
+  mode: representative_park_pressure
+  fallback_value: 1000.0
+  fill_missing: true
+  infer_from_park_window:
+    enabled: true
+    pressure_variable: PRES_ADJUSTED
+    fallback_pressure_variable: PRES
+    method: percentile
+    percentile: 50
+    min_pressure: 50.0
+
+qc:
+  enabled: true
+  missing_qc: fail
+  variables:
+    position_qc:
+      source: POSITION_QC
+      valid_values: ["1", "2"]
+      applies_to: [lon, lat]
+    time_qc:
+      source: JULD_QC
+      valid_values: ["1", "2"]
+      applies_to: [time]
+
+segmentation:
+  first_rule: qc
+  min_segment_points: 3
+  merge:
+    enabled: true
+    max_gap_points: null
+    max_gap_duration_days: 92
+    max_bridge_speed_m_per_s: 3.0
+    max_bridge_vertical_rate_m_per_day: null
+
+jump_qc:
+  enabled: true
+  max_speed_m_per_s: 3.0
+  auto_drop:
+    enabled: true
+    max_block_points: 3
+    max_block_duration_days: 10
+  split_remaining_jumps: true
+
+depth_bins:
+  enabled: true
+  output_mode: per_bin
+  missing_depth:
+    strategy: bounded_neighbor
+    max_fill_points: 4
+    fill_between_same_bin_only: true
+  isolated_outlier:
+    enabled: true
+    max_run_points: 3
+    require_same_neighbor_bin: true
+  bins:
+    - label: z0000_0850
+      min: 0.0
+      max: 850.0
+    - label: z0850_1150
+      min: 850.0
+      max: 1150.0
+    - label: z1150_1900
+      min: 1150.0
+      max: 1900.0
+    - label: z1900_2100
+      min: 1900.0
+      max: 2100.0
+    - label: z2100_inf
+      min: 2100.0
+      max: null
+
+regions:
+  names_or_labels:
+    - SO
+  selection_mode: from_first_entry
+  input_lon_mode: "-180_180"
+
+resample:
+  enabled: true
+  frequency: 10d
+  interpolate: time
+  min_duration_days: 21.0
+  reference_time: 2000-01-01T00:00:00Z
+  shared_time: true
+  shift_start_to_reference: false
+
+diagnostics:
+  output_dir: ./outputs/argo/rtraj_v2_diagnostics
+  overwrite: false
+  plots:
+    raw_vs_qc_segments: true
+  formats: [png]

@@ -24,6 +24,20 @@ processing:
     enabled: true
     source_max_gap_days: 29
 
+  quality_control:
+    enabled: true
+    accepted_position_qc: ["1", "2"]
+    accepted_juld_qc: ["1", "2"]
+
+  speed_limit:
+    enabled: true
+    max_speed_m_s: 1.0
+
+  segment_merges:
+    enabled: true
+    max_gap_days: 31
+    max_speed_m_s: 1.5
+
   near_surface:
     enabled: true
     parking_to_near_surface_ratio: 4
@@ -64,6 +78,7 @@ processing:
     enabled: true
     frequency: 10d
     interpolate: time
+    min_duration_days: null
     reference_time: 2000-01-01T00:00:00Z
     shared_time: true
     shift_start_to_reference: false

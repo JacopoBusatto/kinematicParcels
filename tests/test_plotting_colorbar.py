@@ -2,7 +2,10 @@ from __future__ import annotations
 
 import numpy as np
 
-from kinematicparcels.postprocessing.plotting.colorbar import infer_colorbar_extend
+from kinematicparcels.postprocessing.plotting.colorbar import (
+    colorbar_extend_from_limits,
+    infer_colorbar_extend,
+)
 
 
 def test_infer_colorbar_extend_uses_strict_clipping_bounds() -> None:
@@ -27,3 +30,19 @@ def test_infer_colorbar_extend_detects_both_clipping_sides() -> None:
     values = np.array([-0.1, 0.0, 2.1, np.nan])
 
     assert infer_colorbar_extend(values, vmin=0.0, vmax=2.0) == "both"
+
+
+def test_colorbar_extend_from_limits_uses_explicit_upper_limit() -> None:
+    assert colorbar_extend_from_limits(vmin=None, vmax=2.0) == "max"
+
+
+def test_colorbar_extend_from_limits_uses_explicit_lower_limit() -> None:
+    assert colorbar_extend_from_limits(vmin=0.0, vmax=None) == "min"
+
+
+def test_colorbar_extend_from_limits_uses_both_explicit_limits() -> None:
+    assert colorbar_extend_from_limits(vmin=0.0, vmax=2.0) == "both"
+
+
+def test_colorbar_extend_from_limits_ignores_null_limits() -> None:
+    assert colorbar_extend_from_limits(vmin=None, vmax=None) == "neither"

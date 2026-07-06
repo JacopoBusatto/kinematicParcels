@@ -27,3 +27,23 @@ def infer_colorbar_extend(
     if has_over:
         return "max"
     return "neither"
+
+
+def colorbar_extend_from_limits(
+    *,
+    vmin: float | None = None,
+    vmax: float | None = None,
+) -> str:
+    """
+    Return the colorbar extend mode implied by explicit plot limits.
+
+    This is useful when a configured vmin/vmax should be shown as an open-ended
+    scale even if the current data do not contain values outside those bounds.
+    """
+    if vmin is not None and vmax is not None:
+        return "both"
+    if vmin is not None:
+        return "min"
+    if vmax is not None:
+        return "max"
+    return "neither"

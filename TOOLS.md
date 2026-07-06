@@ -536,32 +536,34 @@ Cadence diagnostics are persisted in attrs including:
 
 ---
 
-### `convert-rtraj-to-zarr`
+### `convert-rtraj-to-zarr-v2`
 
 **Purpose**
 
-Convert original ARGO Rtraj NetCDF files into Parcels-compatible trajectory Zarr datasets.
+Convert original ARGO Rtraj NetCDF files into Parcels-compatible trajectory Zarr datasets using the staged v2 converter.
 
 The converter:
 
 - reads files named like `1902267_Rtraj.nc`
 - keeps the ARGO WMO identifier in `platform_code`
-- maps cycle-level `REPRESENTATIVE_PARK_PRESSURE` to observation rows as `z`
-- optionally splits source trajectories at large raw-`JULD` gaps
-- optionally discards cycles with excessive near-surface time or insufficient parking time
-- optionally splits by parking-depth bins before writing one Zarr per non-empty bin
+- reads `JULD_ADJUSTED` where available, falling back to `JULD`
+- keeps one representative trajectory fix per cycle when configured
+- infers parking depth from representative pressure or pressure inside the park window
+- applies QC, jump cleanup, and remaining-jump splitting
+- splits by parking-depth bins before writing one Zarr per non-empty bin
 - optionally filters by region and resamples/interpolates the time axis
+- optionally writes raw/controlled/resampled diagnostic plots
 
 **Run**
 
 ```bash
-convert-rtraj-to-zarr experiments/configs/examples/Rtraj/rtraj_to_zarr_example.yml
+convert-rtraj-to-zarr-v2 experiments/configs/examples/Rtraj/rtraj_to_zarr_v2_example.yml
 ```
 
 Equivalent module form:
 
 ```bash
-python -m kinematicparcels.tools.rtraj_to_zarr experiments/configs/examples/Rtraj/rtraj_to_zarr_example.yml
+python -m kinematicparcels.tools.rtraj_to_zarr_v2 experiments/configs/examples/Rtraj/rtraj_to_zarr_v2_example.yml
 ```
 
 **CLI arguments**
@@ -572,9 +574,30 @@ python -m kinematicparcels.tools.rtraj_to_zarr experiments/configs/examples/Rtra
 
 Supported top-level sections:
 
+- `run`
 - `input`
 - `output`
-- `processing`
+- `source_variables`
+- `normalized_variables`
+- `trajectory_fixes`
+- `parking_depth`
+- `qc`
+- `segmentation`
+- `jump_qc`
+- `depth_bins`
+- `regions`
+- `resample`
+- `diagnostics`
+
+#### `run`
+
+Controls mode and optional diagnostics subsetting.
+
+Supported keys:
+
+- `name`: run label
+- `mode`: `diagnostics` or `convert`
+- `max_files`: optional file limit intended for diagnostics subsets
 
 #### `input`
 
@@ -587,40 +610,54 @@ Supported keys:
 - `rtraj_dir`: input directory
 - `pattern`: filename pattern used with `rtraj_dir`, default `*_Rtraj.nc`
 
-#### `processing.parking_depth`
+#### `output`
+
+Controls Zarr writing.
+
+Supported keys:
+
+- `zarr_path`: output path
+- `write_zarr`: whether to write Zarr outputs
+- `overwrite`: whether existing Zarr outputs may be overwritten
+
+#### `parking_depth`
 
 Supported keys:
 
 - `mode`: currently only `representative_park_pressure`
-- `fallback_value`: optional value used when a measurement row cannot be mapped to a representative parking pressure
+- `fallback_value`: optional value used when representative or inferred parking pressure cannot be assigned
+- `fill_missing`: forward/backward fill missing cycle depths from neighboring valid cycles
+- `infer_from_park_window`: controls pressure inference between `JULD_PARK_START` and `JULD_PARK_END`
 
-#### `processing.frequency`
+#### `qc`
 
-Optional Rtraj source-cadence cleaning.
+Controls the first segmentation/filtering rule based on configured QC variables.
 
-Supported keys:
+#### `segmentation.merge`
 
-- `enabled`
-- `source_max_gap_days`
+Controls whether compatible QC-separated or post-jump segments are reconnected.
 
-When enabled, consecutive raw `JULD` fixes separated by more than `source_max_gap_days` are split into different trajectory segments. Singleton fragments produced by this cleaning step are dropped.
-
-#### `processing.near_surface`
-
-Optional cycle filtering before region selection.
-
-Supported keys:
+Supported keys include:
 
 - `enabled`
-- `parking_to_near_surface_ratio`
-- `near_surface_max_hours`
-- `parking_min_hours`
-- `vertical_speed_m_per_s`
-- `transmission_fallback_hours`
+- `max_gap_points`
+- `max_gap_duration_days`
+- `max_bridge_speed_m_per_s`
+- `max_bridge_vertical_rate_m_per_day`
 
-Omitted thresholds are skipped. A cycle is discarded if any configured threshold fails, and the trajectory is split around that discarded cycle. Near-surface time is computed from descent, deep-descent, ascent, deep-ascent, and transmission `JULD_*` phase variables; missing vertical phase durations fall back to pressure distance divided by the vertical speed, default `0.1 m/s`.
+Null thresholds are skipped.
 
-#### `processing.depth_bins`
+#### `jump_qc`
+
+Controls trajectory jump cleanup after QC segmentation.
+
+The v2 converter can:
+
+- drop isolated spike points when the bridge is physically plausible
+- drop short bad-location blocks when the bridge is physically plausible
+- split any remaining non-physical jumps
+
+#### `depth_bins`
 
 Optional contiguous splitting by mapped parking pressure.
 
@@ -629,10 +666,12 @@ Supported keys:
 - `enabled`
 - `output_mode`: currently `per_bin`
 - `bins`: list of `label`, `min`, and `max` mappings
+- `missing_depth`: short missing-bin fill rules
+- `isolated_outlier`: short isolated-bin repair rules
 
-When depth bins are enabled, the converter also writes a parking-depth histogram PNG beside the configured output path. The plot uses 100 m bins centered at `0, 100, ..., 2500`, with the final `2450+` bin collecting all deeper points, and a log-scaled frequency axis.
+When depth bins are enabled with `output_mode: per_bin`, the converter writes one Zarr per non-empty bin.
 
-#### `processing.regions`
+#### `regions`
 
 Optional trajectory selection by geographical region.
 
@@ -642,9 +681,9 @@ Supported keys:
 - `selection_mode`: `from_first_entry`, `full_if_enters`, or `initial_inside`
 - `input_lon_mode`
 
-Rtraj frequency and near-surface cleaning run before this region stage.
+QC, jump cleanup, and depth-bin splitting run before this region stage.
 
-#### `processing.resample`
+#### `resample`
 
 Optional temporal resampling and interpolation.
 
@@ -656,6 +695,19 @@ Supported keys:
 - `reference_time`
 - `shared_time`
 - `shift_start_to_reference`
+- `min_duration_days`
+
+#### `diagnostics`
+
+Controls summary and plot outputs.
+
+Supported keys:
+
+- `output_dir`
+- `plots.raw_vs_qc_segments`
+- `formats`
+
+The v2 diagnostic plot has raw, controlled, and resampled panels.
 
 **Output**
 
@@ -670,9 +722,12 @@ Typical variables written:
 
 **Examples**
 
-- Example YAML: `experiments/configs/examples/Rtraj/rtraj_to_zarr_example.yml`
-- Southern Ocean YAML: `experiments/configs/southern_ocean/RTRAJ_to_zarr.yml`
+- Example YAML: `experiments/configs/examples/Rtraj/rtraj_to_zarr_v2_example.yml`
+- Southern Ocean YAML: `experiments/configs/southern_ocean/RTRAJ_to_zarr_v2.yml`
 - Example notes: `experiments/configs/examples/Rtraj/README.md`
+- Legacy example YAML: `experiments/configs/examples/Rtraj/legacy/rtraj_to_zarr_example.yml`
+
+The previous converter implementation is preserved under `kinematicparcels.tools.legacy.rtraj_to_zarr` for reproducibility, but the legacy CLI entry point has been retired.
 
 ---
 
@@ -816,7 +871,8 @@ Under `src/kinematicparcels/tools` the current files are:
 - `drifter_to_zarr.py`: user-facing CLI tool
 - `aoml_drifter_to_zarr.py`: user-facing CLI tool
 - `drf_to_zarr.py`: user-facing CLI tool
-- `rtraj_to_zarr.py`: user-facing CLI tool
+- `rtraj_to_zarr_v2.py`: user-facing ARGO Rtraj CLI tool
+- `legacy/rtraj_to_zarr.py`: legacy ARGO Rtraj converter
 - `couple_trajectories.py`: user-facing CLI tool
 - `trajectory_processing.py`: internal shared trajectory filtering/resampling helper
 - `zarr_writer.py`: internal shared helper
