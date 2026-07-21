@@ -68,6 +68,7 @@ src/kinematicparcels/regions/__init__.py
 src/kinematicparcels/regions/classification.py
 src/kinematicparcels/regions/core.py
 src/kinematicparcels/regions/definitions.py
+src/kinematicparcels/regions/definitions_lines.py
 src/kinematicparcels/regions/plotting.py
 src/kinematicparcels/runner/__init__.py
 src/kinematicparcels/runner/grouped_kernels.py
@@ -80,10 +81,12 @@ src/kinematicparcels/tools/aoml_drifter_to_zarr.py
 src/kinematicparcels/tools/argo_to_zarr.py
 src/kinematicparcels/tools/check_argo_data.py
 src/kinematicparcels/tools/check_bad_segments.py
+src/kinematicparcels/tools/check_regions.py
 src/kinematicparcels/tools/couple_trajectories.py
 src/kinematicparcels/tools/drf_to_zarr.py
 src/kinematicparcels/tools/drifter_to_zarr.py
-src/kinematicparcels/tools/rtraj_to_zarr_v2.py
+src/kinematicparcels/tools/rafos_to_zarr.py
+src/kinematicparcels/tools/rtraj_to_zarr.py
 src/kinematicparcels/tools/trajectory_processing.py
 src/kinematicparcels/tools/zarr_writer.py
 src/kinematicparcels/tools/legacy/__init__.py
@@ -112,6 +115,7 @@ tests/test_fsle.py
 tests/test_gridding.py
 tests/test_grouped_classes.py
 tests/test_integration.py
+tests/test_legacy_rtraj_to_zarr.py
 tests/test_lkm_basic.py
 tests/test_meridional_crossing.py
 tests/test_meridional_excursion.py
@@ -120,7 +124,7 @@ tests/test_plot_exponent_maps.py
 tests/test_plotting_colorbar.py
 tests/test_postprocess_plotting_config.py
 tests/test_postprocessing_grouped.py
+tests/test_rafos_to_zarr.py
 tests/test_release_land_filter.py
 tests/test_rtraj_to_zarr.py
-tests/test_rtraj_to_zarr_v2.py
 tests/test_transition_probability.py

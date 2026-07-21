@@ -13,7 +13,7 @@ input:
 #     - C:/data/ARGO/netcdf/Rtraj/core/4903848_Rtraj.nc
 # or you can provide a glob pattern:
 # input:
-#   rtraj_glob: F:/ARGO/netcdf/Rtraj/*/*_Rtraj.nc
+#   rtraj_glob: F:/PLATFORMS/ARGO/netcdf/Rtraj/*/*_Rtraj.nc
 
 processing:
   parking_depth:

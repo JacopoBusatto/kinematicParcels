@@ -367,7 +367,7 @@ Example for the split AOML archive:
 
 ```yaml
 input:
-  drifter_glob: F:/DRIFTERS/netcdf_6h/netcdf_*/drifter_6h_*.nc
+  drifter_glob: F:/PLATFORMS/DRIFTERS/netcdf_6h/netcdf_*/drifter_6h_*.nc
 ```
 
 Equivalent explicit-directory form:
@@ -375,10 +375,10 @@ Equivalent explicit-directory form:
 ```yaml
 input:
   drifter_dirs:
-    - F:/DRIFTERS/netcdf_6h/netcdf_1_5000
-    - F:/DRIFTERS/netcdf_6h/netcdf_5001_15000
-    - F:/DRIFTERS/netcdf_6h/netcdf_10001_15000
-    - F:/DRIFTERS/netcdf_6h/netcdf_15001_current
+    - F:/PLATFORMS/DRIFTERS/netcdf_6h/netcdf_1_5000
+    - F:/PLATFORMS/DRIFTERS/netcdf_6h/netcdf_5001_15000
+    - F:/PLATFORMS/DRIFTERS/netcdf_6h/netcdf_10001_15000
+    - F:/PLATFORMS/DRIFTERS/netcdf_6h/netcdf_15001_current
   pattern: "drifter_6h_*.nc"
 ```
 
@@ -438,6 +438,74 @@ Variables written:
 - Example YAML: `experiments/configs/examples/DRIFTERS/aoml_drifter_to_zarr_example.yml`
 - Southern Ocean YAML: `experiments/configs/southern_ocean/AOML_drifter_to_zarr.yml`
 - Example notes: `experiments/configs/examples/DRIFTERS/README.md`
+
+---
+
+### `convert-rafos-to-zarr`
+
+**Purpose**
+
+Convert AOML/WHOI RAFOS/SOFAR subsurface float NetCDF downloads into Parcels-compatible trajectory Zarr datasets.
+
+The converter:
+
+- reads flat tabledap-style files with a `row` dimension
+- groups rows by `(floatID, trajectoryID)`
+- writes `platform_code` as `floatID::trajectoryID`
+- keeps `floatID`, `trajectoryID`, and `float_type` as trajectory-level variables
+- copies `pressure` to `z` without pressure-to-depth conversion
+- optionally clips observations with `time >= surface_date`
+- optionally splits trajectories by rtraj-style depth bins and writes one Zarr per non-empty bin
+- optionally filters by region and resamples/interpolates the time axis
+
+**Run**
+
+```bash
+convert-rafos-to-zarr experiments/configs/examples/RAFOS/rafos_to_zarr_example.yml
+```
+
+Equivalent module form:
+
+```bash
+python -m kinematicparcels.tools.rafos_to_zarr experiments/configs/examples/RAFOS/rafos_to_zarr_example.yml
+```
+
+**Configuration file structure**
+
+Supported top-level sections:
+
+- `input`
+- `output`
+- `processing`
+- `regions`
+- `resample`
+- `segmentation`
+- `depth_bins`
+
+`input` accepts `netcdf_files`, `rafos_files`, `netcdf_glob`, `rafos_glob`, `netcdf_dir`, `netcdf_dirs`, `rafos_dir`, `rafos_dirs`, and `pattern`.
+
+`processing.surface.clip_after_surface_date` defaults to `true`.
+
+`depth_bins` supports the same `enabled`, `output_mode`, `missing_depth`, `isolated_outlier`, and `bins` structure used by the staged RTRAJ converter.
+
+**Output**
+
+Typical variables written:
+
+- `time`
+- `lon`
+- `lat`
+- `z`
+- `platform_code`
+- `floatID`
+- `trajectoryID`
+- `float_type`
+- `depth_bin` and `depth_bin_interval` when depth-bin output is enabled
+
+**Examples**
+
+- Example YAML: `experiments/configs/examples/RAFOS/rafos_to_zarr_example.yml`
+- Southern Ocean YAML: `experiments/configs/southern_ocean/RAFOS_to_zarr.yml`
 
 ---
 
@@ -536,11 +604,11 @@ Cadence diagnostics are persisted in attrs including:
 
 ---
 
-### `convert-rtraj-to-zarr-v2`
+### `convert-rtraj-to-zarr`
 
 **Purpose**
 
-Convert original ARGO Rtraj NetCDF files into Parcels-compatible trajectory Zarr datasets using the staged v2 converter.
+Convert original ARGO Rtraj NetCDF files into Parcels-compatible trajectory Zarr datasets using the staged converter.
 
 The converter:
 
@@ -557,13 +625,13 @@ The converter:
 **Run**
 
 ```bash
-convert-rtraj-to-zarr-v2 experiments/configs/examples/Rtraj/rtraj_to_zarr_v2_example.yml
+convert-rtraj-to-zarr experiments/configs/examples/Rtraj/rtraj_to_zarr_example.yml
 ```
 
 Equivalent module form:
 
 ```bash
-python -m kinematicparcels.tools.rtraj_to_zarr_v2 experiments/configs/examples/Rtraj/rtraj_to_zarr_v2_example.yml
+python -m kinematicparcels.tools.rtraj_to_zarr experiments/configs/examples/Rtraj/rtraj_to_zarr_example.yml
 ```
 
 **CLI arguments**
@@ -651,7 +719,7 @@ Null thresholds are skipped.
 
 Controls trajectory jump cleanup after QC segmentation.
 
-The v2 converter can:
+The converter can:
 
 - drop isolated spike points when the bridge is physically plausible
 - drop short bad-location blocks when the bridge is physically plausible
@@ -707,7 +775,7 @@ Supported keys:
 - `plots.raw_vs_qc_segments`
 - `formats`
 
-The v2 diagnostic plot has raw, controlled, and resampled panels.
+The diagnostic plot has raw, controlled, and resampled panels.
 
 **Output**
 
@@ -722,8 +790,8 @@ Typical variables written:
 
 **Examples**
 
-- Example YAML: `experiments/configs/examples/Rtraj/rtraj_to_zarr_v2_example.yml`
-- Southern Ocean YAML: `experiments/configs/southern_ocean/RTRAJ_to_zarr_v2.yml`
+- Example YAML: `experiments/configs/examples/Rtraj/rtraj_to_zarr_example.yml`
+- Southern Ocean YAML: `experiments/configs/southern_ocean/RTRAJ_to_zarr.yml`
 - Example notes: `experiments/configs/examples/Rtraj/README.md`
 - Legacy example YAML: `experiments/configs/examples/Rtraj/legacy/rtraj_to_zarr_example.yml`
 
@@ -871,7 +939,7 @@ Under `src/kinematicparcels/tools` the current files are:
 - `drifter_to_zarr.py`: user-facing CLI tool
 - `aoml_drifter_to_zarr.py`: user-facing CLI tool
 - `drf_to_zarr.py`: user-facing CLI tool
-- `rtraj_to_zarr_v2.py`: user-facing ARGO Rtraj CLI tool
+- `rtraj_to_zarr.py`: user-facing ARGO Rtraj CLI tool
 - `legacy/rtraj_to_zarr.py`: legacy ARGO Rtraj converter
 - `couple_trajectories.py`: user-facing CLI tool
 - `trajectory_processing.py`: internal shared trajectory filtering/resampling helper

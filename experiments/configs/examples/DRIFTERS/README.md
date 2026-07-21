@@ -24,7 +24,7 @@ The converter supports either a single glob:
 
 ```yaml
 input:
-  drifter_glob: F:/DRIFTERS/netcdf_6h/netcdf_*/drifter_6h_*.nc
+  drifter_glob: F:/PLATFORMS/DRIFTERS/netcdf_6h/netcdf_*/drifter_6h_*.nc
 ```
 
 or explicit archive directories:
@@ -32,10 +32,10 @@ or explicit archive directories:
 ```yaml
 input:
   drifter_dirs:
-    - F:/DRIFTERS/netcdf_6h/netcdf_1_5000
-    - F:/DRIFTERS/netcdf_6h/netcdf_5001_15000
-    - F:/DRIFTERS/netcdf_6h/netcdf_10001_15000
-    - F:/DRIFTERS/netcdf_6h/netcdf_15001_current
+    - F:/PLATFORMS/DRIFTERS/netcdf_6h/netcdf_1_5000
+    - F:/PLATFORMS/DRIFTERS/netcdf_6h/netcdf_5001_15000
+    - F:/PLATFORMS/DRIFTERS/netcdf_6h/netcdf_10001_15000
+    - F:/PLATFORMS/DRIFTERS/netcdf_6h/netcdf_15001_current
   pattern: "drifter_6h_*.nc"
 ```
 

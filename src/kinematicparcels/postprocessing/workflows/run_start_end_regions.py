@@ -111,6 +111,37 @@ def _prepare_region_trajectory_inputs(
     return traj_plot, summary_plot, unique_labels
 
 
+def _region_matches_priority(region, priority_level: int | None, priority_mode: str) -> bool:
+    if priority_level is None:
+        return True
+    if priority_mode == "exact":
+        return region.priority == priority_level
+    if priority_mode == "atleast":
+        return region.priority >= priority_level
+    if priority_mode == "atmost":
+        return region.priority <= priority_level
+    raise ValueError(
+        'priority_mode must be one of "exact", "atleast", or "atmost".'
+    )
+
+
+def _build_region_category_label_map(
+    region_manager,
+    *,
+    priority_level: int | None,
+    priority_mode: str,
+) -> dict[int, dict[str, str]]:
+    """
+    Build numeric-label display metadata from the same priority subset used for
+    classification.
+    """
+    return {
+        int(r.NumericLabel): {"label": str(r.label), "name": str(r.name)}
+        for r in region_manager.get_regions()
+        if _region_matches_priority(r, priority_level, priority_mode)
+    }
+
+
 def run_start_end_regions(cfg: PostprocessConfig, context: dict) -> None:
     """
     Start/end region workflow.
@@ -235,10 +266,11 @@ def run_start_end_regions(cfg: PostprocessConfig, context: dict) -> None:
             start_plot_path = outdir / "start_regions.png"
             end_plot_path = outdir / "end_regions.png"
             mode_plot_path = outdir / "mode_regions.png"
-            category_label_map = {
-                int(r.NumericLabel): {"label": str(r.label), "name": str(r.name)}
-                for r in region_manager.get_regions()
-            }
+            category_label_map = _build_region_category_label_map(
+                region_manager,
+                priority_level=cfg.start_end_regions.priority_level,
+                priority_mode=cfg.start_end_regions.priority_mode,
+            )
 
             print("Saving start region plot:", start_plot_path)
             plot_discrete_grid_map(

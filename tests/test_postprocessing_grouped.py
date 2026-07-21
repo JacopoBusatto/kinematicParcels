@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+from types import SimpleNamespace
 
 import numpy as np
 import pandas as pd
@@ -24,7 +25,10 @@ from kinematicparcels.postprocessing.plotting.trajectories import (
     plot_trajectories_map,
 )
 from kinematicparcels.postprocessing.plotting.maps import plot_discrete_grid_map
-from kinematicparcels.postprocessing.workflows.run_start_end_regions import _prepare_region_trajectory_inputs
+from kinematicparcels.postprocessing.workflows.run_start_end_regions import (
+    _build_region_category_label_map,
+    _prepare_region_trajectory_inputs,
+)
 from kinematicparcels.postprocessing.workflows.run_summary import run_summary
 
 
@@ -654,6 +658,33 @@ def test_plot_discrete_grid_map_accepts_label_modes_and_annotations(tmp_path: Pa
 
     assert outpath.exists()
     assert outpath.stat().st_size > 0
+
+
+def test_region_category_label_map_uses_priority_filter_for_duplicate_numeric_labels() -> None:
+    class DummyRegionManager:
+        def get_regions(self):
+            return [
+                SimpleNamespace(
+                    label="ACC_s4",
+                    name="Antarctic Circumpolar Current, fourth Sector",
+                    NumericLabel=14,
+                    priority=4,
+                ),
+                SimpleNamespace(
+                    label="DP",
+                    name="Drake Passage",
+                    NumericLabel=14,
+                    priority=7,
+                ),
+            ]
+
+    category_label_map = _build_region_category_label_map(
+        DummyRegionManager(),
+        priority_level=4,
+        priority_mode="exact",
+    )
+
+    assert category_label_map[14]["label"] == "ACC_s4"
 
 
 

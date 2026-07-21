@@ -2,7 +2,7 @@
 # Update paths before running.
 
 run:
-  name: example_rtraj_to_zarr_v2
+  name: example_rtraj_to_zarr
   max_files: 50
   mode: diagnostics # diagnostics | convert
 
@@ -11,7 +11,7 @@ input:
   pattern: "*_Rtraj.nc"
 
 output:
-  zarr_path: ./outputs/argo/rtraj_v2.zarr
+  zarr_path: ./outputs/argo/rtraj.zarr
   write_zarr: false
   overwrite: false
 
@@ -127,7 +127,7 @@ resample:
   shift_start_to_reference: false
 
 diagnostics:
-  output_dir: ./outputs/argo/rtraj_v2_diagnostics
+  output_dir: ./outputs/argo/rtraj_diagnostics
   overwrite: false
   plots:
     raw_vs_qc_segments: true

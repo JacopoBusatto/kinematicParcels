@@ -49,7 +49,7 @@ NON_INTERPOLATED_COLUMNS = {
 }
 DEFAULT_DATASET_ATTRS = {
     **DEFAULT_TRAJECTORY_DATASET_ATTRS,
-    "source": "ARGO Rtraj NetCDF conversion v2",
+    "source": "ARGO Rtraj NetCDF conversion",
     "z_source": "Argo parking pressure inferred per cycle",
     "z_approximation": (
         "z is approximated from Argo parking pressure in dbar, "
@@ -160,7 +160,7 @@ class DepthBinConfig:
 
 
 @dataclass(frozen=True)
-class RtrajV2Config:
+class RtrajConfig:
     path: Path
     raw: dict[str, Any]
     mode: str
@@ -207,7 +207,7 @@ def load_config(path: str | Path) -> dict[str, Any]:
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
-        description="Run the staged ARGO Rtraj-to-Zarr v2 converter."
+        description="Run the staged ARGO Rtraj-to-Zarr converter."
     )
     parser.add_argument(
         "config",
@@ -454,7 +454,7 @@ def _resolve_output_config(config: dict[str, Any]) -> OutputConfig:
     )
 
 
-def resolve_config(path: str | Path) -> RtrajV2Config:
+def resolve_config(path: str | Path) -> RtrajConfig:
     config_path = Path(path)
     config = load_config(config_path)
     input_files = _resolve_input_files(config)
@@ -498,7 +498,7 @@ def resolve_config(path: str | Path) -> RtrajV2Config:
     if not formats:
         raise ValueError("diagnostics.formats must contain at least one file format")
 
-    return RtrajV2Config(
+    return RtrajConfig(
         path=config_path,
         raw=config,
         mode=mode,
@@ -958,7 +958,7 @@ def _configured_valid_qc_values(qc_config: dict[str, Any], rule_name: str) -> se
     return {str(value).strip() for value in values if str(value).strip()}
 
 
-def _select_cycle_representative_fixes(frame: pd.DataFrame, config: RtrajV2Config) -> pd.DataFrame:
+def _select_cycle_representative_fixes(frame: pd.DataFrame, config: RtrajConfig) -> pd.DataFrame:
     if not config.trajectory_fixes.one_per_cycle or frame.empty or "cycle_number" not in frame.columns:
         out = frame.copy()
         out.attrs.update(frame.attrs)
@@ -1058,7 +1058,7 @@ def _select_cycle_representative_fixes(frame: pd.DataFrame, config: RtrajV2Confi
     return selected
 
 
-def read_and_normalize_rtraj_file(file_path: Path, config: RtrajV2Config) -> pd.DataFrame:
+def read_and_normalize_rtraj_file(file_path: Path, config: RtrajConfig) -> pd.DataFrame:
     names = config.source_variables
     out_names = config.normalized_variables
 
@@ -1135,7 +1135,7 @@ def _normalize_qc_values(values: Any, name: str) -> tuple[str, ...]:
     return normalized
 
 
-def apply_qc_mask(raw: pd.DataFrame, config: RtrajV2Config) -> pd.DataFrame:
+def apply_qc_mask(raw: pd.DataFrame, config: RtrajConfig) -> pd.DataFrame:
     if not bool(config.qc.get("enabled", False)):
         out = raw.copy()
         out["_qc_order"] = np.arange(len(out), dtype=np.int64)
@@ -1223,7 +1223,7 @@ def _gap_metrics(
     current: pd.Series,
     *,
     gap_points: int,
-    config: RtrajV2Config,
+    config: RtrajConfig,
 ) -> dict[str, float | int | None]:
     names = config.normalized_variables
     previous_time = previous[names["time"]]
@@ -1289,7 +1289,7 @@ def _merge_decision(metrics: dict[str, float | int | None], merge: MergeConfig) 
 def merge_qc_segments(
     segments: list[pd.DataFrame],
     qc_frame: pd.DataFrame,
-    config: RtrajV2Config,
+    config: RtrajConfig,
 ) -> tuple[list[pd.DataFrame], list[dict[str, Any]]]:
     if not segments:
         return [], []
@@ -1370,7 +1370,7 @@ def _bridge_is_plausible(metrics: dict[str, float | int | None], limit_m_per_s: 
     return False
 
 
-def _compute_jump_links(segment: pd.DataFrame, config: RtrajV2Config) -> pd.DataFrame:
+def _compute_jump_links(segment: pd.DataFrame, config: RtrajConfig) -> pd.DataFrame:
     rows: list[dict[str, Any]] = []
     ordered = segment.sort_values(config.normalized_variables["time"], kind="stable").reset_index(drop=True)
     for idx in range(len(ordered) - 1):
@@ -1406,7 +1406,7 @@ def _block_duration_days(block: pd.DataFrame, time_name: str) -> float | None:
 def _find_auto_drop_candidate(
     segment: pd.DataFrame,
     links: pd.DataFrame,
-    config: RtrajV2Config,
+    config: RtrajConfig,
 ) -> dict[str, Any] | None:
     if not config.jump_qc.auto_drop_enabled or segment.empty or links.empty:
         return None
@@ -1457,7 +1457,7 @@ def _find_auto_drop_candidate(
 
 def _clean_jump_segment(
     segment: pd.DataFrame,
-    config: RtrajV2Config,
+    config: RtrajConfig,
     *,
     segment_id: int,
     first_block_id: int,
@@ -1504,7 +1504,7 @@ def _clean_jump_segment(
 
 def _split_segment_on_remaining_jumps(
     segment: pd.DataFrame,
-    config: RtrajV2Config,
+    config: RtrajConfig,
     *,
     segment_id: int,
 ) -> tuple[list[pd.DataFrame], list[dict[str, Any]]]:
@@ -1560,7 +1560,7 @@ def _split_segment_on_remaining_jumps(
 
 def _merge_jump_qc_segments(
     segments: list[pd.DataFrame],
-    config: RtrajV2Config,
+    config: RtrajConfig,
 ) -> tuple[list[pd.DataFrame], list[dict[str, Any]]]:
     if not segments:
         return [], []
@@ -1631,7 +1631,7 @@ def _merge_jump_qc_segments(
 
 def apply_jump_qc_segments(
     segments: list[pd.DataFrame],
-    config: RtrajV2Config,
+    config: RtrajConfig,
 ) -> tuple[list[pd.DataFrame], pd.DataFrame, list[dict[str, Any]], dict[str, Any]]:
     if not config.jump_qc.enabled:
         return segments, pd.DataFrame(), [], {
@@ -1832,7 +1832,7 @@ def _repair_isolated_depth_bin_runs(segment: pd.DataFrame, config: DepthBinConfi
     return out, repaired_count
 
 
-def _assign_depth_bins(segment: pd.DataFrame, config: RtrajV2Config) -> tuple[pd.DataFrame, int, int]:
+def _assign_depth_bins(segment: pd.DataFrame, config: RtrajConfig) -> tuple[pd.DataFrame, int, int]:
     out = segment.copy().reset_index(drop=True)
     out["depth_bin"] = None
     out["depth_bin_interval"] = None
@@ -1889,7 +1889,7 @@ def _split_segment_by_depth_bin(segment: pd.DataFrame, *, min_segment_points: in
 
 def apply_depth_bin_segmentation(
     segments: list[pd.DataFrame],
-    config: RtrajV2Config,
+    config: RtrajConfig,
 ) -> tuple[list[pd.DataFrame], dict[str, Any]]:
     if not config.depth_bins.enabled:
         return segments, {
@@ -1943,7 +1943,7 @@ def apply_depth_bin_segmentation(
 
 def apply_region_selection_segments(
     segments: list[pd.DataFrame],
-    config: RtrajV2Config,
+    config: RtrajConfig,
 ) -> tuple[list[pd.DataFrame], dict[str, Any]]:
     input_segments = [segment.reset_index(drop=True) for segment in segments if not segment.empty]
     input_points = int(sum(len(segment) for segment in input_segments))
@@ -1997,7 +1997,7 @@ def apply_region_selection_segments(
 
 def apply_resampling_segments(
     segments: list[pd.DataFrame],
-    config: RtrajV2Config,
+    config: RtrajConfig,
 ) -> tuple[list[pd.DataFrame], dict[str, Any]]:
     input_segments = [segment.reset_index(drop=True) for segment in segments if not segment.empty]
     input_points = int(sum(len(segment) for segment in input_segments))
@@ -2046,7 +2046,7 @@ def apply_resampling_segments(
     }
 
 
-def process_qc_stage(raw: pd.DataFrame, config: RtrajV2Config) -> QcSegmentResult:
+def process_qc_stage(raw: pd.DataFrame, config: RtrajConfig) -> QcSegmentResult:
     qc_frame = apply_qc_mask(raw, config)
     kept = qc_frame.loc[qc_frame["qc_keep"]].copy().reset_index(drop=True)
     dropped = qc_frame.loc[~qc_frame["qc_keep"]].copy().reset_index(drop=True)
@@ -2219,7 +2219,7 @@ def _plot_raw_vs_qc_segments(
     *,
     file_path: Path,
     output_path: Path,
-    config: RtrajV2Config,
+    config: RtrajConfig,
 ) -> None:
     import matplotlib
 
@@ -2493,7 +2493,7 @@ def _plot_raw_vs_qc_segments(
 
     platform = raw["platform_code"].iloc[0] if not raw.empty else "unknown"
     fig.suptitle(
-        f"RTRAJ v2 diagnostic: platform {platform} "
+        f"RTRAJ diagnostic: platform {platform} "
         f"({len(raw_ordered)} raw fixes, {result.summary['dropped_points']} QC dropped, "
         f"{result.summary['jump_qc_dropped_points']} jump dropped, "
         f"{len(result.controlled_segments)} controlled segment(s), "
@@ -2505,7 +2505,7 @@ def _plot_raw_vs_qc_segments(
     plt.close(fig)
 
 
-def write_diagnostics(result: QcSegmentResult, *, file_path: Path, file_index: int, config: RtrajV2Config) -> list[Path]:
+def write_diagnostics(result: QcSegmentResult, *, file_path: Path, file_index: int, config: RtrajConfig) -> list[Path]:
     written: list[Path] = []
     platform = result.raw["platform_code"].iloc[0] if not result.raw.empty else file_path.stem
     safe_platform = re.sub(r"[^A-Za-z0-9_.-]+", "_", str(platform))
@@ -2606,7 +2606,7 @@ def _print_diagnostics_summary(summaries: list[dict[str, Any]], merge_events: li
     zero_output = int((controlled_segments == 0).sum())
 
     print("")
-    print("RTRAJ v2 diagnostics summary")
+    print("RTRAJ diagnostics summary")
     print(f"  files processed: {total_files}")
     print(f"  raw measurement rows: {total_measurements}")
     print(f"  finite trajectory fixes: {total_finite_fixes}")
@@ -2665,7 +2665,7 @@ def _print_diagnostics_summary(summaries: list[dict[str, Any]], merge_events: li
     print(f"  depth-bin point counts: {_format_reason_counts(depth_bin_counts)}")
 
 
-def _diagnostic_plots_enabled(config: RtrajV2Config) -> bool:
+def _diagnostic_plots_enabled(config: RtrajConfig) -> bool:
     if config.mode != "diagnostics":
         return False
     plots = (config.raw.get("diagnostics", {}) or {}).get("plots", {}) or {}
@@ -2702,7 +2702,7 @@ def _count_observations(trajectories: list[pd.DataFrame]) -> int:
     return int(sum(len(trajectory) for trajectory in trajectories))
 
 
-def _prepare_output_trajectory(trajectory: pd.DataFrame, config: RtrajV2Config) -> pd.DataFrame:
+def _prepare_output_trajectory(trajectory: pd.DataFrame, config: RtrajConfig) -> pd.DataFrame:
     depth_name = config.normalized_variables["depth"]
     out = trajectory.copy().reset_index(drop=True)
     if depth_name not in out.columns:
@@ -2718,7 +2718,7 @@ def _prepare_output_trajectory(trajectory: pd.DataFrame, config: RtrajV2Config) 
 
 def prepare_output_trajectories(
     segments: list[pd.DataFrame],
-    config: RtrajV2Config,
+    config: RtrajConfig,
 ) -> list[pd.DataFrame]:
     trajectories: list[pd.DataFrame] = []
     for segment in segments:
@@ -2731,7 +2731,7 @@ def prepare_output_trajectories(
     return trajectories
 
 
-def _build_rtraj_v2_dataset(
+def _build_rtraj_dataset(
     trajectories: list[pd.DataFrame],
     *,
     dataset_attrs: dict[str, Any] | None = None,
@@ -2757,7 +2757,7 @@ def _write_dataset_to_zarr(ds: xr.Dataset, output_path: Path, *, overwrite: bool
 
 def write_output_zarr(
     segments: list[pd.DataFrame],
-    config: RtrajV2Config,
+    config: RtrajConfig,
 ) -> dict[str, dict[str, Any]]:
     prepared = prepare_output_trajectories(segments, config)
     if not prepared:
@@ -2782,7 +2782,7 @@ def write_output_zarr(
                 continue
 
             normalized = normalize_trajectories(bin_trajectories, show_progress=False)
-            ds = _build_rtraj_v2_dataset(normalized, dataset_attrs=_depth_bin_attrs(depth_bin))
+            ds = _build_rtraj_dataset(normalized, dataset_attrs=_depth_bin_attrs(depth_bin))
             current_output_path = _depth_bin_output_path(config.output.zarr_path, depth_bin.label)
             _write_dataset_to_zarr(ds, current_output_path, overwrite=config.output.overwrite)
             output_counts[depth_bin.label] = {
@@ -2798,7 +2798,7 @@ def write_output_zarr(
         return output_counts
 
     normalized = normalize_trajectories(prepared, show_progress=False)
-    ds = _build_rtraj_v2_dataset(
+    ds = _build_rtraj_dataset(
         normalized,
         dataset_attrs={"depth_bins_enabled": bool(config.depth_bins.enabled)},
     )
@@ -2814,7 +2814,7 @@ def write_output_zarr(
 
 def _print_output_summary(output_counts: dict[str, dict[str, Any]]) -> None:
     print("")
-    print("RTRAJ v2 output datasets")
+    print("RTRAJ output datasets")
     for label, counts in output_counts.items():
         print(
             f"  {label}: {counts['trajectories']} trajectory segment(s), "
@@ -2824,7 +2824,7 @@ def _print_output_summary(output_counts: dict[str, dict[str, Any]]) -> None:
 
 
 def run_stage_one(
-    config: RtrajV2Config,
+    config: RtrajConfig,
 ) -> tuple[list[dict[str, Any]], list[dict[str, Any]], list[dict[str, Any]], list[pd.DataFrame]]:
     summaries: list[dict[str, Any]] = []
     merge_events: list[dict[str, Any]] = []

@@ -8,8 +8,8 @@ import pandas as pd
 
 from kinematicparcels.postprocessing.io.parcels import load_trajectory_table
 
-path = r"F:/ARGO/zarr/SO_NO_QC_rtraj_z0900_1100.zarr"
-output_dir = Path(r"F:/ARGO/postprocessing/SO_NO_QC_z0900_1100/bad_segments")
+path = r"F:/PLATFORMS/ARGO/zarr/SO_NO_QC_rtraj_z0900_1100.zarr"
+output_dir = Path(r"F:/PLATFORMS/ARGO/postprocessing/SO_NO_QC_z0900_1100/bad_segments")
 plot_dir = output_dir / "suspect_platform_plots"
 
 speed_threshold_m_s = 1.

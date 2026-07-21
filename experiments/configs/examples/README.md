@@ -18,6 +18,7 @@ This folder contains self-contained YAML examples for the main experiment config
 - DRIFTERS/aoml_drifter_to_zarr_example.yml
 - DRIFTERS/drifter_to_zarr_example.yml
 - DRIFTERS/drf_to_zarr_example.yml
+- RAFOS/rafos_to_zarr_example.yml
 - postprocessing/README.md
 
 ## Notes

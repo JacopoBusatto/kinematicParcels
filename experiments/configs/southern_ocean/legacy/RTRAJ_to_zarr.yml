@@ -2,14 +2,14 @@
 # Parcels-compatible trajectory Zarr dataset.
 
 input:
-  rtraj_dir: F:/ARGO/netcdf/Rtraj/core
+  rtraj_dir: F:/PLATFORMS/ARGO/netcdf/Rtraj/core
   pattern: "*_Rtraj.nc"
 
 # input:
-  # rtraj_glob: F:/ARGO/netcdf/Rtraj/*/*_Rtraj.nc
+  # rtraj_glob: F:/PLATFORMS/ARGO/netcdf/Rtraj/*/*_Rtraj.nc
 
 output:
-  path: F:/ARGO/zarr/SO_NO_QC_rtraj.zarr
+  path: F:/PLATFORMS/ARGO/zarr/SO_NO_QC_rtraj.zarr
 
 processing:
   parking_depth:

@@ -1,0 +1,63 @@
+# Example configuration for converting the AOML/WHOI RAFOS_SOFAR_Floats
+# tabledap NetCDF download into Parcels-compatible Zarr datasets.
+# Update paths before running.
+
+input:
+  netcdf_files:
+    - F:/PLATFORMS/RAFOS/netcdf/RAFOS_SOFAR_Floats_42b4_aa7c_e5eb_U1784544337134.nc
+
+output:
+  path: F:/PLATFORMS/RAFOS/zarr/SO_rafos.zarr
+  overwrite: true
+
+processing:
+  surface:
+    clip_after_surface_date: true
+
+regions:
+  names_or_labels:
+    - iSO
+    - oSO
+    - ACC
+  selection_mode: from_first_entry
+  input_lon_mode: "-180_180"
+
+resample:
+  enabled: true
+  frequency: 10d
+  interpolate: time
+  min_duration_days: 21.0
+  reference_time: 1950-01-01T00:00:00Z
+  shared_time: true
+  shift_start_to_reference: false
+
+segmentation:
+  min_segment_points: 3
+
+depth_bins:
+  enabled: true
+  output_mode: per_bin
+  missing_depth:
+    strategy: bounded_neighbor
+    max_fill_points: 4
+    fill_between_same_bin_only: true
+  isolated_outlier:
+    enabled: true
+    max_run_points: 3
+    require_same_neighbor_bin: true
+  bins:
+    - label: z0000_0850
+      min: 0.0
+      max: 850.0
+    - label: z0850_1150
+      min: 850.0
+      max: 1150.0
+    - label: z1150_1900
+      min: 1150.0
+      max: 1900.0
+    - label: z1900_2100
+      min: 1900.0
+      max: 2100.0
+    - label: z2100_inf
+      min: 2100.0
+      max: null

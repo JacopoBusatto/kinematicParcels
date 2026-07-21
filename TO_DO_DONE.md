@@ -572,7 +572,7 @@ Input:
 The new YAML config should support:
 ```yaml
     input:
-      rtraj_dir: F:/ARGO/netcdf/Rtraj/core
+      rtraj_dir: F:/PLATFORMS/ARGO/netcdf/Rtraj/core
       pattern: "*_Rtraj.nc"
 ```
 
@@ -580,8 +580,8 @@ and optionally:
 ```yaml
     input:
       rtraj_files:
-        - F:/ARGO/netcdf/Rtraj/core/1902267_Rtraj.nc
-        - F:/ARGO/netcdf/Rtraj/core/4903848_Rtraj.nc
+        - F:/PLATFORMS/ARGO/netcdf/Rtraj/core/1902267_Rtraj.nc
+        - F:/PLATFORMS/ARGO/netcdf/Rtraj/core/4903848_Rtraj.nc
 ```
 Output:
 Use the existing build_dataset_from_trajectories(...) and build_zarr_encoding(...) functions so that the final dataset is compatible with the current Lagrangian trajectory Zarr outputs.
@@ -683,11 +683,11 @@ Create a new config file, for example:
 with:
 ```yaml
     input:
-      rtraj_dir: F:/ARGO/netcdf/Rtraj/core
+      rtraj_dir: F:/PLATFORMS/ARGO/netcdf/Rtraj/core
       pattern: "*_Rtraj.nc"
 
     output:
-      path: F:/ARGO/zarr/DP_rtraj.zarr
+      path: F:/PLATFORMS/ARGO/zarr/DP_rtraj.zarr
 
     processing:
       parking_depth:

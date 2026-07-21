@@ -1,9 +1,9 @@
 # ARGO Rtraj Conversion
 
-This folder contains example YAML files for the staged `convert-rtraj-to-zarr-v2`
+This folder contains example YAML files for the staged `convert-rtraj-to-zarr`
 tool. The legacy converter example has been moved to `legacy/`.
 
-The v2 converter reads original ARGO Rtraj NetCDF files named like
+The converter reads original ARGO Rtraj NetCDF files named like
 `1902267_Rtraj.nc`, builds one representative trajectory fix per cycle, applies
 QC and jump controls, splits by parking-depth bins, optionally filters by
 region, optionally resamples the segments, and writes Parcels-compatible Zarr
@@ -14,7 +14,7 @@ datasets.
 Diagnostics mode is the recommended first pass:
 
 ```bash
-convert-rtraj-to-zarr-v2 experiments/configs/examples/Rtraj/rtraj_to_zarr_v2_example.yml
+convert-rtraj-to-zarr experiments/configs/examples/Rtraj/rtraj_to_zarr_example.yml
 ```
 
 Diagnostics mode can limit the number of files with `run.max_files` and can
@@ -35,12 +35,12 @@ Then run the same command.
 Equivalent module form:
 
 ```bash
-python -m kinematicparcels.tools.rtraj_to_zarr_v2 experiments/configs/examples/Rtraj/rtraj_to_zarr_v2_example.yml
+python -m kinematicparcels.tools.rtraj_to_zarr experiments/configs/examples/Rtraj/rtraj_to_zarr_example.yml
 ```
 
 ## Main Stages
 
-For each selected Rtraj file the v2 converter currently does the following:
+For each selected Rtraj file the converter currently does the following:
 
 1. Opens the Rtraj NetCDF file.
 2. Reads time from `JULD_ADJUSTED` where valid, falling back to `JULD`.
@@ -61,12 +61,12 @@ For each selected Rtraj file the v2 converter currently does the following:
 
 ## Progress Output
 
-The v2 tool reports high-level progress only:
+The tool reports high-level progress only:
 
 - `Processing RTRAJ files`
 - `Writing depth-bin Zarr` when writing per-bin outputs
 
-Inner per-segment resampling bars are suppressed in v2 because they are too
+Inner per-segment resampling bars are suppressed in the staged converter because they are too
 small and misleading when processing many files.
 
 ## Output Schema
@@ -105,7 +105,7 @@ pressure-to-geometric-depth conversion.
   already exists.
 - `output.overwrite: true` overwrites the configured Zarr output path.
 
-See [rtraj_to_zarr_v2_example.yml](rtraj_to_zarr_v2_example.yml) for a complete
+See [rtraj_to_zarr_example.yml](rtraj_to_zarr_example.yml) for a complete
 example.
 
 ## Legacy Converter
