@@ -406,6 +406,7 @@ analysis:
     - cluster_strength
     - beaching_times
     - fsle
+    - gridded_transition_matrix
     - meridional_crossing
     - meridional_excursion
     - start_end_regions
@@ -470,7 +471,8 @@ analyses/
     - density
     - beaching_times
     - exponent_maps
-  - meridional_crossing
+    - gridded_transition_matrix
+    - meridional_crossing
     - meridional_excursion
     - start_end_regions
     - transition_probability
@@ -491,8 +493,9 @@ workflows/
     - run_density
     - run_cluster_strength
     - run_beaching_times
-  - run_exponent_maps
+    - run_exponent_maps
     - run_fsle
+    - run_gridded_transition_matrix
     - run_meridional_crossing
     - run_meridional_excursion
     - run_start_end_regions
@@ -513,6 +516,7 @@ The currently supported analysis types are:
 - beaching_times
 - exponent_maps
 - fsle
+- gridded_transition_matrix
 - meridional_crossing
 - meridional_excursion
 - start_end_regions
@@ -530,6 +534,7 @@ analysis:
     - beaching_times
     - exponent_maps
     - fsle
+    - gridded_transition_matrix
     - meridional_crossing
     - meridional_excursion
     - start_end_regions
@@ -551,7 +556,7 @@ All analyses share the same top-level configuration structure.
 
 `analysis`
 
-- `types`: ordered list of analyses to execute; supported values are `summary`, `density`, `cluster_strength`, `beaching_times`, `exponent_maps`, `fsle`, `meridional_crossing`, `meridional_excursion`, `start_end_regions`, `transition_probability`, and `trajectories`
+- `types`: ordered list of analyses to execute; supported values are `summary`, `density`, `cluster_strength`, `beaching_times`, `exponent_maps`, `fsle`, `gridded_transition_matrix`, `meridional_crossing`, `meridional_excursion`, `start_end_regions`, `transition_probability`, and `trajectories`
 
 `output`
 
@@ -1334,6 +1339,93 @@ the selected region set, not necessarily the fraction of tracers still alive in 
 full domain.
 
 ------------------------------------------------------------
+GRIDDED TRANSITION MATRIX
+------------------------------------------------------------
+
+Computes a sparse transition matrix between regular postprocessing grid cells.
+Each transition is a two-point segment from a start grid cell to an end grid cell.
+
+Input:
+- trajectory_table
+
+For each retained segment, the workflow:
+
+- assigns the start point to a regular lon/lat grid cell
+- assigns the endpoint to a regular lon/lat grid cell
+- counts occupied transitions from start cell `i,j` to end cell `m,n`
+- counts the number of valid segments starting in each start cell
+- normalizes each occupied transition by the number of segments starting in its start cell
+
+The full dense matrix would have `(nlat * nlon) x (nlat * nlon)` elements. The
+workflow therefore stores only occupied transitions as a sparse table and sparse
+NetCDF variables on a `transition` dimension. The NetCDF also includes dense 2D
+summary maps on `(lat, lon)`.
+
+Options:
+```yaml
+gridded_transition_matrix:
+  timestep: null
+  timestep_unit: hours
+
+  output:
+    save_table: true
+    save_netcdf: true
+    save_figures: true
+
+  plotting:
+    enabled: true
+    cmap: viridis
+    probability:
+      as_percent: false
+      vmin: null
+      vmax: null
+```
+
+- `timestep: null` uses consecutive native observations as the two-point segments
+- `timestep` set to a number uses endpoints at `start_time + timestep`
+- `timestep_unit` must be `seconds`, `hours`, or `days`
+- if `timestep` is smaller than the inferred source timestep, the endpoint is linearly interpolated between observed points; observed points are still used as segment starts
+- if `timestep` is larger than the inferred source timestep, it must be an integer multiple of the source timestep
+- `output.save_table` writes `gridded_transition_matrix_<dt>_table.parquet` or `.csv`
+- `output.save_netcdf` writes `gridded_transition_matrix_<dt>.nc`
+- `output.save_figures` and `plotting.enabled` control the summary probability maps
+- `plotting.cmap` sets the Matplotlib colormap for the summary probability maps
+- `plotting.probability.as_percent`, `vmin`, and `vmax` control probability scaling and color limits
+
+Sparse transition table columns:
+
+```text
+start_lon_bin, start_lat_bin, end_lon_bin, end_lat_bin,
+start_lon_center, start_lat_center, end_lon_center, end_lat_center,
+transition_count, transition_probability
+```
+
+NetCDF variables include:
+
+- `n_segments_start(lat, lon)`
+- `probability_north(lat, lon)`
+- `probability_south(lat, lon)`
+- `probability_east(lat, lon)`
+- `probability_west(lat, lon)`
+- `probability_stay(lat, lon)`
+- sparse transition columns on `transition`
+
+The summary maps describe each start cell:
+
+- `probability_north`: sum of transition probabilities with `end_lat_bin > start_lat_bin`
+- `probability_south`: sum of transition probabilities with `end_lat_bin < start_lat_bin`
+- `probability_east`: sum of wrapped eastward longitudinal moves
+- `probability_west`: sum of wrapped westward longitudinal moves
+- `probability_stay`: transition probability with unchanged start and end grid cell
+
+East/west classification uses periodic longitude for global 360-degree grids. Exact
+half-world jumps are not assigned to either east or west.
+
+Output filenames include the transition timestep. For example, native 10-day
+segments are written with `dt_10d`, while a configured 12-hour timestep is written
+with `dt_12h`.
+
+------------------------------------------------------------
 TRAJECTORIES
 ------------------------------------------------------------
 
@@ -1407,6 +1499,7 @@ analysis:
     - density
     - beaching_times
     - fsle
+    - gridded_transition_matrix
     - meridional_crossing
     - meridional_excursion
     - start_end_regions
@@ -1494,6 +1587,21 @@ fsle:
   rho_increment: 1.4142135623730951
   save_crossing_events: false
   plot: true
+
+gridded_transition_matrix:
+  timestep: null
+  timestep_unit: hours
+  output:
+    save_table: true
+    save_netcdf: true
+    save_figures: true
+  plotting:
+    enabled: true
+    cmap: viridis
+    probability:
+      as_percent: false
+      vmin: null
+      vmax: null
 
 meridional_crossing:
   direction: both

@@ -699,6 +699,62 @@ class MeridionalExcursionConfig:
 
 
 @dataclass(frozen=True)
+class GriddedTransitionMatrixOutputConfig:
+    save_table: bool = True
+    save_netcdf: bool = True
+    save_figures: bool = True
+
+
+@dataclass(frozen=True)
+class GriddedTransitionMatrixMapPlottingConfig:
+    vmin: float | None = None
+    vmax: float | None = None
+    as_percent: bool = False
+
+    def __post_init__(self) -> None:
+        _validate_plot_limits(
+            "gridded_transition_matrix.plotting.probability",
+            self.vmin,
+            self.vmax,
+        )
+
+
+@dataclass(frozen=True)
+class GriddedTransitionMatrixPlottingConfig:
+    enabled: bool = True
+    cmap: str = "viridis"
+    probability: GriddedTransitionMatrixMapPlottingConfig = field(
+        default_factory=GriddedTransitionMatrixMapPlottingConfig
+    )
+
+    def __post_init__(self) -> None:
+        if not self.cmap.strip():
+            raise ValueError("gridded_transition_matrix.plotting.cmap must be non-empty.")
+
+
+@dataclass(frozen=True)
+class GriddedTransitionMatrixConfig:
+    timestep: float | None = None
+    timestep_unit: str = "hours"
+    output: GriddedTransitionMatrixOutputConfig = field(
+        default_factory=GriddedTransitionMatrixOutputConfig
+    )
+    plotting: GriddedTransitionMatrixPlottingConfig = field(
+        default_factory=GriddedTransitionMatrixPlottingConfig
+    )
+
+    def __post_init__(self) -> None:
+        if self.timestep is not None and self.timestep <= 0:
+            raise ValueError("gridded_transition_matrix.timestep must be > 0 or null.")
+
+        if self.timestep_unit not in {"seconds", "hours", "days"}:
+            raise ValueError(
+                "gridded_transition_matrix.timestep_unit must be one of: "
+                "'seconds', 'hours', 'days'."
+            )
+
+
+@dataclass(frozen=True)
 class ReleaseConfig:
     """
     Describes how particles were released in the simulation.
@@ -761,7 +817,12 @@ class PostprocessConfig:
         default_factory=lambda: TransitionProbabilityConfig(region_labels=("sesc-mod", "sesc-sir"))
     )
     meridional_crossing: MeridionalCrossingConfig = field(default_factory=MeridionalCrossingConfig)
-    meridional_excursion: MeridionalExcursionConfig = field(default_factory=MeridionalExcursionConfig)
+    meridional_excursion: MeridionalExcursionConfig = field(
+        default_factory=MeridionalExcursionConfig
+    )
+    gridded_transition_matrix: GriddedTransitionMatrixConfig = field(
+        default_factory=GriddedTransitionMatrixConfig
+    )
 
 
 @dataclass(frozen=True)

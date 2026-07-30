@@ -21,6 +21,10 @@ from .models import (
     ExponentMapsFTLEConfig,
     ExportsConfig,
     FSLEConfig,
+    GriddedTransitionMatrixConfig,
+    GriddedTransitionMatrixMapPlottingConfig,
+    GriddedTransitionMatrixOutputConfig,
+    GriddedTransitionMatrixPlottingConfig,
     GridConfig,
     OutputConfig,
     PostprocessConfig,
@@ -1551,6 +1555,79 @@ def _parse_meridional_excursion(section: dict[str, Any] | None) -> MeridionalExc
     )
 
 
+def _parse_gridded_transition_matrix(
+    section: dict[str, Any] | None,
+) -> GriddedTransitionMatrixConfig:
+    """
+    Parse the optional gridded_transition_matrix section.
+    """
+    if section is None:
+        return GriddedTransitionMatrixConfig()
+
+    section = _require_dict(section, "gridded_transition_matrix")
+
+    timestep = _parse_optional_number(
+        section.get("timestep", None),
+        "gridded_transition_matrix.timestep",
+    )
+    timestep_unit = _require_nonempty_string(
+        section.get("timestep_unit", "hours"),
+        "gridded_transition_matrix.timestep_unit",
+    )
+
+    output_section = section.get("output", None)
+    if output_section is None:
+        output = GriddedTransitionMatrixOutputConfig()
+    else:
+        output_section = _require_dict(output_section, "gridded_transition_matrix.output")
+        output = GriddedTransitionMatrixOutputConfig(
+            save_table=bool(output_section.get("save_table", True)),
+            save_netcdf=bool(output_section.get("save_netcdf", True)),
+            save_figures=bool(output_section.get("save_figures", True)),
+        )
+
+    plotting_section = section.get("plotting", None)
+    if plotting_section is None:
+        plotting = GriddedTransitionMatrixPlottingConfig()
+    else:
+        plotting_section = _require_dict(plotting_section, "gridded_transition_matrix.plotting")
+        probability_section = plotting_section.get("probability", None)
+        if probability_section is None:
+            probability = GriddedTransitionMatrixMapPlottingConfig()
+        else:
+            probability_section = _require_dict(
+                probability_section,
+                "gridded_transition_matrix.plotting.probability",
+            )
+            probability = GriddedTransitionMatrixMapPlottingConfig(
+                vmin=_parse_optional_number(
+                    probability_section.get("vmin", None),
+                    "gridded_transition_matrix.plotting.probability.vmin",
+                ),
+                vmax=_parse_optional_number(
+                    probability_section.get("vmax", None),
+                    "gridded_transition_matrix.plotting.probability.vmax",
+                ),
+                as_percent=bool(probability_section.get("as_percent", False)),
+            )
+
+        plotting = GriddedTransitionMatrixPlottingConfig(
+            enabled=bool(plotting_section.get("enabled", True)),
+            cmap=_require_nonempty_string(
+                plotting_section.get("cmap", "viridis"),
+                "gridded_transition_matrix.plotting.cmap",
+            ),
+            probability=probability,
+        )
+
+    return GriddedTransitionMatrixConfig(
+        timestep=timestep,
+        timestep_unit=timestep_unit,
+        output=output,
+        plotting=plotting,
+    )
+
+
 def load_postprocess_config(path: str | Path) -> PostprocessConfig:
     """
     Load the post-processing YAML config.
@@ -1586,6 +1663,9 @@ def load_postprocess_config(path: str | Path) -> PostprocessConfig:
     transition_probability = _parse_transition_probability(raw.get("transition_probability"))
     meridional_crossing = _parse_meridional_crossing(raw.get("meridional_crossing"))
     meridional_excursion = _parse_meridional_excursion(raw.get("meridional_excursion"))
+    gridded_transition_matrix = _parse_gridded_transition_matrix(
+        raw.get("gridded_transition_matrix")
+    )
 
     return PostprocessConfig(
         dataset=dataset,
@@ -1606,4 +1686,5 @@ def load_postprocess_config(path: str | Path) -> PostprocessConfig:
         transition_probability=transition_probability,
         meridional_crossing=meridional_crossing,
         meridional_excursion=meridional_excursion,
+        gridded_transition_matrix=gridded_transition_matrix,
     )

@@ -3,6 +3,7 @@ from .cluster_strength import compute_cluster_strength
 from .density import compute_time_density
 from .exponent_maps import compute_exponent_maps
 from .fsle import build_fsle_pair_trajectories, compute_fsle
+from .gridded_transition_matrix import compute_gridded_transition_matrix
 from .meridional_crossing import compute_meridional_crossing
 from .meridional_excursion import compute_meridional_excursion
 from ..core.regions import build_region_manager, classify_region_points
@@ -21,6 +22,7 @@ __all__ = [
     "compute_exponent_maps",
     "build_fsle_pair_trajectories",
     "compute_fsle",
+    "compute_gridded_transition_matrix",
     "compute_meridional_crossing",
     "compute_meridional_excursion",
     "build_region_manager",

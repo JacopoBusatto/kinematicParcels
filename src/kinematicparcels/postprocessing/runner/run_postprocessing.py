@@ -68,6 +68,10 @@ def _run_single_analysis(
         from ..workflows.run_transition_probability import run_transition_probability
         run_transition_probability(cfg, context)
 
+    elif analysis_name == "gridded_transition_matrix":
+        from ..workflows.run_gridded_transition_matrix import run_gridded_transition_matrix
+        run_gridded_transition_matrix(cfg, context)
+
     elif analysis_name == "summary":
         from ..workflows.run_summary import run_summary
         run_summary(cfg, context)

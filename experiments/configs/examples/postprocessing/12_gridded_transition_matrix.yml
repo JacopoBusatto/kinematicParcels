@@ -1,0 +1,69 @@
+# Example postprocessing config for the `gridded_transition_matrix` analysis.
+
+dataset:
+  input_path: ./outputs/one_trajectory_test.zarr
+  coordinates:
+    trajectory: trajectory
+    obs: obs
+    time: time
+    lon: lon
+    lat: lat
+    z: z
+
+analysis:
+  types:
+    - gridded_transition_matrix
+
+output:
+  output_dir: ./outputs/postprocessing/examples/gridded_transition_matrix
+
+exports:
+  save_trajectory_table: false
+  save_particle_summary: true
+  table_format: parquet  # parquet | csv
+
+cleaning:
+  truncate_stagnant: false
+  stagnant_tol: 1.0e-6
+  stagnant_min_consecutive: 2
+
+grid:
+  mode: explicit_edges  # explicit_edges | from_initial_centers
+  lon_min: 13.0
+  lon_max: 15.0
+  lat_min: 36.0
+  lat_max: 38.0
+  dlon: 0.1
+  dlat: 0.1
+
+release:
+  mode: region_grid  # point_list | region_grid | circle | lkm
+  continuous: false
+
+plotting:
+  projection: PlateCarree
+  # title_fontsize: 14       # set to 0 to omit titles entirely
+  # colorbar_fontsize: 12
+  # colorbar_tick_fontsize: 10
+  # axis_tick_fontsize: 10
+
+gridded_transition_matrix:
+  # null uses consecutive native observations.
+  # If set, timestep_unit must be seconds, hours, or days.
+  # Smaller-than-source timesteps interpolate endpoints from observed starts.
+  # Larger-than-source timesteps must be integer multiples of the source step.
+  timestep: null
+  timestep_unit: hours
+
+  output:
+    save_table: true
+    save_netcdf: true
+    save_figures: true
+
+  plotting:
+    enabled: true
+    cmap: viridis
+    probability:
+      as_percent: true
+      vmin: null
+      vmax: null
