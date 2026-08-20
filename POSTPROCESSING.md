@@ -689,13 +689,20 @@ Input:
 - trajectory_table
 
 Output:
-- cluster_strength.nc
+- cluster_strength.nc, cluster_strength_time.nc, or cluster_strength_age.nc
 - optional snapshot PNGs
 - optional GIF animation
 
-The gridded variable is:
+The gridded variable shape is selected by `cluster_strength.mode`:
 
-- cluster_strength(release_time, age_days, lat, lon)
+- `release`: `cluster_strength(release_time, age_days, lat, lon)`
+- `time`: `cluster_strength(time, lat, lon)`
+- `age`: `cluster_strength(age_days, lat, lon)`
+
+`release` preserves separate release cohorts. `time` combines all particles at
+the same absolute datetime, regardless of release. `age` combines all releases
+at the same exact signed particle age. The Gaussian contributions are always a
+raw particle sum; they are not normalized by particle or release count.
 
 The output grid is the regular grid defined by the shared `grid` section. The
 workflow builds it with `build_grid_from_config`, so it follows the same grid
@@ -711,8 +718,15 @@ age_days = time - release_time
 
 Forward simulations therefore have positive ages. Backward simulations have
 negative ages, and the dataset records `simulation_direction` in the NetCDF
-attributes. The output always uses the release-aware structure, even when only
-one release time is present.
+attributes. Age grouping is exact and performs no interpolation or binning.
+For inputs whose release cadence is not aligned to the output cadence, different
+cohorts can therefore contribute to different age frames.
+
+Every product includes `particle_count` for each frame. `time` and `age` modes
+also include `release_count`, making partial cohort participation explicit.
+Duplicate rows for the same particle and exact timestamp are counted once when
+their positions agree; conflicting positions at one particle timestamp are
+rejected.
 
 Formula:
 
@@ -726,11 +740,11 @@ Gaussian cutoff of `cutoff_factor * scale_km`.
 Grid and mask behavior:
 
 - If `mask: true`, only target grid cells visited by at least one particle at least once are evaluated and stored.
-- Grid cells never visited by any selected particle remain `NaN` for every release and age.
+- Grid cells never visited by any selected particle remain `NaN` for every frame.
 - The mask is applied only to target grid cells, not to the particle table.
-- At each release and age, all finite particle positions in that cohort may contribute to every valid target cell if they are within the cutoff distance.
-- If a valid target cell has no contributing particles at an observed release-age combination, its value is `0.0`.
-- Release-age combinations that do not exist in the trajectory data remain `NaN`.
+- At each frame, all finite particle positions selected by the mode may contribute to every valid target cell if they are within the cutoff distance.
+- If a valid target cell has no nearby contributing particles at an observed frame, its value is `0.0`.
+- In `release` mode, release-age combinations absent from the trajectory data remain `NaN`.
 - If `mask: false`, all grid cells are evaluated.
 - If `group_member` exists, `max_group_member` controls which grouped members are included. The default is `1`, because cluster strength is treated as a single-trajectory diagnostic.
 
@@ -753,6 +767,7 @@ Options:
 
 ```yaml
 cluster_strength:
+  mode: release  # release | time | age
   scale_km: 5.0
   distance: haversine
   cutoff_factor: 4.0
@@ -773,6 +788,8 @@ cluster_strength:
 
   snapshots:
     enabled: false
+    fixed_times: null
+    time_tolerance_hours: null
     fixed_age_days: null
     age_tolerance_days: null
     vmin: null
@@ -781,6 +798,7 @@ cluster_strength:
     cmap: viridis
 ```
 
+- `mode` selects one product per run. `release` is the default for backward compatibility.
 - `scale_km` Gaussian length scale in kilometers. This field is required and must be positive. Larger values make each particle influence a wider area and produce smoother maps; smaller values emphasize local, sharper accumulations.
 - `distance` distance backend. Available lowercase values are `haversine` and `euclidean`.
 - `cutoff_factor` multiplier applied to `scale_km` to define the finite search radius. Must be positive. The default `4.0` evaluates particles within `4 * scale_km`.
@@ -790,8 +808,10 @@ cluster_strength:
 Animation options:
 
 - `animation.enabled` enables GIF output.
-- `animation.every_release: true` with `animation.fixed_age_days: null` saves one GIF per release time. Frames move along `age_days`, while the time bar shows absolute datetimes.
-- `animation.fixed_age_days` may be a number or list of ages. When set, each GIF is fixed at the requested age and frames move over `release_time`.
+- In `time` mode, one GIF moves over absolute datetime and is saved as `cluster_strength_time.gif`.
+- In `age` mode, one GIF moves over signed `age_days` with a numeric age progress bar and is saved as `cluster_strength_age.gif`.
+- In `release` mode, `animation.every_release: true` with `animation.fixed_age_days: null` saves one GIF per release time. Frames move along `age_days`, while the time bar shows absolute datetimes.
+- In `release` mode, `animation.fixed_age_days` may be a number or list of ages. Each GIF is fixed at the requested age and frames move over `release_time`.
 - `animation.age_tolerance_days: null` requires exact age matches. Set a float to use the nearest available age within that tolerance.
 - `animation.vmin` and `animation.vmax` set color limits. `null` lets Matplotlib choose from the plotted data.
 - `animation.min_mask_value` masks plotted values below this threshold before color scaling. It affects figures only, not `cluster_strength.nc`.
@@ -801,19 +821,24 @@ Animation options:
 Snapshot options:
 
 - `snapshots.enabled` enables static PNG output.
-- `snapshots.fixed_age_days` is required for snapshot output. `null` means no snapshots are saved.
-- `snapshots.age_tolerance_days`, `snapshots.vmin`, `snapshots.vmax`, `snapshots.min_mask_value`, and `snapshots.cmap` behave like the animation options.
+- In `time` mode, `snapshots.fixed_times` is a datetime string or list of datetime strings; `snapshots.time_tolerance_hours: null` requires exact matches, while a number permits nearest-time matching within that distance.
+- In `age` and `release` modes, `snapshots.fixed_age_days` is a number or list; `snapshots.age_tolerance_days` controls exact or nearest-age matching.
+- The mode-appropriate coordinate selector is required when snapshots are enabled. Using the other selector is rejected.
+- `snapshots.vmin`, `snapshots.vmax`, `snapshots.min_mask_value`, and `snapshots.cmap` control snapshot rendering.
 
 Output files:
 
-- `cluster_strength.nc` is always saved.
+- `cluster_strength.nc` is saved in `release` mode.
+- `cluster_strength_time.nc` and `cluster_strength_time.gif` are saved in `time` mode.
+- `cluster_strength_age.nc` and `cluster_strength_age.gif` are saved in `age` mode.
 - `cluster_strength_release_<release_time>.gif` files are saved for release-wise animations.
 - `cluster_strength_age_<age_days>.gif` files are saved for fixed-age animations.
-- `cluster_strength_release_<release_time>_age_<age_days>.png` files are saved for snapshots.
+- `cluster_strength_time_<time>.png` and `cluster_strength_age_<age_days>.png` are the grouped-mode snapshot names.
+- `cluster_strength_release_<release_time>_age_<age_days>.png` files are saved for release-mode snapshots.
 
 Unlike `density`, this workflow does not save a gridded table by default. The
-primary product is the NetCDF because the output naturally has dimensions
-`release_time, age_days, lat, lon`.
+primary product is the NetCDF because the output preserves its selected grouping
+coordinate and spatial grid.
 
 Example config:
 - `experiments/configs/examples/postprocessing/10_cluster_strength.yml`
@@ -1544,6 +1569,7 @@ density:
   animation_every_n: 1
 
 cluster_strength:
+  mode: release
   scale_km: 5.0
   distance: haversine
   cutoff_factor: 4.0
@@ -1562,6 +1588,8 @@ cluster_strength:
     every_n: 1
   snapshots:
     enabled: false
+    fixed_times: null
+    time_tolerance_hours: null
     fixed_age_days: null
     age_tolerance_days: null
     vmin: null

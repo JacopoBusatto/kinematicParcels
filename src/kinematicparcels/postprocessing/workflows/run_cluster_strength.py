@@ -39,6 +39,18 @@ def _as_tuple(value: float | tuple[float, ...] | None) -> tuple[float, ...]:
     return (float(value),)
 
 
+def _as_string_tuple(value: str | tuple[str, ...] | None) -> tuple[str, ...]:
+    if value is None:
+        return ()
+    if isinstance(value, tuple):
+        return value
+    return (value,)
+
+
+def _format_age_for_filename(value: float) -> str:
+    return f"{value:.6g}".replace("-", "minus_").replace(".", "p")
+
+
 def _match_age_value(
     available_age_days,
     *,
@@ -69,6 +81,38 @@ def _match_age_value(
             f"{tolerance_days} days."
         )
     return nearest
+
+
+def _match_time_value(
+    available_times,
+    *,
+    requested_time: str,
+    tolerance_hours: float | None,
+) -> np.datetime64:
+    available = pd.DatetimeIndex(available_times)
+    if available.empty:
+        raise ValueError("cluster_strength dataset has no time values.")
+
+    requested = pd.Timestamp(requested_time)
+    if requested.tzinfo is not None:
+        raise ValueError("cluster_strength snapshot times must be timezone-naive.")
+    distances = np.abs(available - requested)
+    nearest_idx = int(np.argmin(distances.asi8))
+    nearest = available[nearest_idx]
+
+    if tolerance_hours is None:
+        if nearest != requested:
+            raise ValueError(
+                "cluster_strength requested fixed_time "
+                f"{requested} is not present in time. Set time_tolerance_hours "
+                "to allow nearest-time matching."
+            )
+    elif distances[nearest_idx] > pd.Timedelta(hours=tolerance_hours):
+        raise ValueError(
+            "cluster_strength requested fixed_time "
+            f"{requested} has no time value within {tolerance_hours} hours."
+        )
+    return nearest.to_datetime64()
 
 
 def _dataset_for_release_animation(ds: xr.Dataset, release_time) -> xr.Dataset:
@@ -138,11 +182,13 @@ def _save_release_age_snapshots(
             requested_age_days=requested_age,
             tolerance_days=snapshot_cfg.age_tolerance_days,
         )
-        age_label = f"{age_value:.6g}".replace("-", "minus_").replace(".", "p")
+        age_label = _format_age_for_filename(age_value)
 
         for release_time in ds["release_time"].values:
             frame_ds = ds.sel(release_time=release_time, age_days=age_value)
-            frame_ds = _apply_plot_mask(frame_ds, min_mask_value=snapshot_cfg.min_mask_value)
+            frame_ds = _apply_plot_mask(
+                frame_ds, min_mask_value=snapshot_cfg.min_mask_value
+            )
             if not np.isfinite(frame_ds["cluster_strength"].values).any():
                 warnings.warn(
                     "Skipping empty cluster_strength snapshot for "
@@ -153,7 +199,9 @@ def _save_release_age_snapshots(
                 continue
 
             timestamp = format_time_for_filename(release_time)
-            plot_path = outdir / f"cluster_strength_release_{timestamp}_age_{age_label}.png"
+            plot_path = (
+                outdir / f"cluster_strength_release_{timestamp}_age_{age_label}.png"
+            )
             print("Saving cluster strength snapshot:", plot_path)
             plot_grid_map(
                 frame_ds,
@@ -170,6 +218,88 @@ def _save_release_age_snapshots(
                 colorbar_tick_fontsize=colorbar_tick_fontsize,
                 axis_tick_fontsize=axis_tick_fontsize,
             )
+
+
+def _save_time_snapshots(
+    ds: xr.Dataset,
+    *,
+    snapshot_cfg: ClusterStrengthSnapshotsConfig,
+    outdir: Path,
+    projection: str,
+    title_fontsize: int | None,
+    colorbar_fontsize: int | None,
+    colorbar_tick_fontsize: int | None,
+    axis_tick_fontsize: int | None,
+) -> None:
+    for requested_time in _as_string_tuple(snapshot_cfg.fixed_times):
+        time_value = _match_time_value(
+            ds["time"].values,
+            requested_time=requested_time,
+            tolerance_hours=snapshot_cfg.time_tolerance_hours,
+        )
+        frame_ds = _apply_plot_mask(
+            ds.sel(time=time_value),
+            min_mask_value=snapshot_cfg.min_mask_value,
+        )
+        timestamp = format_time_for_filename(time_value)
+        plot_path = outdir / f"cluster_strength_time_{timestamp}.png"
+        print("Saving cluster strength time snapshot:", plot_path)
+        plot_grid_map(
+            frame_ds,
+            var_name="cluster_strength",
+            outpath=plot_path,
+            projection=projection,
+            title=f"Cluster strength time={pd.Timestamp(time_value)}",
+            vmin=snapshot_cfg.vmin,
+            vmax=snapshot_cfg.vmax,
+            cmap=snapshot_cfg.cmap,
+            colorbar_label="cluster_strength",
+            title_fontsize=title_fontsize,
+            colorbar_fontsize=colorbar_fontsize,
+            colorbar_tick_fontsize=colorbar_tick_fontsize,
+            axis_tick_fontsize=axis_tick_fontsize,
+        )
+
+
+def _save_age_snapshots(
+    ds: xr.Dataset,
+    *,
+    snapshot_cfg: ClusterStrengthSnapshotsConfig,
+    outdir: Path,
+    projection: str,
+    title_fontsize: int | None,
+    colorbar_fontsize: int | None,
+    colorbar_tick_fontsize: int | None,
+    axis_tick_fontsize: int | None,
+) -> None:
+    for requested_age in _as_tuple(snapshot_cfg.fixed_age_days):
+        age_value = _match_age_value(
+            ds["age_days"].values,
+            requested_age_days=requested_age,
+            tolerance_days=snapshot_cfg.age_tolerance_days,
+        )
+        frame_ds = _apply_plot_mask(
+            ds.sel(age_days=age_value),
+            min_mask_value=snapshot_cfg.min_mask_value,
+        )
+        age_label = _format_age_for_filename(age_value)
+        plot_path = outdir / f"cluster_strength_age_{age_label}.png"
+        print("Saving cluster strength age snapshot:", plot_path)
+        plot_grid_map(
+            frame_ds,
+            var_name="cluster_strength",
+            outpath=plot_path,
+            projection=projection,
+            title=f"Cluster strength age={age_value:.6g} days",
+            vmin=snapshot_cfg.vmin,
+            vmax=snapshot_cfg.vmax,
+            cmap=snapshot_cfg.cmap,
+            colorbar_label="cluster_strength",
+            title_fontsize=title_fontsize,
+            colorbar_fontsize=colorbar_fontsize,
+            colorbar_tick_fontsize=colorbar_tick_fontsize,
+            axis_tick_fontsize=axis_tick_fontsize,
+        )
 
 
 def _save_release_age_animations(
@@ -191,7 +321,7 @@ def _save_release_age_animations(
                 requested_age_days=requested_age,
                 tolerance_days=animation_cfg.age_tolerance_days,
             )
-            age_label = f"{age_value:.6g}".replace("-", "minus_").replace(".", "p")
+            age_label = _format_age_for_filename(age_value)
             gif_ds = _dataset_for_fixed_age_animation(ds, age_value)
             gif_path = outdir / f"cluster_strength_age_{age_label}.gif"
             print("Saving cluster strength fixed-age animation:", gif_path)
@@ -251,6 +381,44 @@ def _save_release_age_animations(
         )
 
 
+def _save_grouped_animation(
+    ds: xr.Dataset,
+    *,
+    mode: str,
+    animation_cfg: ClusterStrengthAnimationConfig,
+    outdir: Path,
+    projection: str,
+) -> None:
+    if not np.isfinite(ds["cluster_strength"].values).any():
+        warnings.warn(
+            f"Skipping empty cluster_strength {mode} animation.",
+            RuntimeWarning,
+            stacklevel=2,
+        )
+        return
+
+    gif_path = outdir / f"cluster_strength_{mode}.gif"
+    print(f"Saving cluster strength {mode} animation:", gif_path)
+    animate_density(
+        ds,
+        var_name="cluster_strength",
+        outpath=gif_path,
+        projection=projection,
+        fps=animation_cfg.fps,
+        every_n=animation_cfg.every_n,
+        title=f"cluster_strength by {mode}",
+        colorbar_label="cluster_strength",
+        vmin=animation_cfg.vmin,
+        vmax=animation_cfg.vmax,
+        min_mask_value=animation_cfg.min_mask_value,
+        cmap_name=animation_cfg.cmap,
+        show_time_bar=True,
+        frame_dim="time" if mode == "time" else "age_days",
+        frame_label="age" if mode == "age" else "time",
+        frame_units="days" if mode == "age" else "",
+    )
+
+
 def run_cluster_strength(cfg: PostprocessConfig, context: dict) -> None:
     """
     Cluster-strength workflow.
@@ -285,33 +453,54 @@ def run_cluster_strength(cfg: PostprocessConfig, context: dict) -> None:
         lon_col="lon",
         lat_col="lat",
         time_col="time",
+        mode=cluster_cfg.mode,
     )
-    _warn_if_release_flag_disagrees(cfg, cluster_ds)
+    if cluster_cfg.mode == "release":
+        _warn_if_release_flag_disagrees(cfg, cluster_ds)
 
     outdir = Path(cfg.output.output_dir)
     outdir.mkdir(parents=True, exist_ok=True)
 
-    nc_path = outdir / "cluster_strength.nc"
+    nc_filename = (
+        "cluster_strength.nc"
+        if cluster_cfg.mode == "release"
+        else f"cluster_strength_{cluster_cfg.mode}.nc"
+    )
+    nc_path = outdir / nc_filename
 
     print("Saving cluster strength dataset:", nc_path)
     save_dataset_netcdf(cluster_ds, nc_path)
 
     if cluster_cfg.snapshots.enabled:
-        _save_release_age_snapshots(
-            cluster_ds,
-            snapshot_cfg=cluster_cfg.snapshots,
-            outdir=outdir,
-            projection=cfg.plotting.projection,
-            title_fontsize=cfg.plotting.title_fontsize,
-            colorbar_fontsize=cfg.plotting.colorbar_fontsize,
-            colorbar_tick_fontsize=cfg.plotting.colorbar_tick_fontsize,
-            axis_tick_fontsize=cfg.plotting.axis_tick_fontsize,
-        )
+        snapshot_kwargs = {
+            "snapshot_cfg": cluster_cfg.snapshots,
+            "outdir": outdir,
+            "projection": cfg.plotting.projection,
+            "title_fontsize": cfg.plotting.title_fontsize,
+            "colorbar_fontsize": cfg.plotting.colorbar_fontsize,
+            "colorbar_tick_fontsize": cfg.plotting.colorbar_tick_fontsize,
+            "axis_tick_fontsize": cfg.plotting.axis_tick_fontsize,
+        }
+        if cluster_cfg.mode == "time":
+            _save_time_snapshots(cluster_ds, **snapshot_kwargs)
+        elif cluster_cfg.mode == "age":
+            _save_age_snapshots(cluster_ds, **snapshot_kwargs)
+        else:
+            _save_release_age_snapshots(cluster_ds, **snapshot_kwargs)
 
     if cluster_cfg.animation.enabled:
-        _save_release_age_animations(
-            cluster_ds,
-            animation_cfg=cluster_cfg.animation,
-            outdir=outdir,
-            projection=cfg.plotting.projection,
-        )
+        if cluster_cfg.mode == "release":
+            _save_release_age_animations(
+                cluster_ds,
+                animation_cfg=cluster_cfg.animation,
+                outdir=outdir,
+                projection=cfg.plotting.projection,
+            )
+        else:
+            _save_grouped_animation(
+                cluster_ds,
+                mode=cluster_cfg.mode,
+                animation_cfg=cluster_cfg.animation,
+                outdir=outdir,
+                projection=cfg.plotting.projection,
+            )

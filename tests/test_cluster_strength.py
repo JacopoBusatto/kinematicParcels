@@ -6,7 +6,9 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from kinematicparcels.postprocessing.analyses.cluster_strength import compute_cluster_strength
+from kinematicparcels.postprocessing.analyses.cluster_strength import (
+    compute_cluster_strength,
+)
 from kinematicparcels.postprocessing.config.loader import load_postprocess_config
 from kinematicparcels.postprocessing.core.distances import haversine_km
 from kinematicparcels.postprocessing.core.gridding import RegularGrid
@@ -114,7 +116,9 @@ def test_cluster_strength_euclidean_distance_runs() -> None:
 
 
 def test_cluster_strength_warns_when_scipy_is_absent(monkeypatch) -> None:
-    from kinematicparcels.postprocessing.analyses import cluster_strength as cluster_module
+    from kinematicparcels.postprocessing.analyses import (
+        cluster_strength as cluster_module,
+    )
 
     monkeypatch.setattr(cluster_module, "cKDTree", None)
     grid = RegularGrid(-0.5, 0.5, -0.5, 0.5, 1.0, 1.0)
@@ -185,7 +189,9 @@ def test_cluster_strength_separates_release_time_and_signed_age() -> None:
     assert ds.sizes["release_time"] == 2
     assert ds["age_days"].values.tolist() == [0.0, 1.0]
     assert ds.attrs["simulation_direction"] == "forward"
-    assert ds["cluster_strength"].sel(age_days=1.0).values[:, 0, 0] == pytest.approx([1.0, 1.0])
+    assert ds["cluster_strength"].sel(age_days=1.0).values[:, 0, 0] == pytest.approx(
+        [1.0, 1.0]
+    )
 
 
 def test_cluster_strength_backward_age_is_negative() -> None:
@@ -204,7 +210,100 @@ def test_cluster_strength_backward_age_is_negative() -> None:
 
     assert ds.attrs["simulation_direction"] == "backward"
     assert ds["age_days"].values.tolist() == [-2.0, -1.0, 0.0]
-    assert ds["release_time"].values[0] == np.datetime64("2026-01-03T00:00:00.000000000")
+    assert ds["release_time"].values[0] == np.datetime64(
+        "2026-01-03T00:00:00.000000000"
+    )
+
+
+def test_cluster_strength_time_mode_combines_release_cohorts() -> None:
+    grid = RegularGrid(-0.5, 0.5, -0.5, 0.5, 1.0, 1.0)
+    df = pd.concat(
+        [
+            _trajectory_df(
+                times=[pd.Timestamp("2026-01-01"), pd.Timestamp("2026-01-02")],
+                lons=[0.0, 0.0],
+                lats=[0.0, 0.0],
+                trajectory="p0",
+            ),
+            _trajectory_df(
+                times=[pd.Timestamp("2026-01-02")],
+                lons=[0.0],
+                lats=[0.0],
+                trajectory="p1",
+            ),
+        ],
+        ignore_index=True,
+    )
+
+    ds = compute_cluster_strength(df, grid=grid, scale_km=10.0, mask=False, mode="time")
+
+    assert ds["cluster_strength"].dims == ("time", "lat", "lon")
+    assert ds.attrs["aggregation_mode"] == "time"
+    assert ds["cluster_strength"].sel(time="2026-01-02").item() == pytest.approx(2.0)
+    assert ds["particle_count"].values.tolist() == [1, 2]
+    assert ds["release_count"].values.tolist() == [1, 2]
+
+
+def test_cluster_strength_age_mode_combines_only_exact_signed_ages() -> None:
+    grid = RegularGrid(-0.5, 0.5, -0.5, 0.5, 1.0, 1.0)
+    df = pd.concat(
+        [
+            _trajectory_df(
+                times=[pd.Timestamp("2026-01-03"), pd.Timestamp("2026-01-02")],
+                lons=[0.0, 0.0],
+                lats=[0.0, 0.0],
+                trajectory="p0",
+            ),
+            _trajectory_df(
+                times=[pd.Timestamp("2026-01-05"), pd.Timestamp("2026-01-04")],
+                lons=[0.0, 0.0],
+                lats=[0.0, 0.0],
+                trajectory="p1",
+            ),
+            _trajectory_df(
+                times=[pd.Timestamp("2026-01-07"), pd.Timestamp("2026-01-06 12:00")],
+                lons=[0.0, 0.0],
+                lats=[0.0, 0.0],
+                trajectory="p2",
+            ),
+        ],
+        ignore_index=True,
+    )
+
+    ds = compute_cluster_strength(df, grid=grid, scale_km=10.0, mask=False, mode="age")
+
+    assert ds["cluster_strength"].dims == ("age_days", "lat", "lon")
+    assert ds.attrs["simulation_direction"] == "backward"
+    assert ds["age_days"].values.tolist() == [-1.0, -0.5, 0.0]
+    assert ds["cluster_strength"].sel(age_days=-1.0).item() == pytest.approx(2.0)
+    assert ds["particle_count"].values.tolist() == [2, 1, 3]
+    assert ds["release_count"].values.tolist() == [2, 1, 3]
+
+
+def test_cluster_strength_counts_identical_particle_time_duplicate_once() -> None:
+    grid = RegularGrid(-0.5, 0.5, -0.5, 0.5, 1.0, 1.0)
+    df = _trajectory_df(
+        times=[pd.Timestamp("2026-01-01"), pd.Timestamp("2026-01-01")],
+        lons=[0.0, 0.0],
+        lats=[0.0, 0.0],
+    )
+
+    ds = compute_cluster_strength(df, grid=grid, scale_km=10.0, mask=False, mode="time")
+
+    assert ds["cluster_strength"].item() == pytest.approx(1.0)
+    assert ds["particle_count"].item() == 1
+
+
+def test_cluster_strength_rejects_conflicting_particle_time_duplicate() -> None:
+    grid = RegularGrid(-0.5, 0.5, -0.5, 0.5, 1.0, 1.0)
+    df = _trajectory_df(
+        times=[pd.Timestamp("2026-01-01"), pd.Timestamp("2026-01-01")],
+        lons=[0.0, 0.1],
+        lats=[0.0, 0.0],
+    )
+
+    with pytest.raises(ValueError, match="conflicting positions"):
+        compute_cluster_strength(df, grid=grid, scale_km=10.0, mask=False, mode="time")
 
 
 def test_cluster_strength_filters_group_members_by_default() -> None:
@@ -242,7 +341,9 @@ def test_cluster_strength_filters_group_members_by_default() -> None:
     assert all_ds["cluster_strength"].values[0, 0, 0, 0] == pytest.approx(2.0)
 
 
-def test_load_postprocess_config_rejects_missing_cluster_strength_scale(tmp_path) -> None:
+def test_load_postprocess_config_rejects_missing_cluster_strength_scale(
+    tmp_path,
+) -> None:
     cfg_path = tmp_path / "postprocess_cluster_missing_scale.yml"
     cfg_path.write_text(
         dedent(
@@ -263,7 +364,9 @@ def test_load_postprocess_config_rejects_missing_cluster_strength_scale(tmp_path
         load_postprocess_config(cfg_path)
 
 
-def test_load_postprocess_config_rejects_non_positive_cluster_strength_scale(tmp_path) -> None:
+def test_load_postprocess_config_rejects_non_positive_cluster_strength_scale(
+    tmp_path,
+) -> None:
     cfg_path = tmp_path / "postprocess_cluster_non_positive_scale.yml"
     cfg_path.write_text(
         dedent(
@@ -284,7 +387,9 @@ def test_load_postprocess_config_rejects_non_positive_cluster_strength_scale(tmp
         load_postprocess_config(cfg_path)
 
 
-def test_load_postprocess_config_parses_cluster_strength_cutoff_and_euclidean(tmp_path) -> None:
+def test_load_postprocess_config_parses_cluster_strength_cutoff_and_euclidean(
+    tmp_path,
+) -> None:
     cfg_path = tmp_path / "postprocess_cluster.yml"
     cfg_path.write_text(
         dedent(
@@ -330,7 +435,9 @@ def test_load_postprocess_config_parses_cluster_strength_cutoff_and_euclidean(tm
     assert cfg.cluster_strength.snapshots.vmin == 0.0
 
 
-def test_load_postprocess_config_rejects_invalid_cluster_strength_animation_cadence(tmp_path) -> None:
+def test_load_postprocess_config_rejects_invalid_cluster_strength_animation_cadence(
+    tmp_path,
+) -> None:
     cfg_path = tmp_path / "postprocess_cluster_bad_animation.yml"
     cfg_path.write_text(
         dedent(
@@ -353,7 +460,9 @@ def test_load_postprocess_config_rejects_invalid_cluster_strength_animation_cade
         load_postprocess_config(cfg_path)
 
 
-def test_load_postprocess_config_rejects_uppercase_cluster_strength_distance(tmp_path) -> None:
+def test_load_postprocess_config_rejects_uppercase_cluster_strength_distance(
+    tmp_path,
+) -> None:
     cfg_path = tmp_path / "postprocess_cluster_bad_distance.yml"
     cfg_path.write_text(
         dedent(
@@ -372,4 +481,111 @@ def test_load_postprocess_config_rejects_uppercase_cluster_strength_distance(tmp
     )
 
     with pytest.raises(ValueError, match="must be lowercase"):
+        load_postprocess_config(cfg_path)
+
+
+def test_load_postprocess_config_rejects_invalid_cluster_strength_mode(
+    tmp_path,
+) -> None:
+    cfg_path = tmp_path / "postprocess_cluster_bad_mode.yml"
+    cfg_path.write_text(
+        dedent(
+            """
+            dataset:
+              input_path: ./dummy.zarr
+            analysis:
+              types: [cluster_strength]
+            cluster_strength:
+              scale_km: 5
+              mode: calendar
+            """
+        ),
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ValueError, match="cluster_strength.mode"):
+        load_postprocess_config(cfg_path)
+
+
+def test_load_postprocess_config_parses_time_mode_snapshot_coordinates(
+    tmp_path,
+) -> None:
+    cfg_path = tmp_path / "postprocess_cluster_time.yml"
+    cfg_path.write_text(
+        dedent(
+            """
+            dataset:
+              input_path: ./dummy.zarr
+            analysis:
+              types: [cluster_strength]
+            cluster_strength:
+              scale_km: 5
+              mode: time
+              snapshots:
+                enabled: true
+                fixed_times:
+                  - "2026-01-01 00:00"
+                  - "2026-01-02 12:00"
+                time_tolerance_hours: 1
+            """
+        ),
+        encoding="utf-8",
+    )
+
+    cfg = load_postprocess_config(cfg_path)
+
+    assert cfg.cluster_strength is not None
+    assert cfg.cluster_strength.mode == "time"
+    assert cfg.cluster_strength.snapshots.fixed_times == (
+        "2026-01-01 00:00",
+        "2026-01-02 12:00",
+    )
+    assert cfg.cluster_strength.snapshots.time_tolerance_hours == 1.0
+
+
+def test_load_postprocess_config_defaults_cluster_strength_mode_to_release(
+    tmp_path,
+) -> None:
+    cfg_path = tmp_path / "postprocess_cluster_release.yml"
+    cfg_path.write_text(
+        dedent(
+            """
+            dataset:
+              input_path: ./dummy.zarr
+            analysis:
+              types: [cluster_strength]
+            cluster_strength:
+              scale_km: 5
+            """
+        ),
+        encoding="utf-8",
+    )
+
+    cfg = load_postprocess_config(cfg_path)
+
+    assert cfg.cluster_strength is not None
+    assert cfg.cluster_strength.mode == "release"
+
+
+def test_load_postprocess_config_rejects_age_selector_in_time_mode(tmp_path) -> None:
+    cfg_path = tmp_path / "postprocess_cluster_bad_selector.yml"
+    cfg_path.write_text(
+        dedent(
+            """
+            dataset:
+              input_path: ./dummy.zarr
+            analysis:
+              types: [cluster_strength]
+            cluster_strength:
+              scale_km: 5
+              mode: time
+              snapshots:
+                enabled: true
+                fixed_age_days: 1
+            """
+        ),
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ValueError, match="fixed_age_days is not valid in time mode"):
         load_postprocess_config(cfg_path)

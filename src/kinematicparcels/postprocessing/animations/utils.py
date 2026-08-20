@@ -144,6 +144,88 @@ def add_time_progress_bar(
     return ax
 
 
+def add_numeric_progress_bar(
+    fig: plt.Figure,
+    *,
+    current_value: float,
+    value_min: float,
+    value_max: float,
+    label: str,
+    units: str = "",
+    rect: tuple[float, float, float, float] = (0.12, 0.06, 0.76, 0.035),
+    facecolor: str = "0.85",
+    progress_color: str = "0.35",
+    fontsize: int = 8,
+) -> plt.Axes:
+    """Add a progress bar for a numeric animation coordinate."""
+    current_value = float(current_value)
+    value_min = float(value_min)
+    value_max = float(value_max)
+    if value_max < value_min:
+        raise ValueError("value_max must be greater than or equal to value_min.")
+
+    display_max = value_max if value_max > value_min else value_min + 1.0
+    ax = fig.add_axes(rect)
+    ax.set_xlim(value_min, display_max)
+    ax.set_ylim(0, 1)
+
+    span = display_max - value_min
+    ax.add_patch(
+        patches.Rectangle(
+            (value_min, 0.2),
+            width=span,
+            height=0.6,
+            facecolor=facecolor,
+            edgecolor="none",
+            transform=ax.transData,
+            zorder=1,
+        )
+    )
+    ax.add_patch(
+        patches.Rectangle(
+            (value_min, 0.2),
+            width=max(current_value - value_min, 0.0),
+            height=0.6,
+            facecolor=progress_color,
+            edgecolor="none",
+            transform=ax.transData,
+            zorder=2,
+        )
+    )
+    ax.axvline(current_value, ymin=0.1, ymax=0.9, linewidth=1.2, zorder=3)
+
+    suffix = f" {units}" if units else ""
+    ax.text(
+        value_min,
+        -0.15,
+        f"{value_min:.6g}{suffix}",
+        ha="left",
+        va="top",
+        fontsize=fontsize,
+    )
+    ax.text(
+        value_max,
+        -0.15,
+        f"{value_max:.6g}{suffix}",
+        ha="right",
+        va="top",
+        fontsize=fontsize,
+    )
+    ax.text(
+        current_value,
+        1.05,
+        f"{label}={current_value:.6g}{suffix}",
+        ha="center",
+        va="bottom",
+        fontsize=fontsize,
+    )
+    ax.set_xticks([])
+    ax.set_yticks([])
+    for spine in ax.spines.values():
+        spine.set_visible(False)
+    return ax
+
+
 def build_animation_colormap(
     *,
     cmap_name: str = "viridis",

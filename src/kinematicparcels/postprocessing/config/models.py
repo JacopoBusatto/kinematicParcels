@@ -21,7 +21,9 @@ class DatasetCoordinatesConfig:
 @dataclass(frozen=True)
 class DatasetConfig:
     input_path: str
-    coordinates: DatasetCoordinatesConfig = field(default_factory=DatasetCoordinatesConfig)
+    coordinates: DatasetCoordinatesConfig = field(
+        default_factory=DatasetCoordinatesConfig
+    )
 
 
 @dataclass(frozen=True)
@@ -31,6 +33,7 @@ class AnalysisConfig:
 
     The analyses are executed in the order specified.
     """
+
     types: tuple[str, ...] = ("trajectories",)
 
 
@@ -124,22 +127,28 @@ class ClusterStrengthAnimationConfig:
         _validate_plot_limits("cluster_strength.animation", self.vmin, self.vmax)
 
         if self.age_tolerance_days is not None and self.age_tolerance_days < 0:
-            raise ValueError("cluster_strength.animation.age_tolerance_days must be >= 0 or null.")
+            raise ValueError(
+                "cluster_strength.animation.age_tolerance_days must be >= 0 or null."
+            )
 
         if not isinstance(self.fps, int) or self.fps <= 0:
             raise ValueError("cluster_strength.animation.fps must be an integer > 0.")
 
         if not isinstance(self.every_n, int) or self.every_n < 1:
-            raise ValueError("cluster_strength.animation.every_n must be an integer >= 1.")
+            raise ValueError(
+                "cluster_strength.animation.every_n must be an integer >= 1."
+            )
 
 
 @dataclass(frozen=True)
 class ClusterStrengthSnapshotsConfig:
     enabled: bool = False
     fixed_age_days: float | tuple[float, ...] | None = None
+    fixed_times: str | tuple[str, ...] | None = None
     vmin: float | None = None
     vmax: float | None = None
     age_tolerance_days: float | None = None
+    time_tolerance_hours: float | None = None
     min_mask_value: float | None = None
     cmap: str = "viridis"
 
@@ -150,21 +159,36 @@ class ClusterStrengthSnapshotsConfig:
             raise ValueError(
                 "cluster_strength.snapshots.age_tolerance_days must be >= 0 or null."
             )
+        if self.time_tolerance_hours is not None and self.time_tolerance_hours < 0:
+            raise ValueError(
+                "cluster_strength.snapshots.time_tolerance_hours must be >= 0 or null."
+            )
 
 
 @dataclass(frozen=True)
 class ClusterStrengthConfig:
     scale_km: float
+    mode: str = "release"
     distance: str = "haversine"
     cutoff_factor: float = 4.0
     mask: bool = True
     max_group_member: int | None = 1
-    animation: ClusterStrengthAnimationConfig = field(default_factory=ClusterStrengthAnimationConfig)
-    snapshots: ClusterStrengthSnapshotsConfig = field(default_factory=ClusterStrengthSnapshotsConfig)
+    animation: ClusterStrengthAnimationConfig = field(
+        default_factory=ClusterStrengthAnimationConfig
+    )
+    snapshots: ClusterStrengthSnapshotsConfig = field(
+        default_factory=ClusterStrengthSnapshotsConfig
+    )
 
     def __post_init__(self) -> None:
         if self.scale_km <= 0:
             raise ValueError("cluster_strength.scale_km must be positive.")
+
+        if self.mode not in {"release", "time", "age"}:
+            raise ValueError(
+                "cluster_strength.mode must be lowercase and one of: "
+                "'release', 'time', 'age'."
+            )
 
         if self.distance not in {"haversine", "euclidean"}:
             raise ValueError(
@@ -176,7 +200,49 @@ class ClusterStrengthConfig:
             raise ValueError("cluster_strength.cutoff_factor must be positive.")
 
         if self.max_group_member is not None and self.max_group_member <= 0:
-            raise ValueError("cluster_strength.max_group_member must be an integer > 0 or null.")
+            raise ValueError(
+                "cluster_strength.max_group_member must be an integer > 0 or null."
+            )
+
+        if self.mode in {"time", "age"} and self.animation.fixed_age_days is not None:
+            raise ValueError(
+                "cluster_strength.animation.fixed_age_days is only valid in release mode."
+            )
+
+        if self.mode == "time":
+            if self.snapshots.fixed_age_days is not None:
+                raise ValueError(
+                    "cluster_strength.snapshots.fixed_age_days is not valid in time mode."
+                )
+            if self.snapshots.age_tolerance_days is not None:
+                raise ValueError(
+                    "cluster_strength.snapshots.age_tolerance_days is not valid in time mode."
+                )
+            if self.snapshots.enabled:
+                if (
+                    self.snapshots.fixed_times is None
+                    or self.snapshots.fixed_times == ()
+                ):
+                    raise ValueError(
+                        "cluster_strength.snapshots.fixed_times is required when snapshots "
+                        "are enabled in time mode."
+                    )
+        else:
+            if self.snapshots.fixed_times is not None:
+                raise ValueError(
+                    "cluster_strength.snapshots.fixed_times is only valid in time mode."
+                )
+            if self.snapshots.time_tolerance_hours is not None:
+                raise ValueError(
+                    "cluster_strength.snapshots.time_tolerance_hours is only valid in time mode."
+                )
+            if self.snapshots.enabled:
+                fixed_ages = self.snapshots.fixed_age_days
+                if fixed_ages is None or fixed_ages == ():
+                    raise ValueError(
+                        "cluster_strength.snapshots.fixed_age_days is required when snapshots "
+                        f"are enabled in {self.mode} mode."
+                    )
 
 
 @dataclass(frozen=True)
@@ -196,7 +262,9 @@ class BeachingTimesConfig:
     lat_col: str = "lat0"
     value_col: str = "lifetime_seconds"
     statistic: str = "min"
-    plotting: BeachingTimesPlottingConfig = field(default_factory=BeachingTimesPlottingConfig)
+    plotting: BeachingTimesPlottingConfig = field(
+        default_factory=BeachingTimesPlottingConfig
+    )
 
 
 @dataclass(frozen=True)
@@ -205,7 +273,7 @@ class FSLEConfig:
     meridional_only: bool = False
     min_scale: float = 5.0e-3
     max_scale: float = 1.0e4
-    rho_increment: float = 2 ** 0.5
+    rho_increment: float = 2**0.5
     save_crossing_events: bool = False
     plot: bool = True
     reference_slopes: tuple[str, ...] = ("delta^-2/3", "delta^-1", "delta^-2")
@@ -229,7 +297,9 @@ class FSLEConfig:
             raise ValueError("fsle.rho_increment must be greater than 1.")
 
         valid_reference_slopes = {"delta^-2/3", "delta^-1", "delta^-2"}
-        invalid_reference_slopes = [s for s in self.reference_slopes if s not in valid_reference_slopes]
+        invalid_reference_slopes = [
+            s for s in self.reference_slopes if s not in valid_reference_slopes
+        ]
         if invalid_reference_slopes:
             raise ValueError(
                 "fsle.reference_slopes contains unsupported values: "
@@ -237,7 +307,9 @@ class FSLEConfig:
             )
 
         invalid_anchor_slopes = [
-            slope for slope in self.reference_slope_anchor_scales if slope not in valid_reference_slopes
+            slope
+            for slope in self.reference_slope_anchor_scales
+            if slope not in valid_reference_slopes
         ]
         if invalid_anchor_slopes:
             raise ValueError(
@@ -249,7 +321,9 @@ class FSLEConfig:
             value for value in self.reference_slope_anchor_scales.values() if value <= 0
         ]
         if invalid_anchor_values:
-            raise ValueError("fsle.reference_slope_anchor_scales values must be positive.")
+            raise ValueError(
+                "fsle.reference_slope_anchor_scales values must be positive."
+            )
 
 
 @dataclass(frozen=True)
@@ -265,7 +339,11 @@ class ExponentMapPlotConfig:
     def __post_init__(self) -> None:
         _validate_plot_limits("exponent_maps.plot", self.vmin, self.vmax)
 
-        if self.min_mask_value is not None and self.log_scale and self.min_mask_value <= 0:
+        if (
+            self.min_mask_value is not None
+            and self.log_scale
+            and self.min_mask_value <= 0
+        ):
             raise ValueError(
                 "exponent_maps plot min_mask_value must be > 0 when log_scale is enabled."
             )
@@ -280,7 +358,9 @@ class ExponentMapsFSLEConfig:
 
     def __post_init__(self) -> None:
         if any(scale <= 0 for scale in self.scales_km):
-            raise ValueError("exponent_maps.fsle.scales_km must contain only positive values.")
+            raise ValueError(
+                "exponent_maps.fsle.scales_km must contain only positive values."
+            )
 
 
 @dataclass(frozen=True)
@@ -294,7 +374,9 @@ class ExponentMapsFTLEConfig:
 
     def __post_init__(self) -> None:
         if any(scale <= 0 for scale in self.scales_days):
-            raise ValueError("exponent_maps.ftle.scales_days must contain only positive values.")
+            raise ValueError(
+                "exponent_maps.ftle.scales_days must contain only positive values."
+            )
 
         if self.sampling_mode not in {"last_before_or_at", "max_within_window"}:
             raise ValueError(
@@ -317,13 +399,19 @@ class ExponentMapsConfig:
             )
 
         if self.fsle.enabled and len(self.fsle.scales_km) == 0:
-            raise ValueError("exponent_maps.fsle.scales_km cannot be empty when FSLE is enabled.")
+            raise ValueError(
+                "exponent_maps.fsle.scales_km cannot be empty when FSLE is enabled."
+            )
 
         if self.ftle.enabled and len(self.ftle.scales_days) == 0:
-            raise ValueError("exponent_maps.ftle.scales_days cannot be empty when FTLE is enabled.")
+            raise ValueError(
+                "exponent_maps.ftle.scales_days cannot be empty when FTLE is enabled."
+            )
 
         if not self.fsle.enabled and not self.ftle.enabled:
-            raise ValueError("At least one of exponent_maps.fsle or exponent_maps.ftle must be enabled.")
+            raise ValueError(
+                "At least one of exponent_maps.fsle or exponent_maps.ftle must be enabled."
+            )
 
 
 @dataclass(frozen=True)
@@ -334,14 +422,18 @@ class TrajectoriesConfig:
     show_end: bool = True
     alpha: float = 0.7
     plot_color_by: str | None = None  # None = auto (group_member if present)
-    plot_cmap: str | None = None  # None = auto (viridis for numeric, tab10/20/hsv for categorical)
+    plot_cmap: str | None = (
+        None  # None = auto (viridis for numeric, tab10/20/hsv for categorical)
+    )
     plot_cmap_mode: str = "auto"  # "auto" | "categorical" | "numeric"
 
     animate: bool = False
     animation_fps: int = 8
     animation_every_n: int = 1
     animation_color_by: str = "group_member"
-    animation_cmap: str | None = None  # None = auto (viridis for numeric, tab10/20/hsv for categorical)
+    animation_cmap: str | None = (
+        None  # None = auto (viridis for numeric, tab10/20/hsv for categorical)
+    )
     animation_cmap_mode: str = "auto"  # "auto" | "categorical" | "numeric"
     animation_vmin: float | None = None
     animation_vmax: float | None = None
@@ -420,7 +512,13 @@ class TransitionProbabilityConfig:
         if self.time_step_stride < 1:
             raise ValueError("transition_probability.time_step_stride must be >= 1.")
 
-        if self.how_many not in {"first", "last", "all", "priority_min", "priority_max"}:
+        if self.how_many not in {
+            "first",
+            "last",
+            "all",
+            "priority_min",
+            "priority_max",
+        }:
             raise ValueError(
                 "transition_probability.how_many must be one of: "
                 "'first', 'last', 'all', 'priority_min', 'priority_max'."
@@ -441,7 +539,9 @@ class TransitionProbabilityConfig:
             raise ValueError("transition_probability.min_life_days must be >= 0.")
 
         if self.trimming_age_days is not None and self.trimming_age_days < 0:
-            raise ValueError("transition_probability.trimming_age_days must be >= 0 or null.")
+            raise ValueError(
+                "transition_probability.trimming_age_days must be >= 0 or null."
+            )
 
         if self.max_group_member is not None and self.max_group_member <= 0:
             raise ValueError(
@@ -498,7 +598,9 @@ class MeridionalCrossingSegmentationConfig:
             )
 
         if self.filter_window < 1:
-            raise ValueError("meridional_crossing.segmentation.filter_window must be >= 1.")
+            raise ValueError(
+                "meridional_crossing.segmentation.filter_window must be >= 1."
+            )
 
         if isinstance(self.direction_threshold_deg, str):
             if self.direction_threshold_deg != "auto":
@@ -631,7 +733,9 @@ class MeridionalExcursionGriddingConfig:
             raise ValueError("meridional_excursion.gridding.over cannot be empty.")
 
         valid_anchors = {"initial_position", "southmost_point", "northmost_point"}
-        invalid_anchors = [anchor for anchor in self.over if anchor not in valid_anchors]
+        invalid_anchors = [
+            anchor for anchor in self.over if anchor not in valid_anchors
+        ]
         if invalid_anchors:
             raise ValueError(
                 "meridional_excursion.gridding.over contains unsupported anchors: "
@@ -649,11 +753,15 @@ class MeridionalExcursionVariablePlotConfig:
     cbar_label: str | None = None
 
     def __post_init__(self) -> None:
-        _validate_plot_limits("meridional_excursion.plotting.variables", self.vmin, self.vmax)
+        _validate_plot_limits(
+            "meridional_excursion.plotting.variables", self.vmin, self.vmax
+        )
 
         if self.over is not None:
             valid_anchors = {"initial_position", "southmost_point", "northmost_point"}
-            invalid_anchors = [anchor for anchor in self.over if anchor not in valid_anchors]
+            invalid_anchors = [
+                anchor for anchor in self.over if anchor not in valid_anchors
+            ]
             if invalid_anchors:
                 raise ValueError(
                     "meridional_excursion.plotting.variables.*.over contains unsupported anchors: "
@@ -665,14 +773,18 @@ class MeridionalExcursionVariablePlotConfig:
 class MeridionalExcursionPlottingConfig:
     enabled: bool = True
     type: tuple[str, ...] = ("gridded",)
-    variables: dict[str, MeridionalExcursionVariablePlotConfig] = field(default_factory=dict)
+    variables: dict[str, MeridionalExcursionVariablePlotConfig] = field(
+        default_factory=dict
+    )
 
     def __post_init__(self) -> None:
         if len(self.type) == 0:
             raise ValueError("meridional_excursion.plotting.type cannot be empty.")
 
         valid_types = {"scatter", "gridded"}
-        invalid_types = [plot_type for plot_type in self.type if plot_type not in valid_types]
+        invalid_types = [
+            plot_type for plot_type in self.type if plot_type not in valid_types
+        ]
         if invalid_types:
             raise ValueError(
                 "meridional_excursion.plotting.type contains unsupported values: "
@@ -695,7 +807,9 @@ class MeridionalExcursionConfig:
 
     def __post_init__(self) -> None:
         if self.min_duration_days is not None and self.min_duration_days < 0:
-            raise ValueError("meridional_excursion.min_duration_days must be >= 0 or null.")
+            raise ValueError(
+                "meridional_excursion.min_duration_days must be >= 0 or null."
+            )
 
 
 @dataclass(frozen=True)
@@ -729,7 +843,9 @@ class GriddedTransitionMatrixPlottingConfig:
 
     def __post_init__(self) -> None:
         if not self.cmap.strip():
-            raise ValueError("gridded_transition_matrix.plotting.cmap must be non-empty.")
+            raise ValueError(
+                "gridded_transition_matrix.plotting.cmap must be non-empty."
+            )
 
 
 @dataclass(frozen=True)
@@ -764,6 +880,7 @@ class ReleaseConfig:
     Grid outputs are only produced when mode is 'region_grid' and continuous
     release is disabled.
     """
+
     mode: str = "region_grid"
     continuous: bool = False
 
@@ -812,11 +929,17 @@ class PostprocessConfig:
     exponent_maps: ExponentMapsConfig | None = None
     trajectories: TrajectoriesConfig = field(default_factory=TrajectoriesConfig)
     plotting: PlottingConfig = field(default_factory=PlottingConfig)
-    start_end_regions: StartEndRegionsConfig = field(default_factory=StartEndRegionsConfig)
-    transition_probability: TransitionProbabilityConfig = field(
-        default_factory=lambda: TransitionProbabilityConfig(region_labels=("sesc-mod", "sesc-sir"))
+    start_end_regions: StartEndRegionsConfig = field(
+        default_factory=StartEndRegionsConfig
     )
-    meridional_crossing: MeridionalCrossingConfig = field(default_factory=MeridionalCrossingConfig)
+    transition_probability: TransitionProbabilityConfig = field(
+        default_factory=lambda: TransitionProbabilityConfig(
+            region_labels=("sesc-mod", "sesc-sir")
+        )
+    )
+    meridional_crossing: MeridionalCrossingConfig = field(
+        default_factory=MeridionalCrossingConfig
+    )
     meridional_excursion: MeridionalExcursionConfig = field(
         default_factory=MeridionalExcursionConfig
     )

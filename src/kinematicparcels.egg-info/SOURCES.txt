@@ -16,6 +16,7 @@ src/kinematicparcels/postprocessing/analyses/cluster_strength.py
 src/kinematicparcels/postprocessing/analyses/density.py
 src/kinematicparcels/postprocessing/analyses/exponent_maps.py
 src/kinematicparcels/postprocessing/analyses/fsle.py
+src/kinematicparcels/postprocessing/analyses/gridded_transition_matrix.py
 src/kinematicparcels/postprocessing/analyses/meridional_crossing.py
 src/kinematicparcels/postprocessing/analyses/meridional_excursion.py
 src/kinematicparcels/postprocessing/analyses/start_end_regions.py
@@ -57,6 +58,7 @@ src/kinematicparcels/postprocessing/workflows/run_cluster_strength.py
 src/kinematicparcels/postprocessing/workflows/run_density.py
 src/kinematicparcels/postprocessing/workflows/run_exponent_maps.py
 src/kinematicparcels/postprocessing/workflows/run_fsle.py
+src/kinematicparcels/postprocessing/workflows/run_gridded_transition_matrix.py
 src/kinematicparcels/postprocessing/workflows/run_meridional_crossing.py
 src/kinematicparcels/postprocessing/workflows/run_meridional_excursion.py
 src/kinematicparcels/postprocessing/workflows/run_start_end_regions.py
@@ -85,6 +87,8 @@ src/kinematicparcels/tools/check_regions.py
 src/kinematicparcels/tools/couple_trajectories.py
 src/kinematicparcels/tools/drf_to_zarr.py
 src/kinematicparcels/tools/drifter_to_zarr.py
+src/kinematicparcels/tools/nemo_coordinates.py
+src/kinematicparcels/tools/nemo_snapshot.py
 src/kinematicparcels/tools/rafos_to_zarr.py
 src/kinematicparcels/tools/rtraj_to_zarr.py
 src/kinematicparcels/tools/trajectory_processing.py
@@ -112,6 +116,7 @@ tests/test_drf_to_zarr.py
 tests/test_drifter_to_zarr.py
 tests/test_exponent_maps.py
 tests/test_fsle.py
+tests/test_gridded_transition_matrix.py
 tests/test_gridding.py
 tests/test_grouped_classes.py
 tests/test_integration.py
@@ -119,6 +124,9 @@ tests/test_legacy_rtraj_to_zarr.py
 tests/test_lkm_basic.py
 tests/test_meridional_crossing.py
 tests/test_meridional_excursion.py
+tests/test_nemo_coordinates.py
+tests/test_nemo_fieldset.py
+tests/test_nemo_snapshot.py
 tests/test_parcels_api.py
 tests/test_plot_exponent_maps.py
 tests/test_plotting_colorbar.py

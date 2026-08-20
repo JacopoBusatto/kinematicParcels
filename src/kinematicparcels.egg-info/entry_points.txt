@@ -6,5 +6,7 @@ convert-drifter-to-zarr = kinematicparcels.tools.drifter_to_zarr:main
 convert-rafos-to-zarr = kinematicparcels.tools.rafos_to_zarr:main
 convert-rtraj-to-zarr = kinematicparcels.tools.rtraj_to_zarr:main
 couple-trajectories = kinematicparcels.tools.couple_trajectories:main
+extract-nemo-f-coordinates = kinematicparcels.tools.nemo_snapshot:coordinates_main
+extract-nemo-snapshot = kinematicparcels.tools.nemo_snapshot:main
 run-parcels-experiment = kinematicparcels.runner.run_experiment:main
 run-parcels-postprocessing = kinematicparcels.postprocessing.runner.cli:main

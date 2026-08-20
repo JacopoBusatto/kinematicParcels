@@ -43,3 +43,5 @@ convert-aoml-drifter-to-zarr = "kinematicparcels.tools.aoml_drifter_to_zarr:main
 convert-rafos-to-zarr = "kinematicparcels.tools.rafos_to_zarr:main"
 convert-drf-to-zarr = "kinematicparcels.tools.drf_to_zarr:main"
 couple-trajectories = "kinematicparcels.tools.couple_trajectories:main"
+extract-nemo-snapshot = "kinematicparcels.tools.nemo_snapshot:main"
+extract-nemo-f-coordinates = "kinematicparcels.tools.nemo_snapshot:coordinates_main"

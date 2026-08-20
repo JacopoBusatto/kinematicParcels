@@ -14,6 +14,7 @@ from ..plotting.projections import get_projection
 from ..plotting.masking import mask_values_below
 from ..plotting.colorbar import infer_colorbar_extend
 from .utils import (
+    add_numeric_progress_bar,
     add_time_progress_bar,
     build_animation_colormap,
     get_fixed_color_limits,
@@ -39,6 +40,9 @@ def animate_density(
     add_land: bool = True,
     add_coastlines: bool = True,
     add_gridlines: bool = True,
+    frame_dim: str = "time",
+    frame_label: str | None = None,
+    frame_units: str = "",
 ) -> Path:
     """
     Animate a time-dependent gridded density variable and save it as a GIF.
@@ -74,7 +78,7 @@ def animate_density(
 
     da = plot_ds[var_name]
 
-    required_dims = {"time", "lat", "lon"}
+    required_dims = {frame_dim, "lat", "lon"}
     if not required_dims.issubset(set(da.dims)):
         raise ValueError(
             f"Variable '{var_name}' must have dimensions including {required_dims}."
@@ -88,10 +92,10 @@ def animate_density(
     outpath = Path(outpath)
     outpath.parent.mkdir(parents=True, exist_ok=True)
 
-    all_times = ds["time"].values
-    time_indices = list(range(0, len(all_times), every_n))
-    times = all_times[time_indices]
-    if len(times) == 0:
+    all_frame_values = ds[frame_dim].values
+    frame_indices = list(range(0, len(all_frame_values), every_n))
+    frame_values = all_frame_values[frame_indices]
+    if len(frame_values) == 0:
         raise ValueError("Dataset contains no time steps to animate.")
 
     vmin, vmax = get_fixed_color_limits(
@@ -101,7 +105,7 @@ def animate_density(
         vmax=vmax,
     )
     colorbar_extend = infer_colorbar_extend(
-        da.isel(time=time_indices).values,
+        da.isel({frame_dim: frame_indices}).values,
         vmin=vmin,
         vmax=vmax,
     )
@@ -121,7 +125,7 @@ def animate_density(
         tmpdir = Path(tmpdir)
         frame_paths: list[Path] = []
 
-        for it, (ds_idx, time_value) in enumerate(zip(time_indices, times)):
+        for it, (ds_idx, frame_value) in enumerate(zip(frame_indices, frame_values)):
             fig = plt.figure(figsize=figsize)
             ax = plt.axes(projection=proj)
 
@@ -143,7 +147,7 @@ def animate_density(
                 gl.top_labels = False
                 gl.right_labels = False
 
-            frame = da.isel(time=ds_idx)
+            frame = da.isel({frame_dim: ds_idx})
 
             mesh = ax.pcolormesh(
                 ds["lon"].values,
@@ -170,17 +174,34 @@ def animate_density(
                 ax.set_title(var_name)
 
             if show_time_bar:
-                add_time_progress_bar(
-                    fig,
-                    current_time=time_value,
-                    time_min=times[0],
-                    time_max=times[-1],
-                )
+                if np.issubdtype(np.asarray(frame_values).dtype, np.datetime64):
+                    add_time_progress_bar(
+                        fig,
+                        current_time=frame_value,
+                        time_min=frame_values[0],
+                        time_max=frame_values[-1],
+                    )
+                else:
+                    add_numeric_progress_bar(
+                        fig,
+                        current_value=float(frame_value),
+                        value_min=float(frame_values[0]),
+                        value_max=float(frame_values[-1]),
+                        label=frame_label or frame_dim,
+                        units=frame_units,
+                    )
             else:
+                if np.issubdtype(np.asarray(frame_values).dtype, np.datetime64):
+                    frame_text = str(np.datetime_as_string(frame_value, unit="m"))
+                else:
+                    suffix = f" {frame_units}" if frame_units else ""
+                    frame_text = (
+                        f"{frame_label or frame_dim}={float(frame_value):.6g}{suffix}"
+                    )
                 ax.text(
                     0.5,
                     -0.06,
-                    str(np.datetime_as_string(time_value, unit="m")),
+                    frame_text,
                     transform=ax.transAxes,
                     ha="center",
                     va="top",

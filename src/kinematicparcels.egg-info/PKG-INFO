@@ -344,6 +344,83 @@ fieldset:
 
 The runner automatically builds a **CurvilinearZGrid** in Parcels.
 
+### Preparing a stationary NEMO snapshot
+
+For a stationary experiment, extract one matching record from separate NEMO U
+and V files and let Parcels extrapolate that singleton record in time. The
+extractor retains the time dimension with length one and verifies that the
+selected U and V timestamps represent the same instant.
+
+```powershell
+python -m kinematicparcels.tools.nemo_snapshot `
+  "C:/data/NEMO_RPN_1h_grid_U_2D.nc" `
+  "C:/data/NEMO_RPN_1h_grid_V_2D.nc" `
+  --output-dir "./fields/nemo_stationary" `
+  --time-index 0
+```
+
+The equivalent installed command is `extract-nemo-snapshot`. Use
+`--time-dim time_counter` if the time dimension cannot be detected from CF
+metadata. Existing outputs are protected unless `--overwrite` is supplied.
+Always check the reported `Selected time`: a forecast-cycle directory name
+does not necessarily equal the timestamp at index zero.
+
+On Windows, the extractor refuses OneDrive online-only placeholders by default:
+opening such a file may download the complete source before NetCDF can read one
+hyperslab. Run the extraction where the files are already local, or explicitly
+pass `--allow-cloud-download` only when that transfer is acceptable.
+
+Parcels' NEMO C-grid interpolation also needs the shared F-node coordinates,
+normally `glamf` and `gphif`, from the NEMO mesh file. Retain only those arrays
+instead of carrying the complete mesh into the experiment:
+
+```powershell
+python -m kinematicparcels.tools.nemo_coordinates `
+  "C:/data/KIT500_CONCEPTS_mesh_20201208.nc" `
+  --output "./fields/nemo_stationary/nemo_f_coordinates.nc" `
+  --allow-cloud-download
+```
+
+The equivalent installed command is `extract-nemo-f-coordinates`. As with the
+velocity extractor, omit `--allow-cloud-download` when the mesh is already
+local.
+
+Configure the resulting files with the dedicated NEMO loader:
+
+```yaml
+fieldset:
+  loader: nemo
+  files:
+    U: ./fields/nemo_stationary/NEMO_U_snapshot.nc
+    V: ./fields/nemo_stationary/NEMO_V_snapshot.nc
+    coordinates: ./fields/nemo_stationary/nemo_f_coordinates.nc
+  variables:
+    U: uos
+    V: vos
+  dimensions:
+    lon: glamf
+    lat: gphif
+    time: time_counter
+  mesh: spherical
+  allow_time_extrapolation: true
+  time_periodic: false
+  periodic_halo: false
+
+release:
+  filter_land: false
+
+simulation:
+  boundary_halo:
+    enabled: false
+```
+
+The current periodic-halo, boundary-halo, and release land-filter helpers are
+limited to regular 1-D grids and must remain disabled for this curvilinear
+loader. Configure the resulting one-record files with
+`allow_time_extrapolation: true` and `time_periodic: false`. This produces a
+genuinely steady velocity field; it does not reproduce tides or other temporal
+variability.
+
 ---
 
 # Longitude Convention Handling

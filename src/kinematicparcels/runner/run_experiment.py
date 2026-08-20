@@ -376,8 +376,153 @@ def _needs_periodic_wrap(cfg: dict) -> bool:
     return bool(cfg.get("fieldset", {}).get("periodic_halo", False))
 
 
+def _expand_input_files(file_spec, *, label: str) -> list[str]:
+    """Expand one path/glob or a list of them into a stable file list."""
+    if isinstance(file_spec, (str, Path)):
+        patterns = [str(file_spec)]
+    elif isinstance(file_spec, (list, tuple)) and file_spec:
+        patterns = [str(pattern) for pattern in file_spec]
+    else:
+        raise ValueError(f"fieldset.files.{label} must be a path/glob or a non-empty list")
+
+    files: list[str] = []
+    for pattern in patterns:
+        matches = sorted(glob(pattern))
+        if not matches:
+            raise FileNotFoundError(f"No {label} files found with pattern: {pattern}")
+        files.extend(matches)
+
+    # Keep the first occurrence when overlapping globs select the same file.
+    return list(dict.fromkeys(files))
+
+
+def _build_nemo_fieldset(fs_cfg: dict) -> tuple[FieldSet, dict[str, list[str]]]:
+    """Build a Parcels NEMO C-grid fieldset from separate U, V, and F-node files."""
+    files_cfg = fs_cfg.get("files")
+    if not isinstance(files_cfg, dict):
+        raise ValueError(
+            "fieldset.loader='nemo' requires fieldset.files with U, V, and coordinates entries"
+        )
+
+    missing_files = [name for name in ("U", "V", "coordinates") if name not in files_cfg]
+    if missing_files:
+        raise ValueError(
+            "fieldset.loader='nemo' is missing fieldset.files entries: "
+            + ", ".join(missing_files)
+        )
+
+    source_files = {
+        "U": _expand_input_files(files_cfg["U"], label="U"),
+        "V": _expand_input_files(files_cfg["V"], label="V"),
+        "coordinates": _expand_input_files(files_cfg["coordinates"], label="coordinates"),
+    }
+    if len(source_files["U"]) != len(source_files["V"]):
+        raise ValueError(
+            "fieldset.loader='nemo' requires the same number of U and V data files "
+            f"(found {len(source_files['U'])} U and {len(source_files['V'])} V)"
+        )
+    if len(source_files["coordinates"]) != 1:
+        raise ValueError(
+            "fieldset.loader='nemo' requires exactly one shared F-node coordinate file "
+            f"(found {len(source_files['coordinates'])})"
+        )
+
+    variables = fs_cfg["variables"]
+    missing_variables = [name for name in ("U", "V") if name not in variables]
+    if missing_variables:
+        raise ValueError(
+            "fieldset.loader='nemo' is missing fieldset.variables entries: "
+            + ", ".join(missing_variables)
+        )
+
+    dims_cfg = fs_cfg["dimensions"]
+    missing_dimensions = [name for name in ("lon", "lat", "time") if name not in dims_cfg]
+    if missing_dimensions:
+        raise ValueError(
+            "fieldset.loader='nemo' is missing fieldset.dimensions entries: "
+            + ", ".join(missing_dimensions)
+        )
+
+    coordinate_files = source_files["coordinates"]
+    filenames = {
+        "U": {
+            "lon": coordinate_files,
+            "lat": coordinate_files,
+            "data": source_files["U"],
+        },
+        "V": {
+            "lon": coordinate_files,
+            "lat": coordinate_files,
+            "data": source_files["V"],
+        },
+    }
+    dimensions = {
+        "lon": dims_cfg["lon"],
+        "lat": dims_cfg["lat"],
+        "time": dims_cfg["time"],
+    }
+    if "depth" in dims_cfg:
+        dimensions["depth"] = dims_cfg["depth"]
+
+    print(
+        "Building NEMO C-grid fieldset from "
+        f"{len(source_files['U'])} U file(s), {len(source_files['V'])} V file(s), "
+        f"and {len(coordinate_files)} coordinate file(s)"
+    )
+
+    fieldset = FieldSet.from_nemo(
+        filenames=filenames,
+        variables=variables,
+        dimensions=dimensions,
+        mesh=fs_cfg.get("mesh", "spherical"),
+        allow_time_extrapolation=fs_cfg.get("allow_time_extrapolation"),
+        time_periodic=fs_cfg.get("time_periodic", False),
+        chunksize=fs_cfg.get("chunksize"),
+    )
+    return fieldset, source_files
+
+
 def build_fieldset(cfg: dict) -> FieldSet:
     fs_cfg = cfg["fieldset"]
+
+    loader = str(fs_cfg.get("loader", "netcdf")).strip().lower()
+    if loader not in {"netcdf", "nemo"}:
+        raise ValueError(
+            f"Unsupported fieldset.loader: {loader!r}. Expected 'netcdf' or 'nemo'."
+        )
+
+    if loader == "nemo":
+        if bool(fs_cfg.get("periodic_halo", False)):
+            raise ValueError(
+                "fieldset.periodic_halo is not currently supported with loader='nemo' "
+                "because NEMO uses a 2-D curvilinear grid"
+            )
+        if bool(cfg.get("release", {}).get("filter_land", False)):
+            raise ValueError(
+                "release.filter_land is not currently supported with loader='nemo'; "
+                "set it to false"
+            )
+        if _is_boundary_halo_enabled(cfg):
+            raise ValueError(
+                "simulation.boundary_halo.enabled must be false with loader='nemo' "
+                "because the current boundary guard supports only 1-D grids"
+            )
+
+        fieldset, source_files = _build_nemo_fieldset(fs_cfg)
+        variables = fs_cfg["variables"]
+        dims_cfg = fs_cfg["dimensions"]
+
+        _apply_periodic_halo(fieldset, cfg)
+
+        # Cache source metadata for release-time ocean/land filtering.
+        fieldset._kp_source_files = source_files
+        fieldset._kp_variables = variables.copy()
+        fieldset._kp_dimensions = dims_cfg.copy()
+
+        _attach_boundary_halo_constants(fieldset, cfg)
+
+        print(fieldset)
+        return fieldset
 
     files = sorted(glob(fs_cfg["file_pattern"]))
     if len(files) == 0:

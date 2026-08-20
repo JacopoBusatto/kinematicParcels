@@ -48,6 +48,7 @@ plotting:
   # axis_tick_fontsize: 10
 
 cluster_strength:
+  mode: release  # release | time | age
   scale_km: 5.0
   distance: haversine  # haversine | euclidean
   cutoff_factor: 4.0
@@ -68,6 +69,9 @@ cluster_strength:
 
   snapshots:
     enabled: false
+    # Use fixed_times in time mode; use fixed_age_days in age/release mode.
+    fixed_times: null
+    time_tolerance_hours: null
     fixed_age_days: null
     age_tolerance_days: null
     vmin: null

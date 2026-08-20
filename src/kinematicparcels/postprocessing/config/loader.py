@@ -261,7 +261,10 @@ def _parse_cleaning(section: dict[str, Any] | None) -> CleaningConfig:
         "cleaning.stagnant_tol",
     )
     stagnant_min_consecutive_raw = section.get("stagnant_min_consecutive", 2)
-    if not isinstance(stagnant_min_consecutive_raw, int) or stagnant_min_consecutive_raw < 1:
+    if (
+        not isinstance(stagnant_min_consecutive_raw, int)
+        or stagnant_min_consecutive_raw < 1
+    ):
         raise ValueError("'cleaning.stagnant_min_consecutive' must be an integer >= 1.")
 
     return CleaningConfig(
@@ -327,7 +330,9 @@ def _parse_density(section: dict[str, Any] | None) -> DensityConfig:
 
     normalize_active = bool(section.get("normalize_active", True))
     normalize_total = bool(section.get("normalize_total", True))
-    fill_ever_active_empty_with_zero = bool(section.get("fill_ever_active_empty_with_zero", False))
+    fill_ever_active_empty_with_zero = bool(
+        section.get("fill_ever_active_empty_with_zero", False)
+    )
 
     group_member_raw = section.get("group_member", None)
     if group_member_raw is None:
@@ -420,7 +425,9 @@ def _parse_timestep_snaps(value: Any, name: str) -> int | tuple[int, ...] | None
     return tuple(parsed)
 
 
-def _parse_optional_number_or_list(value: Any, name: str) -> float | tuple[float, ...] | None:
+def _parse_optional_number_or_list(
+    value: Any, name: str
+) -> float | tuple[float, ...] | None:
     if value is None:
         return None
 
@@ -441,7 +448,29 @@ def _parse_optional_number_or_list(value: Any, name: str) -> float | tuple[float
     return tuple(parsed)
 
 
-def _parse_cluster_strength_animation(section: dict[str, Any] | None) -> ClusterStrengthAnimationConfig:
+def _parse_optional_string_or_list(
+    value: Any, name: str
+) -> str | tuple[str, ...] | None:
+    if value is None:
+        return None
+    if isinstance(value, str):
+        if not value.strip():
+            raise ValueError(f"'{name}' must not be empty.")
+        return value
+    if not isinstance(value, list):
+        raise ValueError(f"'{name}' must be a string, list of strings, or null.")
+
+    parsed: list[str] = []
+    for i, item in enumerate(value):
+        if not isinstance(item, str) or not item.strip():
+            raise ValueError(f"'{name}[{i}]' must be a non-empty string.")
+        parsed.append(item)
+    return tuple(parsed)
+
+
+def _parse_cluster_strength_animation(
+    section: dict[str, Any] | None
+) -> ClusterStrengthAnimationConfig:
     if section is None:
         return ClusterStrengthAnimationConfig()
 
@@ -484,7 +513,9 @@ def _parse_cluster_strength_animation(section: dict[str, Any] | None) -> Cluster
     )
 
 
-def _parse_cluster_strength_snapshots(section: dict[str, Any] | None) -> ClusterStrengthSnapshotsConfig:
+def _parse_cluster_strength_snapshots(
+    section: dict[str, Any] | None
+) -> ClusterStrengthSnapshotsConfig:
     if section is None:
         return ClusterStrengthSnapshotsConfig()
 
@@ -495,9 +526,17 @@ def _parse_cluster_strength_snapshots(section: dict[str, Any] | None) -> Cluster
             section.get("fixed_age_days", None),
             "cluster_strength.snapshots.fixed_age_days",
         ),
+        fixed_times=_parse_optional_string_or_list(
+            section.get("fixed_times", None),
+            "cluster_strength.snapshots.fixed_times",
+        ),
         age_tolerance_days=_parse_optional_number(
             section.get("age_tolerance_days", None),
             "cluster_strength.snapshots.age_tolerance_days",
+        ),
+        time_tolerance_hours=_parse_optional_number(
+            section.get("time_tolerance_hours", None),
+            "cluster_strength.snapshots.time_tolerance_hours",
         ),
         vmin=_parse_optional_number(
             section.get("vmin", None),
@@ -518,7 +557,9 @@ def _parse_cluster_strength_snapshots(section: dict[str, Any] | None) -> Cluster
     )
 
 
-def _parse_cluster_strength(section: dict[str, Any] | None) -> ClusterStrengthConfig | None:
+def _parse_cluster_strength(
+    section: dict[str, Any] | None
+) -> ClusterStrengthConfig | None:
     """
     Parse the optional cluster_strength section.
     """
@@ -540,11 +581,17 @@ def _parse_cluster_strength(section: dict[str, Any] | None) -> ClusterStrengthCo
         max_group_member = None
     else:
         if not isinstance(max_group_member_raw, int) or max_group_member_raw <= 0:
-            raise ValueError("'cluster_strength.max_group_member' must be an integer > 0 or null.")
+            raise ValueError(
+                "'cluster_strength.max_group_member' must be an integer > 0 or null."
+            )
         max_group_member = max_group_member_raw
 
     return ClusterStrengthConfig(
         scale_km=scale_km,
+        mode=_require_nonempty_string(
+            section.get("mode", "release"),
+            "cluster_strength.mode",
+        ),
         distance=distance,
         cutoff_factor=_require_number(
             section.get("cutoff_factor", 4.0),
@@ -630,7 +677,7 @@ def _parse_fsle(section: dict[str, Any] | None) -> FSLEConfig:
     min_scale = _require_number(section.get("min_scale", 5.0e-3), "fsle.min_scale")
     max_scale = _require_number(section.get("max_scale", 1.0e4), "fsle.max_scale")
     rho_increment = _require_number(
-        section.get("rho_increment", 2 ** 0.5),
+        section.get("rho_increment", 2**0.5),
         "fsle.rho_increment",
     )
     save_crossing_events = bool(section.get("save_crossing_events", False))
@@ -650,10 +697,14 @@ def _parse_fsle(section: dict[str, Any] | None) -> FSLEConfig:
 
     reference_anchor_scales_raw = section.get("reference_slope_anchor_scales", {})
     if not isinstance(reference_anchor_scales_raw, dict):
-        raise ValueError("'fsle.reference_slope_anchor_scales' must be a mapping/dictionary.")
+        raise ValueError(
+            "'fsle.reference_slope_anchor_scales' must be a mapping/dictionary."
+        )
     reference_slope_anchor_scales: dict[str, float] = {}
     for raw_key, raw_value in reference_anchor_scales_raw.items():
-        key = _require_nonempty_string(raw_key, "fsle.reference_slope_anchor_scales key")
+        key = _require_nonempty_string(
+            raw_key, "fsle.reference_slope_anchor_scales key"
+        )
         reference_slope_anchor_scales[key] = _require_number(
             raw_value,
             f"fsle.reference_slope_anchor_scales[{key}]",
@@ -741,7 +792,9 @@ def _parse_exponent_maps(section: dict[str, Any] | None) -> ExponentMapsConfig |
         "exponent_maps.distance",
     )
     infer_grid_from_start = bool(section.get("infer_grid_from_start", True))
-    require_grouped_regular_grid = bool(section.get("require_grouped_regular_grid", True))
+    require_grouped_regular_grid = bool(
+        section.get("require_grouped_regular_grid", True)
+    )
 
     fsle_section = _require_dict(section.get("fsle", {}), "exponent_maps.fsle")
     ftle_section = _require_dict(section.get("ftle", {}), "exponent_maps.ftle")
@@ -807,7 +860,9 @@ def _parse_trajectories(section: dict[str, Any] | None) -> TrajectoriesConfig:
     if plot_color_by_raw is None:
         plot_color_by = None
     else:
-        plot_color_by = _require_nonempty_string(plot_color_by_raw, "trajectories.plot_color_by")
+        plot_color_by = _require_nonempty_string(
+            plot_color_by_raw, "trajectories.plot_color_by"
+        )
 
     plot_cmap_raw = section.get("plot_cmap", None)
     if plot_cmap_raw is None:
@@ -847,7 +902,9 @@ def _parse_trajectories(section: dict[str, Any] | None) -> TrajectoriesConfig:
     if animation_cmap_raw is None:
         animation_cmap = None
     else:
-        animation_cmap = _require_nonempty_string(animation_cmap_raw, "trajectories.animation_cmap")
+        animation_cmap = _require_nonempty_string(
+            animation_cmap_raw, "trajectories.animation_cmap"
+        )
 
     animation_cmap_mode = str(section.get("animation_cmap_mode", "auto"))
     if animation_cmap_mode not in ("auto", "categorical", "numeric"):
@@ -886,7 +943,9 @@ def _parse_trajectories(section: dict[str, Any] | None) -> TrajectoriesConfig:
         trail_steps = None
     else:
         if not isinstance(trail_steps_raw, int) or trail_steps_raw <= 0:
-            raise ValueError("'trajectories.trail_steps' must be an integer > 0 or null.")
+            raise ValueError(
+                "'trajectories.trail_steps' must be an integer > 0 or null."
+            )
         trail_steps = trail_steps_raw
 
     max_group_member_raw = section.get("max_group_member", None)
@@ -894,7 +953,9 @@ def _parse_trajectories(section: dict[str, Any] | None) -> TrajectoriesConfig:
         max_group_member = None
     else:
         if not isinstance(max_group_member_raw, int) or max_group_member_raw <= 0:
-            raise ValueError("'trajectories.max_group_member' must be an integer > 0 or null.")
+            raise ValueError(
+                "'trajectories.max_group_member' must be an integer > 0 or null."
+            )
         max_group_member = max_group_member_raw
 
     return TrajectoriesConfig(
@@ -994,7 +1055,9 @@ def _parse_start_end_regions(section: dict[str, Any] | None) -> StartEndRegionsC
         region_labels = None
     else:
         if not isinstance(region_labels_raw, list):
-            raise ValueError("'start_end_regions.region_labels' must be a list or null.")
+            raise ValueError(
+                "'start_end_regions.region_labels' must be a list or null."
+            )
         parsed_labels: list[str] = []
         for i, item in enumerate(region_labels_raw):
             if not isinstance(item, str) or not item.strip():
@@ -1039,31 +1102,51 @@ def _parse_start_end_regions(section: dict[str, Any] | None) -> StartEndRegionsC
     if connectivity_alpha_raw is None:
         connectivity_alpha = None
     else:
-        connectivity_alpha = _require_number(connectivity_alpha_raw, "start_end_regions.connectivity_alpha")
+        connectivity_alpha = _require_number(
+            connectivity_alpha_raw, "start_end_regions.connectivity_alpha"
+        )
         if not (0.0 <= connectivity_alpha <= 1.0):
-            raise ValueError("'start_end_regions.connectivity_alpha' must be between 0 and 1 or null.")
+            raise ValueError(
+                "'start_end_regions.connectivity_alpha' must be between 0 and 1 or null."
+            )
 
-    connectivity_max_group_member_raw = section.get("connectivity_max_group_member", None)
+    connectivity_max_group_member_raw = section.get(
+        "connectivity_max_group_member", None
+    )
     if connectivity_max_group_member_raw is None:
         connectivity_max_group_member = None
     else:
-        if not isinstance(connectivity_max_group_member_raw, int) or connectivity_max_group_member_raw <= 0:
-            raise ValueError("'start_end_regions.connectivity_max_group_member' must be an integer > 0 or null.")
+        if (
+            not isinstance(connectivity_max_group_member_raw, int)
+            or connectivity_max_group_member_raw <= 0
+        ):
+            raise ValueError(
+                "'start_end_regions.connectivity_max_group_member' must be an integer > 0 or null."
+            )
         connectivity_max_group_member = connectivity_max_group_member_raw
 
     connectivity_animation_fps_raw = section.get("connectivity_animation_fps", None)
     if connectivity_animation_fps_raw is None:
         connectivity_animation_fps = None
     else:
-        if not isinstance(connectivity_animation_fps_raw, int) or connectivity_animation_fps_raw <= 0:
-            raise ValueError("'start_end_regions.connectivity_animation_fps' must be an integer > 0 or null.")
+        if (
+            not isinstance(connectivity_animation_fps_raw, int)
+            or connectivity_animation_fps_raw <= 0
+        ):
+            raise ValueError(
+                "'start_end_regions.connectivity_animation_fps' must be an integer > 0 or null."
+            )
         connectivity_animation_fps = connectivity_animation_fps_raw
 
-    connectivity_animation_show_tracer_raw = section.get("connectivity_animation_show_tracer", None)
+    connectivity_animation_show_tracer_raw = section.get(
+        "connectivity_animation_show_tracer", None
+    )
     if connectivity_animation_show_tracer_raw is None:
         connectivity_animation_show_tracer = None
     else:
-        connectivity_animation_show_tracer = bool(connectivity_animation_show_tracer_raw)
+        connectivity_animation_show_tracer = bool(
+            connectivity_animation_show_tracer_raw
+        )
 
     connectivity_trail_raw = section.get("connectivity_trail", None)
     if connectivity_trail_raw is None:
@@ -1075,8 +1158,13 @@ def _parse_start_end_regions(section: dict[str, Any] | None) -> StartEndRegionsC
     if connectivity_trail_steps_raw is None:
         connectivity_trail_steps = None
     else:
-        if not isinstance(connectivity_trail_steps_raw, int) or connectivity_trail_steps_raw <= 0:
-            raise ValueError("'start_end_regions.connectivity_trail_steps' must be an integer > 0 or null.")
+        if (
+            not isinstance(connectivity_trail_steps_raw, int)
+            or connectivity_trail_steps_raw <= 0
+        ):
+            raise ValueError(
+                "'start_end_regions.connectivity_trail_steps' must be an integer > 0 or null."
+            )
         connectivity_trail_steps = connectivity_trail_steps_raw
 
     discrete_cmap_raw = section.get("discrete_cmap", None)
@@ -1105,7 +1193,9 @@ def _parse_start_end_regions(section: dict[str, Any] | None) -> StartEndRegionsC
         priority_level = None
     else:
         if not isinstance(priority_level_raw, int):
-            raise ValueError("'start_end_regions.priority_level' must be an integer or null.")
+            raise ValueError(
+                "'start_end_regions.priority_level' must be an integer or null."
+            )
         priority_level = priority_level_raw
 
     return StartEndRegionsConfig(
@@ -1136,7 +1226,9 @@ def _parse_start_end_regions(section: dict[str, Any] | None) -> StartEndRegionsC
     )
 
 
-def _parse_transition_probability(section: dict[str, Any] | None) -> TransitionProbabilityConfig:
+def _parse_transition_probability(
+    section: dict[str, Any] | None
+) -> TransitionProbabilityConfig:
     if section is None:
         return TransitionProbabilityConfig(region_labels=("sesc-mod", "sesc-sir"))
 
@@ -1144,7 +1236,9 @@ def _parse_transition_probability(section: dict[str, Any] | None) -> TransitionP
 
     region_labels_raw = section.get("region_labels", None)
     if not isinstance(region_labels_raw, list) or len(region_labels_raw) == 0:
-        raise ValueError("'transition_probability.region_labels' must be a non-empty list.")
+        raise ValueError(
+            "'transition_probability.region_labels' must be a non-empty list."
+        )
     region_labels = tuple(
         _require_nonempty_string(item, f"transition_probability.region_labels[{i}]")
         for i, item in enumerate(region_labels_raw)
@@ -1152,7 +1246,9 @@ def _parse_transition_probability(section: dict[str, Any] | None) -> TransitionP
 
     time_step_stride_raw = section.get("time_step_stride", 1)
     if not isinstance(time_step_stride_raw, int) or time_step_stride_raw < 1:
-        raise ValueError("'transition_probability.time_step_stride' must be an integer >= 1.")
+        raise ValueError(
+            "'transition_probability.time_step_stride' must be an integer >= 1."
+        )
 
     how_many = _require_nonempty_string(
         section.get("how_many", "priority_max"),
@@ -1163,7 +1259,9 @@ def _parse_transition_probability(section: dict[str, Any] | None) -> TransitionP
         priority_level = None
     else:
         if not isinstance(priority_level_raw, int):
-            raise ValueError("'transition_probability.priority_level' must be an integer or null.")
+            raise ValueError(
+                "'transition_probability.priority_level' must be an integer or null."
+            )
         priority_level = priority_level_raw
 
     priority_mode = _require_nonempty_string(
@@ -1199,7 +1297,9 @@ def _parse_transition_probability(section: dict[str, Any] | None) -> TransitionP
     if plotting_section is None:
         plotting = TransitionProbabilityConfig.PlottingConfig()
     else:
-        plotting_section = _require_dict(plotting_section, "transition_probability.plotting")
+        plotting_section = _require_dict(
+            plotting_section, "transition_probability.plotting"
+        )
         colormap_raw = plotting_section.get("colormap", None)
         if colormap_raw is None:
             colormap = None
@@ -1240,7 +1340,9 @@ def _parse_transition_probability(section: dict[str, Any] | None) -> TransitionP
     )
 
 
-def _parse_meridional_crossing(section: dict[str, Any] | None) -> MeridionalCrossingConfig:
+def _parse_meridional_crossing(
+    section: dict[str, Any] | None
+) -> MeridionalCrossingConfig:
     """
     Parse the optional meridional_crossing section.
     """
@@ -1272,7 +1374,9 @@ def _parse_meridional_crossing(section: dict[str, Any] | None) -> MeridionalCros
                 "'meridional_crossing.segmentation.filter_window' must be an integer >= 1."
             )
 
-        direction_threshold_raw = segmentation_section.get("direction_threshold_deg", "auto")
+        direction_threshold_raw = segmentation_section.get(
+            "direction_threshold_deg", "auto"
+        )
         if isinstance(direction_threshold_raw, str):
             direction_threshold_deg: float | str = _require_nonempty_string(
                 direction_threshold_raw,
@@ -1322,7 +1426,9 @@ def _parse_meridional_crossing(section: dict[str, Any] | None) -> MeridionalCros
     if crossing_section is None:
         crossing = MeridionalCrossingCrossingConfig()
     else:
-        crossing_section = _require_dict(crossing_section, "meridional_crossing.crossing")
+        crossing_section = _require_dict(
+            crossing_section, "meridional_crossing.crossing"
+        )
         crossing_latitude_reference = _require_nonempty_string(
             crossing_section.get("crossing_latitude_reference", "center"),
             "meridional_crossing.crossing.crossing_latitude_reference",
@@ -1357,7 +1463,9 @@ def _parse_meridional_crossing(section: dict[str, Any] | None) -> MeridionalCros
             ),
         )
     else:
-        plotting_section = _require_dict(plotting_section, "meridional_crossing.plotting")
+        plotting_section = _require_dict(
+            plotting_section, "meridional_crossing.plotting"
+        )
         probability_section = plotting_section.get("probability", None)
         if probability_section is None:
             probability = MeridionalCrossingMapPlottingConfig(
@@ -1392,7 +1500,9 @@ def _parse_meridional_crossing(section: dict[str, Any] | None) -> MeridionalCros
                 enabled=bool(plotting_section.get("show_counts", False)),
             )
         else:
-            count_section = _require_dict(count_section, "meridional_crossing.plotting.count")
+            count_section = _require_dict(
+                count_section, "meridional_crossing.plotting.count"
+            )
             count = MeridionalCrossingMapPlottingConfig(
                 enabled=bool(
                     count_section.get(
@@ -1425,7 +1535,9 @@ def _parse_meridional_crossing(section: dict[str, Any] | None) -> MeridionalCros
     )
 
 
-def _parse_meridional_excursion(section: dict[str, Any] | None) -> MeridionalExcursionConfig:
+def _parse_meridional_excursion(
+    section: dict[str, Any] | None
+) -> MeridionalExcursionConfig:
     """
     Parse the optional meridional_excursion section.
     """
@@ -1455,7 +1567,9 @@ def _parse_meridional_excursion(section: dict[str, Any] | None) -> MeridionalExc
     if gridding_section is None:
         gridding = MeridionalExcursionGriddingConfig()
     else:
-        gridding_section = _require_dict(gridding_section, "meridional_excursion.gridding")
+        gridding_section = _require_dict(
+            gridding_section, "meridional_excursion.gridding"
+        )
         merge = _require_nonempty_string(
             gridding_section.get("merge", "mean"),
             "meridional_excursion.gridding.merge",
@@ -1484,7 +1598,9 @@ def _parse_meridional_excursion(section: dict[str, Any] | None) -> MeridionalExc
     if plotting_section is None:
         plotting = MeridionalExcursionPlottingConfig()
     else:
-        plotting_section = _require_dict(plotting_section, "meridional_excursion.plotting")
+        plotting_section = _require_dict(
+            plotting_section, "meridional_excursion.plotting"
+        )
         plot_types = _parse_string_tuple(
             plotting_section.get("type", ["gridded"]),
             "meridional_excursion.plotting.type",
@@ -1507,24 +1623,40 @@ def _parse_meridional_excursion(section: dict[str, Any] | None) -> MeridionalExc
                     f"meridional_excursion.plotting.variables.{variable_key}",
                 )
                 over_raw = variable_section.get("over", None)
-                over = None if over_raw is None else _parse_string_tuple(
-                    over_raw,
-                    f"meridional_excursion.plotting.variables.{variable_key}.over",
+                over = (
+                    None
+                    if over_raw is None
+                    else _parse_string_tuple(
+                        over_raw,
+                        f"meridional_excursion.plotting.variables.{variable_key}.over",
+                    )
                 )
                 cmap_raw = variable_section.get("cmap", None)
-                cmap = None if cmap_raw is None else _require_nonempty_string(
-                    cmap_raw,
-                    f"meridional_excursion.plotting.variables.{variable_key}.cmap",
+                cmap = (
+                    None
+                    if cmap_raw is None
+                    else _require_nonempty_string(
+                        cmap_raw,
+                        f"meridional_excursion.plotting.variables.{variable_key}.cmap",
+                    )
                 )
                 title_raw = variable_section.get("title", None)
-                title = None if title_raw is None else _require_nonempty_string(
-                    title_raw,
-                    f"meridional_excursion.plotting.variables.{variable_key}.title",
+                title = (
+                    None
+                    if title_raw is None
+                    else _require_nonempty_string(
+                        title_raw,
+                        f"meridional_excursion.plotting.variables.{variable_key}.title",
+                    )
                 )
                 cbar_label_raw = variable_section.get("cbar_label", None)
-                cbar_label = None if cbar_label_raw is None else _require_nonempty_string(
-                    cbar_label_raw,
-                    f"meridional_excursion.plotting.variables.{variable_key}.cbar_label",
+                cbar_label = (
+                    None
+                    if cbar_label_raw is None
+                    else _require_nonempty_string(
+                        cbar_label_raw,
+                        f"meridional_excursion.plotting.variables.{variable_key}.cbar_label",
+                    )
                 )
                 variable_configs[variable_key] = MeridionalExcursionVariablePlotConfig(
                     over=over,
@@ -1579,7 +1711,9 @@ def _parse_gridded_transition_matrix(
     if output_section is None:
         output = GriddedTransitionMatrixOutputConfig()
     else:
-        output_section = _require_dict(output_section, "gridded_transition_matrix.output")
+        output_section = _require_dict(
+            output_section, "gridded_transition_matrix.output"
+        )
         output = GriddedTransitionMatrixOutputConfig(
             save_table=bool(output_section.get("save_table", True)),
             save_netcdf=bool(output_section.get("save_netcdf", True)),
@@ -1590,7 +1724,9 @@ def _parse_gridded_transition_matrix(
     if plotting_section is None:
         plotting = GriddedTransitionMatrixPlottingConfig()
     else:
-        plotting_section = _require_dict(plotting_section, "gridded_transition_matrix.plotting")
+        plotting_section = _require_dict(
+            plotting_section, "gridded_transition_matrix.plotting"
+        )
         probability_section = plotting_section.get("probability", None)
         if probability_section is None:
             probability = GriddedTransitionMatrixMapPlottingConfig()
@@ -1660,7 +1796,9 @@ def load_postprocess_config(path: str | Path) -> PostprocessConfig:
     trajectories = _parse_trajectories(raw.get("trajectories"))
     plotting = _parse_plotting(raw.get("plotting"))
     start_end_regions = _parse_start_end_regions(raw.get("start_end_regions"))
-    transition_probability = _parse_transition_probability(raw.get("transition_probability"))
+    transition_probability = _parse_transition_probability(
+        raw.get("transition_probability")
+    )
     meridional_crossing = _parse_meridional_crossing(raw.get("meridional_crossing"))
     meridional_excursion = _parse_meridional_excursion(raw.get("meridional_excursion"))
     gridded_transition_matrix = _parse_gridded_transition_matrix(

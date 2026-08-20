@@ -1,0 +1,50 @@
+experiment:
+  name: ex10_nemo_stationary_2d
+  output_dir: ./test_output/examples
+
+fieldset:
+  loader: nemo
+  files:
+    U: ./fields/nemo_stationary/NEMO_RPN_1h_grid_U_2D_snapshot_t0000.nc
+    V: ./fields/nemo_stationary/NEMO_RPN_1h_grid_V_2D_snapshot_t0000.nc
+    coordinates: ./fields/nemo_stationary/nemo_f_coordinates.nc
+  variables:
+    U: uos
+    V: vos
+  dimensions:
+    lon: glamf
+    lat: gphif
+    time: time_counter
+  mesh: spherical
+  allow_time_extrapolation: true
+  time_periodic: false
+  periodic_halo: false
+
+release:
+  mode: point_list
+  points:
+    - {lon: -129.5589, lat: 52.6626}
+  filter_domain: true
+  filter_land: false
+
+  group:
+    size: 1
+
+  depth:
+    enabled: false
+    values: [0]
+
+simulation:
+  start_time: "2022-07-27 01:00"
+  runtime_days: 1.0
+  dt_hours: 0.1
+  outputdt_hours: 1.0
+  particle_type: scipy
+  boundary_halo:
+    enabled: false
+
+lkm:
+  enabled: false
+
+output:
+  zarr_name: ex10_nemo_stationary_2d.zarr
