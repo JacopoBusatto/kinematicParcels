@@ -1,0 +1,846 @@
+\RequirePackage{fix-cm}
+
+\documentclass[
+%  published,
+  draft
+]{agujournal2025}
+% \usepackage{natbib}
+\usepackage{subcaption}
+% \usepackage[colorlinks=true, allcolors=blue]{hyperref}
+\usepackage{silence}
+\WarningFilter{caption}{Unknown document class}
+
+\linenumbers
+
+\usepackage{amsmath}
+
+\begin{document}
+
+
+\journalname{Journal name}
+
+% Your title can be multiple lines long.
+\title{Barriers to meridional transport in the Southern Ocean}
+
+
+\authors{
+    Jacopo Busatto\affil{1}\thanks{},
+    Federico Falcini\affil{1},
+    Pierpaolo Falco\affil{3},
+    Guglielmo Lacorata\affil{1,2},
+    Enrico Zambianchi\affil{4},
+}
+	      
+
+% Repeat for all authors:	      
+\affiliation{1}{CNR ISMAR, Via del Fosso del Cavaliere 100, I-00133 Rome, Italy}
+\affiliation{2}{CETEMPS, University of L'Aquila, Via Vetoio, I-67100 L'Aquila, Italy}
+\affiliation{3}{Napoli}
+\affiliation{4}{Sapienza Geologia}
+\affiliation{*}{jacopobusatto@cnr.it}
+
+
+
+% Corresponding author. Do not prepend with ``SI Corresponding author: '' in published version.
+\authoraddr{%
+  % e.g., their full name, their department, their academic institution, their building, their City, State, Zip, Country. (theiremail\@ their institution)
+  Jacopo Busatto, jacopobusatto@cnr.it
+}
+
+
+
+\authorrunninghead{Ignored.} % Ignored.
+
+% Key points.  
+%   Takes three arguments.  Remember to specifiy them all, using {} for no item.
+%
+\keypoints{Parannanze}{Strifinzoli imporchettati}{Ripieno di quaglie}
+
+% Call after \authors.
+
+% Title running heads will be ignored, too:
+\titlerunninghead{Ignored.}
+
+% Key points was here
+
+\maketitle
+
+
+% Two options for abstracts: one with an abstract only and one with a plain language summary included.
+%
+%\begin{abstract}
+%    Abstract text body.
+%\end{abstract}
+
+
+\bigskip  % Remove; for demo purposes only.
+% OR:
+
+\begin{abstract}
+    Abstract text body with some more content.
+    %
+     \begin{plainlanguagesummary}
+%            Plain language summary text body with some more content.
+These balconies with these geraniums, this Testaccio this San Lorenzo, pieces of Rome looking at me, with this sauce with the bricks. A housewife with her parannanza comes to me with the bricks, and these pieces of Rome, this perfume, with these geraniums. Pieces of Rome walking around, pieces of Rome, pieces of Rome looking at me. A housewife with her parannanza comes to me with the bricks, and these pieces of Rome, this perfume, with these geraniums... 
+No, don't walk away ... stay with us with this lasagna filled of quails, these strifinzoli imporchettati, with this lamb filled of ricotta, filled of artichokes alla giud\'ia...
+     \end{plainlanguagesummary}
+     %
+     % Do not put more abstract text body here!
+\end{abstract}
+
+
+\section{Introduction}
+    \label{sec:introduction}
+
+    The Southern Ocean is a central component of the global climate system. By connecting the Atlantic, Indian, and Pacific Oceans and linking the surface ocean with the abyssal circulation, it regulates the global redistribution of heat, freshwater, carbon, oxygen, and nutrients \cite{art:rintoul2018,art:bennetts2024}. Its circulation contributes to the closure of the global overturning circulation through the transformation of deep waters into lighter Subantarctic Mode Water (SAMW) and Antarctic Intermediate Water, and through the production and export of dense Antarctic Bottom Water. These processes are controlled by the combined effects of wind forcing, surface buoyancy fluxes, mesoscale eddies, sea-ice formation and melting, and interactions between the ocean circulation and the complex Southern Ocean bathymetry.
+    
+    The dominant dynamical feature of the region is the Antarctic Circumpolar Current (ACC), the only major ocean current that flows continuously around the globe. The absence of continental barriers across the latitude band of Drake Passage permits a strong eastward circulation connecting the three major ocean basins. However, the ACC is not a single, zonally uniform current. Hydrographic observations traditionally identify the Subantarctic Front, the Polar Front, and the Southern Antarctic Circumpolar Current Front (SACCF), together with the northern and southern boundaries of the current \cite{art:orsi1995,art:belkin1996}. Satellite altimetry and high-resolution hydrographic observations have subsequently shown that these features consist of multiple jets and frontal filaments that merge, separate, and vary in intensity along their circumpolar paths \cite{art:sokolov2009}.
+
+    The fronts of the ACC separate water masses with different thermohaline properties and are commonly regarded as barriers to meridional transport. Nevertheless, these barriers are neither continuous nor impermeable. Their permeability varies strongly with longitude because the jets are deflected, compressed, split, and reorganized as they encounter mid-ocean ridges, plateaus, fracture zones, and continental margins. Topographically induced standing meanders and enhanced eddy activity can produce localized regions of intense cross-frontal exchange. Numerical particle experiments have shown that a large fraction of cross-front transport is concentrated downstream of a limited number of major bathymetric obstacles \cite{art:thompson2012}. More recently, \cite{art:denes2025} identified a circumpolar pattern of alternating poleward and equatorward transport associated with frontal meandering downstream of topography. These results imply that the transport-barrier properties of the ACC cannot be fully understood from a zonal-mean description alone. 
+    
+    Meridional exchange is also expected to depend on depth and direction. At the surface, the prevailing Southern Hemisphere westerlies drive a northward Ekman transport across the ACC, partly compensated by eddy-induced transport and the Southern Ocean overturning circulation. Below the surface layer, cross-frontal motion can arise from eddy stirring, topographically steered recirculation, isopycnal mixing, and localized overturning cells. Argo trajectories have provided evidence of systematic poleward motion across some ACC jet cores, consistent with jet-scale overturning circulations \cite{art:li2018}. Surface and subsurface platforms may therefore record different directional asymmetries and different characteristic timescales of cross-frontal transport. 
+    
+    The northern limit of the Southern Ocean circulation is similarly complex. The Subtropical Front (STF) has traditionally been defined as the water-mass boundary between warm, saline subtropical waters and cooler, fresher subantarctic waters \cite{art:orsi1995,art:belkin1996}. This surface water-mass boundary does not, however, always coincide with a continuous dynamical current. \cite{art:graham2013} distinguished the Dynamical Subtropical Front (DSTF), associated with strong currents and sea-surface-height gradients on the western side of each basin, from the Subtropical Frontal Zone (STFZ), which is characterized by multiple, seasonally varying sea-surface-temperature fronts farther east. The southern boundaries of the subtropical gyres and their connections through the Southern Hemisphere supergyre provide additional pathways between the subtropical circulation and the northern flank of the ACC \cite{art:ridgway2007,art:deboer2013}.
+
+    \paragraph{Regional circulation context}
+
+        The circumpolar circulation interacts with a number of basin-scale gyres, western boundary currents, return currents, and coastal currents. These regional systems provide the dynamical context for the zonal variations in meridional transport considered in this study:
+        
+        \begin{itemize}
+        
+            \item \textbf{Circumpolar and polar circulation}
+            \begin{itemize}
+        
+                \item \textbf{Antarctic Circumpolar Current:}
+                The ACC is the principal eastward-flowing connection among the Atlantic, Indian, and Pacific Oceans. Its transport is concentrated within multiple fronts and jets whose paths are strongly constrained by bathymetry.
+        
+                \item \textbf{Antarctic Slope and Coastal Currents:}
+                A predominantly westward circulation follows much of the Antarctic continental margin, opposite to the main direction of the ACC. These currents form part of the southern limbs of the Antarctic subpolar gyres and contribute to the redistribution of shelf and continental-slope waters.
+                
+                \item \textbf{Weddell Gyre:}
+                The cyclonic Weddell Gyre occupies a large part of the Atlantic sector south of the ACC. It connects the Weddell Sea continental margin with the open Southern Ocean and contributes to the recirculation and export of dense Antarctic waters
+                \cite{art:vernet2019}.
+        
+                \item \textbf{Ross Gyre:}
+                The Ross Gyre is a major cyclonic circulation in the Pacific sector. It regulates exchanges among the Ross Sea, the Antarctic continental margin, and the southern flank of the ACC \cite{art:dotto2018}.
+        
+            \end{itemize}
+        
+        
+            \item \textbf{Atlantic Ocean sector}
+            \begin{itemize}
+        
+                \item \textbf{Malvinas Current and Malvinas Return Current:}
+                The cold Malvinas Current carries subantarctic water northward from Drake Passage along the Patagonian continental slope. Near the Brazil--Malvinas Confluence, part of this flow turns offshore and  through the Malvinas Return Current, producing an energetic system of recirculation and cross-frontal exchange \cite{art:artana2021}.
+        
+                \item \textbf{Brazil Current and Brazil--Malvinas Confluence:}
+                The Brazil Current is the warm, poleward western boundary current of the South Atlantic subtropical gyre. Its encounter with the northward-flowing Malvinas Current generates intense fronts, meanders, and mesoscale eddies. Water leaving the confluence flows predominantly eastward as part of the South Atlantic Current \cite{art:goni2011,art:orueechevarria2019a}.
+                
+                \item \textbf{Benguela Current:}
+                The Benguela Current forms the broad equatorward eastern boundary circulation of the South Atlantic subtropical gyre. It closes the basin-scale circulation together with the Brazil and South Atlantic Currents and receives waters influenced by the Agulhas Leakage.
+        
+            \end{itemize}
+        
+        
+            \item \textbf{Indian Ocean sector}
+            \begin{itemize}
+        
+                \item \textbf{Agulhas Current:}
+                The Agulhas Current is the strong, warm, poleward western boundary current of the southern Indian Ocean. It transports tropical and subtropical waters toward the southern tip of Africa \cite{art:beal2011}.
+        
+                \item \textbf{Agulhas Retroflection and Return Current:}
+                South of Africa, most of the Agulhas Current separates from the continental margin and turns back toward the Indian Ocean in the Agulhas Retroflection. The principal eastward continuation forms the Agulhas Return Current, whose path interacts with the northern frontal system of the Southern Ocean.
+        
+                \item \textbf{Agulhas Leakage:}
+                A fraction of the Agulhas transport enters the South Atlantic through rings, eddies, filaments, and direct inflow. This leakage transfers warm and saline Indian Ocean water into the Atlantic and represents an important connection between the subtropical gyres of the two basins \cite{art:beal2011}.
+        
+                \item \textbf{Leeuwin Current:}
+                The Leeuwin Current is a warm, poleward eastern boundary current flowing along western and southwestern Australia. Its continuation contributes to the exchange between the eastern Indian Ocean, the Great Australian Bight, and the circulation north of the ACC \cite{art:waite2007}.
+        
+            \end{itemize}
+        
+        
+            \item \textbf{Pacific Ocean sector}
+            \begin{itemize}
+        
+                \item \textbf{East Australian Current and Tasman Front:}
+                The East Australian Current is the poleward western boundary current of the South Pacific subtropical gyre. After separating from the Australian coast, part of the flow turns eastward across the Tasman Sea along the Tasman Front, while another component continues southward as an energetic, eddy-rich extension \cite{art:oke2019}.
+        
+                \item \textbf{South Pacific Current:}
+                The South Pacific Current forms the broad eastward-flowing southern limb of the South Pacific subtropical gyre and provides a connection between the circulation near Australia and the eastern South Pacific.
+                
+                \item \textbf{Peru--Chile Current:}
+                The equatorward branch of the South Pacific circulation becomes the Peru--Chile, or Humboldt, Current, which transports relatively cold water northward along the western coast of South America. 
+                
+                \item \textbf{Cape Horn Current:}
+                The poleward branch follows southern Chile toward Cape Horn, transporting relatively fresh Pacific water into the Drake Passage and Scotia Sea region, where it interacts with the broader ACC system \cite{art:zheng2023}.
+        
+            \end{itemize}
+        
+        \end{itemize}
+        
+        Together, these circulation systems establish the principal regional pathways through which subtropical, subantarctic, and polar waters interact with the ACC. Western boundary currents connect the subtropical gyres to its northern flank, whereas subpolar gyres, coastal currents, frontal meanders, and topographically steered recirculations regulate transport on its southern side. They therefore provide the physical context for the zonally heterogeneous meridional exchanges examined below.
+
+    \paragraph{Lagrangian observations of Southern Ocean transport}
+
+        Lagrangian observations provide a direct description of ocean transport by following the motion of instruments carried by the flow. Trajectory statistics can be used to estimate mean currents, absolute and relative dispersion, lateral diffusivity, residence times, connectivity, and exchanges between geographical regions \cite{art:lacasce2008}. Surface drifters and Argo profiling floats provide two complementary realizations of this framework.
+
+        Drogued surface drifters approximately follow the upper-ocean circulation and resolve motions over timescales ranging from hours to years. Their trajectories include the effects of geostrophic currents, mesoscale eddies, near-surface ageostrophic motion, and wind-driven Ekman transport \cite{art:lumpkin2013, art:lumpkin2017, data:lumpkin2019}. Argo profiling floats \cite{art:davis1991, art:talley2019}, by contrast, spend most of each operating cycle drifting near their programmed parking depth, typically close to $1000$~m, before descending, profiling toward the surface, transmitting their data, and returning to depth. Consecutive surface positions can therefore be used to infer the integrated subsurface displacement over each cycle, although the observed displacement may also contain smaller contributions from ascent, descent, and surface drift \cite{art:ollitrault2013, art:roach2016, art:chamberlain2023}.
+
+        Surface-drifter observations have been used to estimate near-surface circulation and scale-dependent dispersion throughout the global ocean. In the Southern Ocean, \cite{art:vansebille2015} used deliberately deployed drifter pairs and historical chance pairs to characterize relative dispersion across the SACCF in the western Pacific sector. Their results demonstrated the contribution of both submesoscale and mesoscale motions to particle separation and highlighted the value of targeted Lagrangian deployments across frontal jets.
+
+        Subsurface floats deployed during the Diapycnal and Isopycnal Mixing Experiment in the Southern Ocean provided detailed observations of absolute and relative dispersion upstream of and through Drake Passage. \cite{art:lacasce2014} estimated meridional isopycnal diffusivity from the displacements of DIMES floats and identified intervals over which their spreading could be represented by a diffusive process. Subsequent analyses used these floats to investigate relative dispersion and the scale dependence of stirring within the ACC.
+
+        The development of the global Argo array extended these analyses to the circumpolar scale. \cite{art:roach2016} used Argo trajectories to estimate the distribution of cross-stream eddy diffusivity near $1000$~m and found strong longitudinal variability associated with the dynamical structure of the ACC. A global comparison between Argo floats and surface drifters showed that lateral mixing is generally stronger at the surface than at the nominal Argo parking depth, while both observing systems display enhanced mixing in energetic regions such as western boundary currents and the ACC \cite{art:roach2018}. Argo trajectories have also been used to identify poleward motion across individual frontal jets \cite{art:li2018} and coherent, weakly connected provinces in the deep global ocean \cite{art:abernathey2022}.
+
+        A complementary class of Lagrangian methods describes transport through transition matrices. In this representation, a geographical domain is divided into discrete states and observed trajectory displacements are used to estimate exchanges among them. Drifter-derived transition matrices have been applied to surface connectivity, interocean exchange, accumulation regions, and transport barriers, including the Agulhas system \cite{art:mcadam2018}. Argo-derived transition matrices have more recently been used to infer deep-ocean connectivity and to predict future float distributions for observing-system design \cite{art:abernathey2022,art:chamberlain2023}. These studies demonstrate that historical trajectories can provide a statistical description of transport pathways without requiring a prescribed numerical velocity field.
+
+    \paragraph{Motivation and objectives}
+        Despite these advances, surface and subsurface Lagrangian observations have most often been considered separately. Previous studies have primarily focused on mean circulation, absolute or relative diffusivity, coherent provinces, or the prediction of future platform positions. A direct circumpolar comparison of directional meridional crossings and source--target pathways observed at the surface and at Argo parking depth remains limited. In particular, it is not yet clear how the apparent permeability of the ACC depends jointly on crossing direction, longitude, depth, and observational timescale.
+        
+        In this study, we combine trajectories from drogued surface drifters and Argo profiling floats to investigate meridional transport throughout the Southern Ocean. The two datasets are analysed using a common geographical framework defined by the altimetry-derived SACCF and NB \cite{data:park2019,art:park2019}. The region south of the SACCF is defined as the inner Southern Ocean (iSO), the region between the SACCF and the NB as the ACC, and the region north of the NB as the outer Southern Ocean (oSO). Each region is further divided into five zonal sectors to resolve the longitudinal organization of the transport pathways. 
+        
+        Because these boundaries are derived from satellite-altimetry surface data, they represent the surface expression of the frontal system. Their positions may differ from the corresponding subsurface dynamical boundaries because the fronts can tilt, shift, or change structure with depth. Nevertheless, the same fixed boundaries are applied to both datasets to provide a common geographical reference. Transitions inferred from Argo trajectories should therefore be understood as crossings of surface-derived frontal boundaries, rather than crossings of independently diagnosed fronts at parking depth. 
+        
+        We first quantify absolute meridional dispersion from the ensemble moments of the displacement relative to the initial position. We then construct cardinal-sector transition maps to identify the starting cells from which net displacements are preferentially directed northward, eastward, southward, or westward. Finally, we calculate time-dependent transition fractions among the meridional regions and zonal sectors. Each source--target connection is summarized by its maximum transition fraction and by the age at which the target-region occupancy is largest. The latter is an ensemble peak age and is not interpreted as the first-passage or travel time of an individual trajectory.
+
+        The analysis reveals marked differences between surface and subsurface transport. Surface drifters exhibit a meridional diffusivity approximately $1.8$ times larger than that inferred from Argo trajectories. Their cross-frontal exchange is strongly asymmetric, with northward transitions from iSO to ACC and from ACC to oSO substantially stronger than the corresponding southward transitions. No complete southward transition from oSO to iSO is detected among the drifters. Argo floats show more numerous southward pathways, including rare complete crossings of the ACC, but their target-region fractions generally peak over much longer, often multiyear, periods.
+
+        Both datasets show that cross-frontal transport is strongly localized in longitude. Enhanced exchange is found downstream of major bathymetric features and in regions influenced by western boundary currents, retroflections, and basin-scale recirculations. Particularly prominent connections occur in the western Atlantic downstream of Drake Passage and within the Agulhas sector. These results show that the ACC acts as a direction-, depth-, and location-dependent transport barrier rather than a uniform circumpolar boundary. They also provide an observational basis for identifying regions where future drifter and Argo deployments could be targeted to sample common or rare cross-frontal pathways.
+
+\section{Data and Methods}
+    \label{sec:data_methods}
+    \subsection{Antarctic Circumpolar Current front definitions}
+        The regional partition of the Southern Ocean was based on the altimetry-derived ACC fronts provided by \cite{data:park2019} through the SEANOE repository. The dataset contains the climatological geographical positions of five circumpolar features: the Northern Boundary of the ACC (NB), the Subantarctic  (SAF), the Polar Front, the Southern Antarctic Circumpolar Current Front (SACCF), and the Southern Boundary of the ACC. Their positions were derived from the $1/8^{\circ}$-resolution CNES--CLS18 Mean Dynamic Topography, representative of the 1993--2012 reference period \cite{art:park2019}. The fronts correspond to selected circumpolar mean-dynamic-topography streamlines associated with the principal jets and boundaries of the ACC; in particular, the NB and SACCF correspond to the $0.30$~m and $-1.00$~m mean-dynamic-topography contours, respectively.
+        
+        In the present analysis, the SACCF and NB were used to define three meridionally ordered regions. Waters south of the SACCF were assigned to the iSO, waters between the SACCF and NB to the ACC region, and waters north of the NB to the oSO. These boundaries represent time-mean frontal positions and therefore provide a fixed circumpolar reference framework; they do not describe instantaneous frontal migrations, meanders, or mesoscale deformations.
+
+        Because these frontal positions are derived from satellite-altimetry surface data, they represent the surface expression of the ACC frontal system. The fronts may shift meridionally, tilt, or change structure with depth, and therefore may not coincide exactly with the dynamical boundaries experienced by ARGO floats at parking depth. Nevertheless, we apply the same fixed frontal definitions to both drifters and ARGO trajectories in order to provide a common geographical reference and permit a direct comparison between surface and subsurface transport. The ARGO results should therefore be interpreted as transitions across surface-derived frontal boundaries, rather than across independently identified subsurface fronts.
+    
+    \subsection{Lagrangian observational datasets}
+        We use two observational Lagrangian datasets to characterize transport and dispersion in the Southern Ocean: surface drifters from the NOAA/AOML Global Drifter Program and subsurface ARGO float trajectories.
+        
+        The drifter dataset was downloaded in NetCDF format from the AOML interpolated drifter archive and buoy data repository: \url{https://www.aoml.noaa.gov/phod/gdp/interpolated/data/all.php} and \url{https://www.aoml.noaa.gov/ftp/phod/buoydata/}. These trajectories represent near-surface motion \cite{data:lumpkin2019}. Only drogued trajectory portions were retained before the analysis, so that the resulting dataset is representative of the upper-ocean circulation.\\
+        
+        ARGO trajectories were first selected through the Euro-Argo data selection service (\url{https://dataselection.euro-argo.eu/}). The corresponding WMO identifiers were then used to retrieve the full Rtraj files from \url{https://data-argo.ifremer.fr/}. ARGO floats provide a complementary description of subsurface motion, since they spend most of their cycle at parking depth and only periodically sample the upper ocean during ascent, surface transmission, and descent. We calculated the fraction of cycle duration spent in "near-surface" phase, i.e. the time spent in descent phase, deep descent phase, deep ascent phase and transmission phase. This time should be bounded to be between 6 and 12 hours \textcolor{red}{(see section xxx for further details) QUESTO POSSIAMO LEVARLO VISTO CHE NON PARLIAMO DI FSLE QUI}. Hence, the trajectories have been filtered and split in consecutive segments with a ratio between the parking phase and the near-surface phase greater than 4, that corresponds to a parking phase length of at least 48 hours.
+        
+        In this study we used all the platform available. We included core ARGO experiments \cite{art:roemmich2019}, the recently developed biogeochemical (BGC) ARGO \cite{art:johnson2017, data:johnson2016}, SOCCOM program ARGO \cite{art:talley2019} and deep ARGO \cite{art:roemmich2019, art:owens2022}.
+        Because ARGO floats can operate at different parking depths, their trajectories were separated into five depth classes according to the available parking-pressure/depth information: 0--850 m, 850--1150 m, 1150--1900 m, and deeper than 1900 m. The ARGO dataset is dominated by floats parking between 850 and 1150 m, corresponding to the standard-depth ARGO population.%, while shallower and deeper classes are retained separately to evaluate possible depth dependence in the transport and dispersion diagnostics.
+        
+        For both datasets, trajectories were selected using the same regional criterion. A trajectory was retained if it entered at least one of the three Southern Ocean regions considered in this study: iSO, ACC, and oSO as pictured in Fig. \ref{fig:03_regions}. The selection was applied using a first-entry criterion, so that each trajectory is assigned to the first region it reaches. After regional selection, drifter trajectories were resampled every 24 h, while ARGO trajectories were resampled every 10 days, consistently with the temporal sampling of the two observing systems.
+
+        ARGO trajectories were divided into dynamically consistent segments according to changes in parking depth and trajectory quality. For each parking cycle, a representative parking pressure was estimated as the median pressure recorded during the parking phase and assigned to the corresponding depth bin. A new trajectory segment was started whenever the representative parking pressure moved into a different depth class. Observations flagged as invalid by the ARGO quality-control variables were removed. When their removal produced a gap between two retained portions of a trajectory, the portions were reconnected only if the time gap was no longer than $90$ days and the bridge speed, defined as the speed calculated directly between the retained observations immediately before and after the gap, was lower than $3~\mathrm{m\,s^{-1}}$. Otherwise, the portions were retained as separate segments. Non-physical jumps were treated similarly: when the speed between two consecutive observations exceeded $3~\mathrm{m\,s^{-1}}$, the anomalous point was discarded, and the two adjacent portions were merged only when they satisfied the same time-gap and bridge-speed criteria.
+        
+        The final trajectory populations used in the analysis are summarized in Table~\ref{tab:lagrangian_dataset_population} and their path are shown in Fig~\ref{fig:drifters_traj} and Fig~\ref{fig:argo_traj}.
+        
+        \begin{table}[t]
+            \centering
+            \small
+            \begin{tabular}{llrr}
+                \hline
+                Dataset       & Depth class  & Platforms & Valid segments \\
+                \hline
+                AOML drifters & --           & 4989 & 4989 \\
+                ARGO floats   & 0--850 m     &  339 &  386 \\
+                ARGO floats   & 850--1150 m  & 4351 & 4526 \\
+                ARGO floats   & 1150--1900 m &  118 &  142 \\
+                ARGO floats   & $>$1900 m    &  225 &  262 \\
+                ARGO floats   & 1900--2100 m &   58 &   68 \\
+                ARGO floats   & $>$2500 m    &  172 &  207 \\
+                \hline
+                ARGO floats   & All depths   & 5036 & 5329 \\
+                \hline
+            \end{tabular}
+            \caption{Final trajectory populations retained for the Lagrangian diagnostics after regional selection and temporal resampling. Drifters are treated as near-surface trajectories, while ARGO trajectories are grouped by parking-depth class.} \label{tab:lagrangian_dataset_population}
+        \end{table}
+ 
+    \subsection{Meridional Crossings and Transition Matrices}
+        \label{sec:crossings_transition_matrix}
+
+        \paragraph{Regional framework}
+            To investigate the permeability of the ACC, we first partitioned the Southern Ocean into three meridionally ordered regions. The regional boundaries were defined using the circumpolar fronts derived from satellite altimetry by \cite{data:park2019}. In particular, we used the SACCF and the NB of the ACC. The region south of the SACCF is referred to as the inner Southern Ocean (iSO), the region between the SACCF and NB as the ACC, and the region north of the NB as the outer Southern Ocean (oSO). The resulting three-region partition is shown in Fig.~\ref{fig:03_regions}.
+
+            This simple partition provides a direct representation of meridional exchange across the current system. Transitions between iSO and ACC, or between ACC and oSO, correspond to crossings of one of the two bounding fronts, whereas direct transitions between iSO and oSO represent complete crossings of the ACC system.
+            
+            To examine the longitudinal dependence of these exchanges, each of the three regions was subsequently divided into five zonal sectors. The sectors were chosen by considering the large-scale spatial patterns emerging from the north- and south-sector gridded transition maps and correspond approximately to:
+            \begin{enumerate}
+                \item the Agulhas Retroflection sector;
+                \item the eastern Indian Ocean;
+                \item the western Pacific Ocean;
+                \item the eastern Pacific Ocean;
+                \item the western Atlantic Ocean.
+            \end{enumerate}
+            This produces a total of $15$ regions, shown in Fig.~\ref{fig:15_regions}. The three-region configuration is first used below to introduce and interpret the transition diagnostics, before extending the analysis to the complete $15\times15$ transition matrix.
+
+        \subsubsection{Gridded transition matrix and cardinal-sector transition probabilities}
+            \label{sec:gridded_transition_matrix}
+
+            To characterize the geographical distribution of meridional transport, we constructed an empirical transition matrix on a regular longitude--latitude $1^{\circ}$ grid, following the general approach of \cite{art:sevellec2017, art:chamberlain2023}. \textcolor{red}{LORO USANO 30 GIORNI PER UNA GRIGLIA DI 1 GRADO. POSSO FARE ANCHE IO COSI MA SECONDO ME A 10 GIORNI FUNZIONA BENE LO STESSO} In this framework, the trajectory observations are used to estimate the conditional probability that a platform located in one grid cell will be found in another grid cell after a prescribed time interval.
+
+            To permit a direct comparison between the two observing systems, both the surface-drifter and ARGO trajectories were sampled at a common temporal interval of
+            
+            \begin{equation}
+                \Delta t = 10~\mathrm{days}.
+            \end{equation}
+
+            Each trajectory was first sorted chronologically. Consecutive observations separated by $\Delta t$ were then treated as the starting and ending points of a displacement segment. Thus, every segment represents the net displacement of a platform over a common $10$-day interval. The method does not reconstruct the trajectory followed between the two endpoints. 
+
+            The spatial domain was divided into a regular longitude--latitude grid with a resolution of $1^{\circ}\times1^{\circ}$. Let $(i,j)$ denote the longitude and latitude indices of the grid cell containing the initial position of a segment, and let $(m,n)$ denote the cell containing its endpoint. For every observed start--end pair lying within the analysis domain, the transition count
+            
+            \begin{equation}
+                C_{(i,j)\rightarrow(m,n)}
+            \end{equation}
+
+            was incremented. Only segments whose starting and ending positions both lay inside the analysis domain were retained. The total number of retained displacement segments originating from cell $(i,j)$ was calculated as
+            
+            \begin{equation}
+                N_{i,j} = \sum_{m,n} C_{(i,j)\rightarrow(m,n)},
+            \end{equation}
+
+            where the sum extends over endpoint cells inside the analysis grid. Segments with either endpoint outside the grid were discarded before the counts and probabilities were calculated.
+            
+            The empirical transition probability between two grid cells was then computed as
+            
+            \begin{equation}
+                P_{(i,j)\rightarrow(m,n)} = \frac{ C_{(i,j)\rightarrow(m,n)}}{N_{i,j}}
+                \label{eq:gridded_transition_probability}
+            \end{equation}
+
+            Each populated row of the resulting matrix therefore describes the empirical conditional distribution of the endpoint of a $10$-day displacement, given that the segment started in cell $(i,j)$ and both segment endpoints lay inside the analysis domain. The transition probabilities in every populated row sum to unity.
+
+            The complete grid-to-grid transition matrix is highly sparse. It was therefore stored as a table containing only non-zero transitions, including the starting-cell indices, endpoint-cell indices, transition counts, and normalized probabilities. The number of segments originating from each cell, $N_{i,j}$, was also retained to describe the spatial distribution of observational support.
+            
+            Cardinal-sector transition probabilities were obtained by assigning each in-domain, non-stay transition to a bearing sector. Let $(\lambda_1,\phi_1)$ and $(\lambda_2,\phi_2)$ denote the longitude and latitude, in radians, of the starting- and endpoint-cell centers, respectively. The signed longitudinal difference $\Delta\lambda=\lambda_2-\lambda_1$ was wrapped so that $-\pi\leq\Delta\lambda<\pi$ to account for the periodicity of longitude. The initial spherical great-circle bearing, measured clockwise from geographic north and reduced so that $0\leq\theta<2\pi$, was calculated as
+
+            \begin{equation}
+                \theta_{(i,j)\rightarrow(m,n)} =
+                \operatorname{atan2}\!\left(
+                    \sin(\Delta\lambda)\cos\phi_2,
+                    \cos\phi_1\sin\phi_2
+                    - \sin\phi_1\cos\phi_2\cos(\Delta\lambda)
+                \right)
+                \bmod 2\pi.
+                \label{eq:gridded_transition_bearing}
+            \end{equation}
+
+            The four sector interiors, expressed in degrees for readability, were
+
+            \begin{equation}
+                \begin{aligned}
+                    \mathcal{I}_{\mathrm{N}} &=
+                        \{\theta:315^{\circ}<\theta<360^{\circ}
+                        \text{ or }0^{\circ}\leq\theta<45^{\circ}\}, \\
+                    \mathcal{I}_{\mathrm{E}} &=
+                        \{\theta:45^{\circ}<\theta<135^{\circ}\}, \\
+                    \mathcal{I}_{\mathrm{S}} &=
+                        \{\theta:135^{\circ}<\theta<225^{\circ}\}, \\
+                    \mathcal{I}_{\mathrm{W}} &=
+                        \{\theta:225^{\circ}<\theta<315^{\circ}\}.
+                \end{aligned}
+                \label{eq:gridded_cardinal_sector_interiors}
+            \end{equation}
+
+            For $D\in\{\mathrm{N},\mathrm{E},\mathrm{S},\mathrm{W}\}$, the directional weight was defined as
+
+            \begin{equation}
+                w_D(\theta) =
+                \begin{cases}
+                    1, & \theta\in\mathcal{I}_D, \\
+                    \tfrac{1}{2}, & \theta\text{ lies on a boundary adjoining sector }D, \\
+                    0, & \text{otherwise}.
+                \end{cases}
+                \label{eq:gridded_directional_weight}
+            \end{equation}
+
+            Thus, a transition at $45^{\circ}$ was shared equally between the north and east sectors, one at $135^{\circ}$ between east and south, one at $225^{\circ}$ between south and west, and one at $315^{\circ}$ between west and north. Numerically, bearings within $10^{-10}$ degrees of a boundary were treated as boundary cases. For the geometrically undefined case of antipodal cell centers, the transition probability was divided equally among all four sectors, so that $w_D=1/4$ for every $D$. The cardinal-sector probability was then
+
+            \begin{equation}
+                P_D(i,j) =
+                \sum_{\substack{m,n\\(m,n)\neq(i,j)}}
+                w_D\!\left(\theta_{(i,j)\rightarrow(m,n)}\right)
+                P_{(i,j)\rightarrow(m,n)}.
+                \label{eq:gridded_probability_cardinal_sector}
+            \end{equation}
+
+            The probability that a platform remained in its initial grid cell after $10$ days was defined separately as
+
+            \begin{equation}
+                P_{\mathrm{stay}}(i,j) = P_{(i,j)\rightarrow(i,j)}
+            \end{equation}
+
+            The four directional weights sum to unity for every non-stay, in-domain transition, including boundary and antipodal cases. Consequently, the directional probabilities and same-cell retention form a probability partition,
+
+            \begin{equation}
+                \sum_{D\in\{\mathrm{N},\mathrm{E},\mathrm{S},\mathrm{W}\}}
+                P_D(i,j) + P_{\mathrm{stay}}(i,j)
+                = \sum_{m,n}P_{(i,j)\rightarrow(m,n)}
+                = 1.
+                \label{eq:gridded_directional_partition}
+            \end{equation}
+
+            This construction partitions the in-domain transition probability without double counting. An oblique transition is assigned to the single cardinal sector containing its bearing, except at an exact sector boundary, where its probability is shared equally by the adjacent sectors. Same-cell transitions contribute only to $P_{\mathrm{stay}}$.
+
+            The north- and south-sector maps shown in Fig.~\ref{fig:meridional_transition_probability_maps} represent the empirical probabilities that the net $10$-day displacement from a starting cell has a bearing within $45^{\circ}$ of geographic north or south, respectively. Cells without valid starting segments were left undefined.
+
+            A common color scale was used for both datasets and displacement directions. The displayed scale was limited to $80\%$ to prevent a small number of very large probabilities from obscuring the spatial variability at lower values. Cells with directional probabilities equal to or greater than $80\%$ are therefore represented by the uppermost color of the scale. This saturation was applied only to the visualization; the original probability values were retained in the numerical output and subsequent analysis.
+
+            These maps quantify the cardinal sector of the net $10$-day displacement from each starting cell. They should therefore be interpreted as cardinal-sector transition probability maps rather than as direct observations of the exact path followed by a platform or of the precise location at which an ACC front was crossed. Transitions across the surface-derived frontal boundaries are evaluated separately using the regional time-dependent transition matrices described below. 
+            
+            \subsubsection{Spatial distribution of cardinal-sector transitions}
+                The cardinal-sector transition maps reveal a strongly heterogeneous circumpolar distribution of net meridional displacement. Elevated north- and south-sector probabilities occur within spatially localized bands and clusters rather than being uniformly distributed along the ACC. Several structures appear in both maps, indicating that dynamically active regions can support displacements in both meridional directions, although with different relative strengths.
+
+                The most persistent hotspot in both datasets occurs in the Drake Passage--western Atlantic sector. Enhanced north- and south-sector probabilities extend from the Antarctic Peninsula and Scotia Arc toward the Patagonian continental margin and the region immediately downstream of Drake Passage. Particularly strong north-sector transitions occur east of the passage and along the western Atlantic sector. South-sector maxima are also present in this region, but are generally more localized. Their close spatial alternation suggests that the region is characterized not only by a mean meridional displacement, but also by frontal meandering, recirculation, and repeated excursions across the frontal system; the maps themselves do not identify the exact locations of frontal crossings.
+
+                Additional cardinal-sector hotspots occur in the Indian Ocean sector. Enhanced north- and south-sector probabilities are visible south of Africa and along the northern flank of the Southern Ocean, in the region influenced by the Agulhas Current, Retroflection, and Return Current. Both directions are represented, indicating that this region supports complex displacements between the subtropical circulation and the northern part of the ACC. Localized maxima are also found farther east in the Indian Ocean, where the circumpolar fronts interact with major plateaus and ridges. 
+                
+                The Australian--New Zealand sector represents another region of enhanced cardinal-sector transition probability. Both datasets show localized structures south of Australia, near Tasmania, and farther downstream toward New Zealand and the southwest Pacific. The ARGO maps display particularly clear clusters of both north- and south-sector transitions in this sector, whereas the corresponding drifter signals are less spatially continuous. Across the central and eastern Pacific, the directional probabilities are generally more diffuse and the observational coverage is less homogeneous, although isolated maxima remain visible along the frontal pathway.
+
+                The comparison between the observing systems reveals substantial differences. The drifter maps are dominated by a smaller number of spatially concentrated hotspots, with the strongest signals occurring in the Drake Passage--western Atlantic sector. North-sector surface transitions are more extensive and generally stronger than south-sector transitions, consistent with the asymmetry identified independently in the regional transition matrices. The drifter coverage also decreases markedly toward the Antarctic continent, leaving large areas with few or no observed transitions.
+
+                ARGO trajectories provide a more spatially continuous circumpolar picture and extend farther poleward. Their north- and south-sector maps contain a larger number of secondary structures in the Indian and Pacific sectors, and the contrast between the two directions is less pronounced than for the surface drifters. In particular, elevated south-sector probabilities occur in several regions where the drifter signal is weak or absent. This broader distribution is consistent with the larger number of southward connections identified independently in the ARGO regional transition matrix, including the rare complete transitions from oSO to iSO.
+
+        \subsubsection{Time-dependent transition matrix}
+            Transition matrix is well defined in \cite{art:sevellec2017} and \cite{art:chamberlain2023}. In our case we used a symbolic definition of spatial regions. For each trajectory, we determined its symbolic position as a function of particle age, defined as the elapsed time since deployment. At every sampled age $t$, the transition fraction from an initial region $i$ to a target region $j$ was calculated as
+            \begin{equation}
+                P_{i,j}(t) = \frac{n_{i,j}(t)}{n_i^0},
+                \label{eq:transition_probability}
+            \end{equation}
+            where $n_{i,j}(t)$ is the number of particles released in region $i$ that are located in region $j$ at age $t$, and $n_i^0$ is the total number of particles initially released in region $i$. By definition, $n_i^0=n_{i,i}(0)$, so that
+            \begin{equation}
+                P_{i,i}(0)=1,
+                \qquad
+                P_{i,j}(0)=0
+                \quad\text{for}\quad i\neq j.
+            \end{equation}
+
+            Only trajectories with lifetimes longer than $30$ days were included. This ensures that the initial population used in the normalization is not immediately affected by very short records. The normalization remains fixed at $n_i^0$ at all subsequent ages; consequently, the sum of a matrix row may decrease with time as trajectories terminate or leave the geographical domain.
+
+            For the three-region configuration (see \ref{app:3_regions}), $\mathbf{P}(t)$ is a $3\times3$ matrix,
+            \begin{equation}
+                \mathbf{P}(t) =
+                \begin{pmatrix}
+                    P_{\mathrm{iSO},\mathrm{iSO}} &
+                    P_{\mathrm{iSO},\mathrm{ACC}} &
+                    P_{\mathrm{iSO},\mathrm{oSO}}
+                    \\
+                    P_{\mathrm{ACC},\mathrm{iSO}} &
+                    P_{\mathrm{ACC},\mathrm{ACC}} &
+                    P_{\mathrm{ACC},\mathrm{oSO}}
+                    \\
+                    P_{\mathrm{oSO},\mathrm{iSO}} &
+                    P_{\mathrm{oSO},\mathrm{ACC}} &
+                    P_{\mathrm{oSO},\mathrm{oSO}}
+                \end{pmatrix}.
+                \label{eq:three_region_transition_matrix}
+            \end{equation}
+            Each row describes the evolution of particles released in one source region, while each column identifies their target region.
+
+            \paragraph{Transition strength and characteristic timescales}
+                To summarize the temporal evolution of each off-diagonal matrix element, we defined two complementary diagnostics. The maximum transition strength is
+                \begin{equation}
+                    S_{i,j} = \max_t P_{i,j}(t), \qquad i\neq j.
+                    \label{eq:transition_strength}
+                \end{equation}
+                It represents the largest fraction of the population initially released in region $i$ that is observed simultaneously in region $j$.
+                
+                The time of maximum transition is defined as
+                \begin{equation}
+                    T_{i,j}^{\mathrm{peak}} = \min \left\{t: P_{i,j}(t)=S_{i,j} \right\}, \qquad i\neq j,
+                    \label{eq:transition_peak_time}
+                \end{equation}
+                where the earliest sampled age is retained if the maximum occurs at more than one time step.
+                
+                The diagonal elements are excluded from these diagnostics because their maximum value is one by construction at $t=0$. They describe retention within the initial region rather than transport between distinct regions, and are therefore reported as undefined in the summary matrices.
+    
+    
+            \paragraph{Zonally resolved transition matrices}
+                The $15\times15$ matrices shown in Figs.~\ref{fig:15x15_transition_diagnostics_drifters} and~\ref{fig:15x15_transition_diagnostics_argo} extend the three-region analysis by resolving each meridional region into five zonal sectors. The states are ordered as
+                \begin{equation}
+                    \mathrm{iSO}_1,\ldots,\mathrm{iSO}_5,\quad
+                    \mathrm{ACC}_1,\ldots,\mathrm{ACC}_5,\quad
+                    \mathrm{oSO}_1,\ldots,\mathrm{oSO}_5,
+                \end{equation}
+                with the sector numbering increasing eastward. Because the  Southern Ocean is periodic in longitude, sector 5 is adjacent to sector 1.
+    
+                The full matrix can consequently be interpreted as nine
+                $5\times5$ blocks,
+                \begin{equation}
+                    \mathbf{S} =
+                    \begin{pmatrix}
+                        \mathbf{S}_{\mathrm{iSO} \rightarrow \mathrm{iSO}} &
+                        \mathbf{S}_{\mathrm{iSO} \rightarrow \mathrm{ACC}} &
+                        \mathbf{S}_{\mathrm{iSO} \rightarrow \mathrm{oSO}}
+                        \\
+                        \mathbf{S}_{\mathrm{ACC} \rightarrow \mathrm{iSO}} &
+                        \mathbf{S}_{\mathrm{ACC} \rightarrow \mathrm{ACC}} &
+                        \mathbf{S}_{\mathrm{ACC} \rightarrow \mathrm{oSO}}
+                        \\
+                        \mathbf{S}_{\mathrm{oSO} \rightarrow \mathrm{iSO}} &
+                        \mathbf{S}_{\mathrm{oSO} \rightarrow \mathrm{ACC}} &
+                        \mathbf{S}_{\mathrm{oSO} \rightarrow \mathrm{oSO}}
+                    \end{pmatrix},
+                \end{equation}
+                with the same organization for $\mathbf{T}^{\mathrm{peak}}$. Each block is the zonally resolved counterpart of one element of the three-region matrix. In blocks connecting different meridional regions, the block diagonal represents direct meridional transport within the same zonal sector. The first superdiagonal, including the periodic $5\rightarrow1$ element, represents meridional transport accompanied by an eastward displacement of one sector. In within-region blocks, the diagonal is undefined, while the first superdiagonal represents eastward transport into the adjacent sector.
+    
+                Throughout the following analysis, $T_{i,j}^{\mathrm{peak}}$ is referred to as the peak age. It measures when the fraction occupying the target state is largest and should not be interpreted as the travel time of an individual trajectory.
+    
+                \medskip
+                \noindent
+                \textit{iSO$\boldsymbol{\rightarrow}$iSO.}
+                Within the inner Southern Ocean, the surface drifters retain a predominantly eastward-adjacent organization. For source sectors 2--5, the largest within-iSO transition fraction is associated with the sequence $2\rightarrow3$, $3\rightarrow4$, $4\rightarrow5$, and $5\rightarrow1$, with peak ages of $302$, $70$, $8$, and $72$ days, respectively. Sector 1 is less directional: the eastward $\mathrm{iSO}_1 \rightarrow \mathrm{iSO}_2$ and westward $\mathrm{iSO}_1 \rightarrow \mathrm{iSO}_5$ transitions both reach a maximum fraction of $3.33 \%$, but peak after $31$ and $1$ days, respectively. The particularly rapid $\mathrm{iSO}_4 \rightarrow \mathrm{iSO}_5$ transition remains consistent with eastward transport through Drake Passage, whereas the $\mathrm{iSO}_2 \rightarrow \mathrm{iSO}_3$ pathway is considerably slower than the other adjacent eastward connections.
+    
+                ARGO floats display the same dominant eastward organization in sectors 2--5, but on much longer timescales. The adjacent transitions $2\rightarrow3$, $3\rightarrow4$, $4\rightarrow5$, and $5\rightarrow1$ peak after $1210$, $1620$, $670$, and $310$ days, respectively. Sector 1 is an exception: the westward $\mathrm{iSO}_1 \rightarrow \mathrm{iSO}_5$ transition reaches a larger fraction, $10.1 \%$, after $250$ days, than the eastward $\mathrm{iSO}_1 \rightarrow \mathrm{iSO}_2$ transition, which reaches $7.3 \%$ after $1070$ days.
+    
+                Additional westward transitions are present in the float dataset. In particular, $\mathrm{iSO}_3 \rightarrow \mathrm{iSO}_2$ and $\mathrm{iSO}_4 \rightarrow \mathrm{iSO}_3$ peak after $280$ and $230$ days. These relatively rapid westward pathways are consistent with the influence of the westward-flowing Antarctic Coastal Current, the Weddell Gyre ($1 \rightarrow 5$) and the Ross Gyre ($4 \rightarrow 3$). By contrast, $\mathrm{iSO}_2 \rightarrow \mathrm{iSO}_1$ peaks only after $1350$ days, indicating a substantially less efficient westward connection in that sector. A corresponding westward signal is also visible in the drifter $\mathrm{iSO}_5 \rightarrow \mathrm{iSO}_4$ transition. Its peak age, $42$ days, is comparable to the $72$ days of the eastward $\mathrm{iSO}_5 \rightarrow \mathrm{iSO}_1$ pathway, although its maximum fraction is much smaller.
+    
+                \medskip
+                \noindent
+                \textit{iSO$\boldsymbol{\rightarrow}$ACC.}
+                The $\mathrm{iSO} \rightarrow \mathrm{ACC}$ block describes northward crossing of the southern boundary of the ACC. For drifters released in sectors 1, 2, 3, and 5, the largest fraction occurs in the same zonal sector, with maximum values of $23.3 \%$, $20.2 \%$, $17.9 \%$, and $14.1 \%$, respectively. For each of these source sectors, the transition fraction generally decreases and the peak age increases for progressively more distant downstream target sectors.
+    
+                Sector 4 differs from this general pattern. The direct $\mathrm{iSO}_4 \rightarrow \mathrm{ACC}_4$ transition reaches a fraction of $2.0 \%$ after $79$ days, whereas $\mathrm{iSO}_4 \rightarrow \mathrm{ACC}_5$ reaches a larger fraction of $4.0 \%$ after $61$ days. Northward crossing in this region is therefore accompanied by rapid eastward advection through Drake Passage.
+    
+                ARGO floats show a comparable block geometry, although their maxima generally occur later. Direct same-sector transport is dominant for source sectors 1--3, while the strongest pathways from sectors 4 and 5 are $\mathrm{iSO}_4 \rightarrow \mathrm{ACC}_5$ and            $\mathrm{iSO}_5 \rightarrow \mathrm{ACC}_1$. These transitions peak after $710$ and $890$ days, respectively, demonstrating the combined effect of meridional crossing and downstream zonal displacement. The strong and comparatively rapid northward transport in the surface drifter dataset is consistent with the northward Ekman transport driven by the Southern Hemisphere westerlies. The similar spatial organization of the ARGO matrix indicates that the corresponding large-scale pathways remain detectable at parking depth, although on longer timescales.
+    
+                \medskip
+                \noindent
+                \textit{iSO$\boldsymbol{\rightarrow}$oSO.}
+                Complete northward crossings of the ACC system are much less frequent than adjacent-region transitions. Four drifter pathways exceed a maximum fraction of $2.5 \%$: $\mathrm{iSO}_1 \rightarrow \mathrm{oSO}_2$, which reaches $6.67 \%$ after $505$ days; $\mathrm{iSO}_1 \rightarrow \mathrm{oSO}_3$, which reaches $3.33 \%$ after $564$ days; $\mathrm{iSO}_2 \rightarrow \mathrm{oSO}_3$, which reaches $2.75 \%$ after $377$ days; and $\mathrm{iSO}_3 \rightarrow \mathrm{oSO}_4$, which reaches $3.91 \%$ after $422$ days. These pathways generally combine northward crossing with downstream eastward displacement and require substantially longer times than crossings of a single frontal boundary.
+    
+                The float dataset also contains several complete northward-crossing pathways. Fractions exceeding $2.5 \%$ are found for $\mathrm{iSO}_2 \rightarrow \mathrm{oSO}_3$, which reaches $4.71 \%$ after $1860$ days, and for three pathways originating in sector 4. The $\mathrm{iSO}_4 \rightarrow \mathrm{oSO}_5$, $\mathrm{iSO}_4 \rightarrow \mathrm{oSO}_1$, and $\mathrm{iSO}_4 \rightarrow \mathrm{oSO}_2$ transitions reach maximum fractions of $5.88 \%$, $2.94 \%$, and $2.94 \%$ after $1310$, $1920$, and $2220$ days, respectively. The long peak ages and small fractions confirm that complete northward crossings remain rare compared with transitions between adjacent meridional regions.
+    
+                \medskip
+                \noindent
+                \textit{ACC$\boldsymbol{\rightarrow}$iSO.}
+                The $\mathrm{ACC} \rightarrow \mathrm{iSO}$ block describes southward crossing of the southern ACC boundary. For drifters, this transport remains weak and is largely confined to direct same-sector or immediately adjacent transitions. The direct same-sector fractions from sectors 1--5 are $0.95 \%$, $1.56 \%$, $2.97 \%$, $2.63 \%$, and $6.50 \%$, with peak ages of $45$, $23$, $6$, $2$, and $122$ days, respectively. The strongest direct pathway is therefore $\mathrm{ACC}_5 \rightarrow \mathrm{iSO}_5$, which reaches $6.50 \%$ after $122$ days. A second relatively strong connection is $\mathrm{ACC}_4 \rightarrow \mathrm{iSO}_5$, which reaches $5.26 \%$ after $80$ days. These enhancements remain consistent with localized southward exchange in the Drake Passage--western Atlantic sector.
+    
+                Southward transitions are more numerous and generally stronger for ARGO floats. The direct same-sector fractions range from $4.62 \%$ to $9.85 \%$ and peak between $60$ and $840$ days. The strongest pathway in a row is nevertheless not always the block-diagonal element. The adjacent eastward transitions $\mathrm{ACC}_1 \rightarrow \mathrm{iSO}_2$, $\mathrm{ACC}_2 \rightarrow \mathrm{iSO}_3$, and $\mathrm{ACC}_4 \rightarrow \mathrm{iSO}_5$ reach fractions of $6.15 \%$, $6.72 \%$, and $11.54 \%$ after $1070$, $890$, and $400$ days, respectively. More distant southward connections generally have smaller fractions and peak on longer, frequently multiyear, timescales.
+                
+                \medskip
+                \noindent
+                \textit{ACC$\boldsymbol{\rightarrow}$ACC.}
+                The within-ACC block contains the clearest zonal-advection signal. For every drifter source sector, the strongest transition is toward the adjacent eastward sector. The peak ages are $38$, $275$, $256$, $44$, and $92$ days for $1\rightarrow2$, $2\rightarrow3$, $3\rightarrow4$, $4\rightarrow5$, and $5\rightarrow1$, respectively. The corresponding maximum fractions are $14.2 \%$, $5.45 \%$, $4.95 \%$, $36.8 \%$, and $5.37 \%$. The $\mathrm{ACC}_4 \rightarrow \mathrm{ACC}_5$ pathway is therefore the dominant element of the block, followed by $\mathrm{ACC}_1 \rightarrow \mathrm{ACC}_2$. Transport extending over two or more sectors is progressively weaker and generally peaks later.
+    
+                The ARGO block exhibits the same eastward structure, but with generally larger fractions and substantially longer peak ages. The adjacent eastward transitions reach maximum fractions between $20.3 \%$ and $44.2 \%$ and peak after $360$--$1440$ days. The $\mathrm{ACC}_4 \rightarrow \mathrm{ACC}_5$ pathway is again the strongest element of the block, reaching $44.2 \%$ after $500$ days.
+    
+                Westward-adjacent ARGO transitions are generally weak, although their peak ages are highly heterogeneous. The $\mathrm{ACC}_2 \rightarrow \mathrm{ACC}_1$ transition reaches only $0.84 \%$ but peaks relatively rapidly, after $100$ days. By contrast, $\mathrm{ACC}_1 \rightarrow \mathrm{ACC}_5$, $\mathrm{ACC}_3 \rightarrow \mathrm{ACC}_2$, $\mathrm{ACC}_4 \rightarrow \mathrm{ACC}_3$, and $\mathrm{ACC}_5 \rightarrow \mathrm{ACC}_4$ peak after $2800$, $2930$, $3150$, and $3900$ days, with fractions between $0.38 \%$ and $1.92 \%$. The matrix alone cannot determine whether these delayed connections represent long eastward pathways around the circumpolar system or periods of local westward motion combined with meridional displacement; resolving this distinction requires analysis of the complete trajectory histories.
+    
+                \medskip
+                \noindent
+                \textit{ACC$\boldsymbol{\rightarrow}$oSO.}
+                Northward crossing of the northern ACC boundary remains prominent in the drifter dataset. Direct same-sector transitions reach maximum fractions between $5.85 \%$ and $18.32 \%$ and peak after $52$--$323$ days. Sector 1 shows a particularly strong downstream pathway: $\mathrm{ACC}_1 \rightarrow \mathrm{oSO}_2$ reaches $27.49 \%$ after $130$ days, compared with $6.16 \%$ after $52$ days for the direct $\mathrm{ACC}_1 \rightarrow \mathrm{oSO}_1$ transition. The one-sector downstream transitions peak after $130$--$369$ days, while farther downstream connections are generally weaker and peak later.
+    
+                For ARGO floats, direct northward transitions reach fractions between $3.79 \%$ and $13.66 \%$ and peak after $250$--$740$ days. Transitions accompanied by one sector of eastward displacement are generally stronger, reaching $9.85$--$17.31 \%$ and peaking after $660$--$1260$ days. Two-sector eastward displacements peak after $910$--$2440$ days, while three-sector displacements peak after $1090$--$3460$ days and remain below approximately $2.3 \%$. The results therefore retain the combination of cross-frontal exchange and substantial downstream advection, although the strengths and timescales differ from those obtained with the previous northern boundary.
+    
+                Transitions to the sector immediately west of the source are generally weak, with maximum fractions below $2 \%$, but their peak ages vary considerably. The $\mathrm{ACC}_4 \rightarrow \mathrm{oSO}_3$ and $\mathrm{ACC}_3 \rightarrow \mathrm{oSO}_2$ transitions peak after $300$ and $810$ days, respectively, whereas $\mathrm{ACC}_1 \rightarrow \mathrm{oSO}_5$, $\mathrm{ACC}_2 \rightarrow \mathrm{oSO}_1$, and $\mathrm{ACC}_5 \rightarrow \mathrm{oSO}_4$ peak after $2830$, $3620$, and $2460$ days. This heterogeneity prevents a unique interpretation based only on the summary matrix and requires examination of the complete trajectory histories.
+    
+                \medskip
+                \noindent
+                \textit{oSO$\boldsymbol{\rightarrow}$iSO.}
+                Complete southward crossing of the ACC system continues to provide the clearest difference between the observational datasets. No transition is detected in the entire drifter $\mathrm{oSO} \rightarrow \mathrm{iSO}$ block. ARGO floats, by contrast, show a small number of complete southward transitions originating in all five zonal sectors.
+    
+                The ARGO fractions remain small, ranging from approximately $0.35 \%$ to $1.09 \%$, with peak ages between $430$ and $2630$ days. The largest fractions are associated with $\mathrm{oSO}_5 \rightarrow \mathrm{iSO}_1$ and $\mathrm{oSO}_5 \rightarrow \mathrm{iSO}_5$, which both reach $1.09 \%$ after $1570$ and $1220$ days, respectively. The $\mathrm{oSO}_2 \rightarrow \mathrm{iSO}_2$ and $\mathrm{oSO}_2 \rightarrow \mathrm{iSO}_3$ pathways each reach $1.06 \%$ after $460$ and $1310$ days. The shortest connection is $\mathrm{oSO}_1 \rightarrow \mathrm{iSO}_5$, which reaches $0.74 \%$ after $430$ days. These results confirm that complete southward crossings are rare and generally require long-lived floats.
+    
+                The localized nature of these elements is consistent with clusters of elevated south-sector transition probability in the ARGO gridded maps, including the region south of Tasmania. These maps identify the starting cells and net-displacement directions, rather than the exact frontal-crossing locations. Because these pathways involve long-lived floats and very small population fractions, their magnitude may also be affected by observational censoring. In particular, under-ice operation can prevent regular surface positioning and data transmission. A seasonal analysis would be required to distinguish this sampling effect from a physical seasonality of the southward intrusions.
+    
+                \medskip
+                \noindent
+                \textit{oSO$\boldsymbol{\rightarrow}$ACC.}
+                Southward transport across the northern ACC boundary is considerably sparser for drifters under the revised regional definition. Direct same-sector transitions are detected only in sectors 1, 3, and 5. They reach fractions of $0.74 \%$, $0.24 \%$, and $2.00 \%$ after $6$, $18$, and $19$ days, respectively. The largest drifter element in this block is therefore $\mathrm{oSO}_5 \rightarrow \mathrm{ACC}_5$. A further connection from $\mathrm{oSO}_4$ to $\mathrm{ACC}_5$ reaches $1.64 \%$ after $43$ days. The revised matrix thus retains a localized western Atlantic signal, whereas the direct same-sector transition in the Agulhas sector is comparatively weak.
+    
+                ARGO floats show stronger and more spatially extensive southward transitions across the northern ACC boundary. Direct same-sector fractions range from $1.58 \%$ to $10.87 \%$ and peak after $200$--$740$ days. The largest direct pathway is $\mathrm{oSO}_5 \rightarrow \mathrm{ACC}_5$, which reaches $10.87 \%$ after $450$ days, followed by $\mathrm{oSO}_2 \rightarrow \mathrm{ACC}_2$, which reaches $6.38 \%$ after $200$ days. Strong downstream connections are also present from $\mathrm{oSO}_1$ to $\mathrm{ACC}_2$ and from $\mathrm{oSO}_2$ to $\mathrm{ACC}_3$, reaching $7.41 \%$ and $10.28 \%$ after $1270$ and $1400$ days, respectively. These pathways show that southward crossing may be accompanied by substantial downstream advection through the Indian Ocean sectors. The principal drifter connections peak over days to weeks, compared with several months to multiple years for ARGO floats.
+    
+                \medskip
+                \noindent
+                \textit{oSO$\boldsymbol{\rightarrow}$oSO.}
+                The outer Southern Ocean displays a less uniform zonal structure than the ACC. Both eastward and westward adjacent transitions are present, reflecting the combined influence of subtropical gyres, western boundary currents, return currents, and basin-scale recirculation.
+    
+                In the drifter dataset, $\mathrm{oSO}_1 \rightarrow \mathrm{oSO}_2$ is the strongest within-oSO connection, reaching $13.24 \%$ after $278$ days, while no corresponding $\mathrm{oSO}_1 \rightarrow \mathrm{oSO}_5$ transition is detected. From sector 2, the eastward $\mathrm{oSO}_2 \rightarrow \mathrm{oSO}_3$ pathway reaches $4.00 \%$ after $173$ days, whereas the westward $\mathrm{oSO}_2 \rightarrow \mathrm{oSO}_1$ pathway reaches $2.00 \%$ after only $47$ days. Eastward-adjacent transport is also dominant from sectors 3--5, with the $\mathrm{oSO}_3 \rightarrow \mathrm{oSO}_4$, $\mathrm{oSO}_4 \rightarrow \mathrm{oSO}_5$, and $\mathrm{oSO}_5 \rightarrow \mathrm{oSO}_1$ transitions reaching $2.68 \%$, $8.20 \%$, and $3.50 \%$, respectively.
+    
+                ARGO floats show a clearer eastward-adjacent organization within the outer Southern Ocean. The eastward transition is the largest adjacent connection from all five source sectors. The $\mathrm{oSO}_1 \rightarrow \mathrm{oSO}_2$, $\mathrm{oSO}_2 \rightarrow \mathrm{oSO}_3$, $\mathrm{oSO}_3 \rightarrow \mathrm{oSO}_4$, $\mathrm{oSO}_4 \rightarrow \mathrm{oSO}_5$, and $\mathrm{oSO}_5 \rightarrow \mathrm{oSO}_1$ pathways reach maximum fractions of $17.04 \%$, $22.70 \%$, $8.26 \%$, $5.93 \%$, and $15.22 \%$, respectively, and peak after approximately $1080$--$1250$ days. The largest element is $\mathrm{oSO}_2 \rightarrow \mathrm{oSO}_3$, which reaches $22.70 \%$ after $1190$ days. Secondary westward links remain visible, particularly $\mathrm{oSO}_1 \rightarrow \mathrm{oSO}_5$ and $\mathrm{oSO}_3 \rightarrow \mathrm{oSO}_2$, but they are weaker than the corresponding eastward pathways.
+    
+                
+            \paragraph{Overall transition structure}
+                The zonally resolved matrices preserve the principal features of the three-region analysis while identifying the longitudinal pathways responsible for them. Within both iSO and ACC, the dominant organization remains eastward transport toward the adjacent sector, with substantially longer peak ages for ARGO floats than for surface drifters. Under the revised northern-boundary definition, the outer Southern Ocean also shows a predominantly eastward-adjacent organization, particularly in the ARGO matrix, although weaker westward connections remain present.
+
+                Cross-frontal transport remains strongly direction-dependent. At the surface, northward transitions from iSO to ACC and from ACC to oSO are much stronger and more numerous than their southward counterparts. ARGO floats show more numerous southward pathways, although their peak ages are generally substantially longer. The clearest difference remains the complete $\mathrm{oSO} \rightarrow \mathrm{iSO}$ crossing, which is absent from the drifter matrix but present at small fractions in the ARGO matrix.
+
+                Two longitudinal regions continue to emerge as recurrent transport hotspots. In the western Atlantic sector, the $\mathrm{ACC}_5$ column receives relatively large contributions from particles originating in $\mathrm{iSO}_4$, $\mathrm{iSO}_5$, $\mathrm{ACC}_3$, $\mathrm{ACC}_4$, and $\mathrm{oSO}_5$, consistent with the convergence of pathways through Drake Passage and the influence of the Malvinas Current and its recirculation. In the Agulhas sector, $\mathrm{oSO}_1$ remains strongly connected with $\mathrm{oSO}_2$; in the ARGO matrix it also shows a downstream connection with $\mathrm{ACC}_2$, rather than a dominant direct connection with $\mathrm{ACC}_1$. This organization remains consistent with redistribution by the Agulhas Retroflection and the eastward-flowing Agulhas Return Current.
+
+
+\section{Discussion}
+    \subsection{Implications for targeted deployment strategies}
+        \label{sec:deployment_strategies}
+        The combination of the cardinal-sector transition maps and the zonally resolved transition matrices provides an empirical framework for designing targeted Lagrangian deployments. The gridded maps identify starting cells associated with elevated probabilities of net displacement toward a given cardinal sector, whereas the regional transition matrices identify the corresponding source and target regions, the maximum fraction of the initial population involved in each connection, and the age at which this fraction is largest. These diagnostics therefore provide complementary information: the maps indicate where a deployment is likely to experience a preferential displacement direction, while $S_{i,j}$ and $T_{i,j}^{\mathrm{peak}}$ indicate the relative strength and characteristic observational timescale of a source--target pathway. Neither diagnostic identifies the precise point at which an individual trajectory crosses a front.
+    
+        A candidate deployment area may be guided by cells with elevated cardinal-sector probability, but it should also lie in the relevant source region and upstream of the target boundary with respect to the prevailing circulation. The distance between the release area and the boundary should be selected according to the expected advection speed and the intended mission duration. Transitions characterized by a large $S_{i,j}$ and a short $T_{i,j}^{\mathrm{peak}}$ are suitable for relatively short, high-yield experiments, whereas transitions with small fractions and long peak ages require larger initial populations and long-lived platforms.
+        
+        For surface deployments aimed at observing northward cross-frontal transport, the drifter matrix indicates several comparatively strong and rapid pathways from iSO to ACC and from ACC to oSO. The north-sector maps indicate that deployments would be particularly effective in or upstream of cells with elevated north-sector probability near Drake Passage and downstream of major topographic obstacles. In particular, the rapid transitions involving sectors 4 and 5 suggest that releases south and west of Drake Passage could be used to sample the combined effects of northward displacement and rapid eastward advection through the passage. Drifters deployed for complete northward crossings would require substantially longer lifetimes, because the corresponding $\mathrm{iSO}\rightarrow\mathrm{oSO}$ transitions peak only after several hundred days.
+    
+        The optimal strategy for southward transport is different. Direct $\mathrm{oSO}\rightarrow\mathrm{ACC}$ transitions are most prominent in the Agulhas and western Atlantic sectors, suggesting that releases on the northern side of the ACC in these regions could efficiently sample southward intrusions associated with western boundary currents,  retroflections, frontal meanders, and recirculation. By contrast, no complete $\mathrm{oSO}\rightarrow\mathrm{iSO}$ crossing is detected in the drifter dataset. Surface drifters would therefore be poorly suited to an experiment whose primary objective is to observe complete southward penetration across the full ACC system.
+        
+        The optimal strategy for southward transport is different. Under the revised regional definition, the strongest direct $\mathrm{oSO}\rightarrow\mathrm{ACC}$ transition occurs in the western Atlantic sector for both observing systems. The ARGO matrix additionally identifies important connections in the eastern Indian Ocean and downstream pathways from sectors 1 and 2 toward $\mathrm{ACC}_2$ and $\mathrm{ACC}_3$. Deployments aimed at observing southward crossing of the northern ACC boundary should therefore prioritize the western Atlantic sector and the upstream portions of the Indian Ocean pathways. By contrast, no complete $\mathrm{oSO}\rightarrow\mathrm{iSO}$ crossing is detected in the drifter dataset. Surface drifters would therefore remain poorly suited to an experiment whose primary objective is to observe complete southward penetration across the full ACC system.
+
+        ARGO floats provide a more appropriate platform for investigating these rare complete southward pathways. Non-zero $\mathrm{oSO}\rightarrow\mathrm{iSO}$ transitions now originate in all five zonal sectors, rather than being restricted to sectors 1--3. The largest fractions originate in sector 5 and sector 2, while some of the shortest peak ages occur for $\mathrm{oSO}_1 \rightarrow \mathrm{iSO}_5$, $\mathrm{oSO}_2 \rightarrow \mathrm{iSO}_2$, and $\mathrm{oSO}_4 \rightarrow \mathrm{iSO}_5$. A probability-oriented deployment could therefore prioritize sectors 5 and 2, whereas an experiment emphasizing shorter observed peak ages could also consider sectors 1 and 4. Because all of these pathways involve small fractions of the initial population and generally develop over long timescales, such a strategy would require a sufficiently large number of long-lived floats. Under-ice operation and the possibility of delayed or missing position fixes should also be considered when interpreting the resulting trajectories.
+        
+        These recommendations remain qualitative because the present diagnostics are derived from the historical and spatially non-uniform distribution of observations. The cardinal-sector maps may be affected by variations in deployment density, trajectory duration, data coverage, and platform survival, while $T_{i,j}^{\mathrm{peak}}$ is the age of maximum target-region occupancy and not an individual first-passage time. The proposed deployment regions should therefore be regarded as candidate sampling areas. Their effectiveness should be tested through dedicated numerical release experiments or prospective observational deployments before being interpreted as optimal locations.
+
+\section{Figures}
+    %% trajectories and regions figure
+    \begin{figure}
+        \centering
+        \begin{subfigure}{0.45\textwidth}
+            \centering
+            \includegraphics[width=\linewidth]{Figures/DRIFTERS/SO/trajectories.png}
+            \caption{}
+            \label{fig:drifters_traj}
+        \end{subfigure}
+        \hfill
+        \begin{subfigure}{0.45\textwidth}
+            \centering
+            \includegraphics[width=\linewidth]{Figures/ARGO/SO/trajectories.png}
+            \caption{}
+            \label{fig:argo_traj}
+        \end{subfigure}
+    
+        \par\medskip
+    
+        \begin{subfigure}{0.45\textwidth}
+            \centering
+            \includegraphics[width=\linewidth]{Figures/REGIONS/03x03_start_regions.png}
+            \caption{}
+            \label{fig:03_regions}
+        \end{subfigure}
+        \hfill
+        \begin{subfigure}{0.45\textwidth}
+            \centering
+            \includegraphics[width=\linewidth]{Figures/REGIONS/15x15_start_regions.png}
+            \caption{}
+            \label{fig:15_regions}
+        \end{subfigure}
+        \caption{Drifters and ARGO trajectories over the Souther Ocean. Colors indicate the initial longitude. Panel (a) shows drifter trajectories while panle (b) represents the ARGO floats trajectories, obtained from their surface location. Finally, panel (c) and (d) show the sub-domains considered in this study.}
+        \label{fig:trajectories}
+    \end{figure}
+
+    % TRANSITION PROBABILITIES MERIDIONAL
+    \begin{figure}
+        \centering
+    
+        % ---------- Row 1: North sector ----------
+        \begin{subfigure}{0.48\textwidth}
+            \centering
+            \includegraphics[width=\linewidth]
+            {Figures/DRIFTERS/SO/gridded_transition_probability_north_dt_10d.png}
+            \caption{North-sector probability, drifters.}
+            \label{fig:northward_transition_drifters}
+        \end{subfigure}
+        \hfill
+        \begin{subfigure}{0.48\textwidth}
+            \centering
+            \includegraphics[width=\linewidth]
+            {Figures/ARGO/SO/gridded_transition_probability_north_dt_10d.png}
+            \caption{North-sector probability, ARGO.}
+            \label{fig:northward_transition_argo}
+        \end{subfigure}
+    
+        \par\medskip
+    
+        % ---------- Row 2: South sector ----------
+        \begin{subfigure}{0.48\textwidth}
+            \centering
+            \includegraphics[width=\linewidth]
+            {Figures/DRIFTERS/SO/gridded_transition_probability_south_dt_10d.png}
+            \caption{South-sector probability, drifters.}
+            \label{fig:southward_transition_drifters}
+        \end{subfigure}
+        \hfill
+        \begin{subfigure}{0.48\textwidth}
+            \centering
+            \includegraphics[width=\linewidth]
+            {Figures/ARGO/SO/gridded_transition_probability_south_dt_10d.png}
+            \caption{South-sector probability, ARGO.}
+            \label{fig:southward_transition_argo}
+        \end{subfigure}
+    
+        \caption{North- and south-sector $10$-day transition probabilities derived from the gridded empirical transition matrices. The upper row shows the probability that the endpoint bearing lies in the sector within $45^{\circ}$ of geographic north, while the lower row shows the corresponding probability for the sector centered on geographic south. The left and right columns show surface drifters and ARGO floats, respectively. White cells indicate locations without valid starting segments or cells excluded by the sampling criterion.}
+        \label{fig:meridional_transition_probability_maps}
+    \end{figure}
+
+
+    \begin{figure}
+        \centering
+        % ---------- Row 1: East sector ----------
+        \begin{subfigure}{0.48\textwidth}
+            \centering
+            \includegraphics[width=\linewidth]
+            {Figures/DRIFTERS/SO/gridded_transition_probability_east_dt_10d.png}
+            \caption{East-sector probability, drifters.}
+            \label{fig:eastward_transition_drifters}
+        \end{subfigure}
+        \hfill
+        \begin{subfigure}{0.48\textwidth}
+            \centering
+            \includegraphics[width=\linewidth]
+            {Figures/ARGO/SO/gridded_transition_probability_east_dt_10d.png}
+            \caption{East-sector probability, ARGO.}
+            \label{fig:eastward_transition_argo}
+        \end{subfigure}
+    
+        \par\medskip
+    
+        % ---------- Row 2: West sector ----------
+        \begin{subfigure}{0.48\textwidth}
+            \centering
+            \includegraphics[width=\linewidth]
+            {Figures/DRIFTERS/SO/gridded_transition_probability_west_dt_10d.png}
+            \caption{West-sector probability, drifters.}
+            \label{fig:westward_transition_drifters}
+        \end{subfigure}
+        \hfill
+        \begin{subfigure}{0.48\textwidth}
+            \centering
+            \includegraphics[width=\linewidth]
+            {Figures/ARGO/SO/gridded_transition_probability_west_dt_10d.png}
+            \caption{West-sector probability, ARGO.}
+            \label{fig:westward_transition_argo}
+        \end{subfigure}
+    
+        \par\medskip
+    
+        % % ---------- Row 3: Same cell ----------
+        % \begin{subfigure}{0.48\textwidth}
+        %     \centering
+        %     \includegraphics[width=\linewidth]
+        %     {Figures/DRIFTERS/SO/gridded_transition_probability_stay.png}
+        %     \caption{Same-cell retention, drifters.}
+        %     \label{fig:stay_transition_drifters}
+        % \end{subfigure}
+        % \hfill
+        % \begin{subfigure}{0.48\textwidth}
+        %     \centering
+        %     \includegraphics[width=\linewidth]
+        %     {Figures/ARGO/SO/gridded_transition_probability_stay.png}
+        %     \caption{Same-cell retention, ARGO.}
+        %     \label{fig:stay_transition_argo}
+        % \end{subfigure}
+    
+        \caption{
+        East- and west-sector $10$-day transition probabilities derived from the gridded empirical transition matrices. The first and second rows show the probabilities that the endpoint bearing lies in the sectors within $45^{\circ}$ of geographic east and west, respectively. The left and right columns show surface drifters and ARGO floats, respectively. White cells indicate locations without valid starting segments.}
+        \label{fig:zonal_transition_probability_maps}
+    \end{figure}
+
+    \begin{figure}
+        \centering
+        \begin{subfigure}{0.48\textwidth}
+            \centering
+            \includegraphics[width=\linewidth]{Figures/DRIFTERS/SO/15x15_transition_strength_heatmap.png}
+            \caption{Maximum transition fraction, $S_{i,j}$.}
+            \label{fig:15x15_transition_fractions_drifters}
+        \end{subfigure}
+        \hfill
+        \begin{subfigure}{0.48\textwidth}
+            \centering
+            \includegraphics[width=\linewidth]{Figures/DRIFTERS/SO/15x15_transition_tpeak_heatmap.png}
+            \caption{Time of maximum transition, $T_{i,j}^{\mathrm{peak}}$.}
+            \label{fig:15x15_transition_tmax_drifters}
+        \end{subfigure}
+        \par\medskip
+    
+        \caption{Zonally resolved transition diagnostics for surface drifters using the $15$-region partition. The left panel shows the maximum off-diagonal transition fraction, $S_{i,j}=\max_t P_{i,j}(t)$, while the right panel shows the corresponding peak age, $T_{i,j}^{\mathrm{peak}}$, defined as the first sampled age at which $P_{i,j}(t)$ reaches its maximum. Rows identify the source region and columns the target region. The matrix is organized into nine $5\times5$ blocks corresponding to the meridional transitions $\mathrm{iSO} \rightarrow \mathrm{iSO}$, $\mathrm{iSO} \rightarrow \mathrm{ACC}$, $\mathrm{iSO} \rightarrow \mathrm{oSO}$, and the analogous transitions from the ACC and oSO. Within each block, the five rows and columns represent the zonal sectors ordered eastward, with sectors 5 and 1 adjacent because of circumpolar periodicity. Diagonal elements of the full matrix are omitted because their maximum value is unity by construction at $t=0$.}
+        \label{fig:15x15_transition_diagnostics_drifters}
+    \end{figure}
+    
+    \begin{figure}
+        \centering
+        \begin{subfigure}{0.48\textwidth}
+            \centering
+            \includegraphics[width=\linewidth]{Figures/ARGO/SO/15x15_transition_strength_heatmap.png}
+            \caption{Maximum transition fraction, $S_{i,j}$.}
+            \label{fig:15x15_transition_fractions_argo}
+        \end{subfigure}
+        \hfill
+        \begin{subfigure}{0.48\textwidth}
+            \centering
+            \includegraphics[width=\linewidth]{Figures/ARGO/SO/15x15_transition_tpeak_heatmap.png}
+            \caption{Time of maximum transition, $T_{i,j}^{\mathrm{peak}}$.}
+            \label{fig:15x15_transition_tmax_argo}
+        \end{subfigure}
+        \par\medskip
+    
+        \caption{Zonally resolved transition diagnostics for ARGO floats using the $15$-region partition. The left panel shows the maximum off-diagonal transition fraction, $S_{i,j}=\max_t P_{i,j}(t)$, while the right panel shows the corresponding peak age, $T_{i,j}^{\mathrm{peak}}$, defined as the first sampled age at which $P_{i,j}(t)$ reaches its maximum. Rows identify the source region and columns the target region. The matrix is organized into nine $5\times5$ blocks corresponding to the meridional transitions $\mathrm{iSO} \rightarrow \mathrm{iSO}$, $\mathrm{iSO} \rightarrow \mathrm{ACC}$, $\mathrm{iSO} \rightarrow \mathrm{oSO}$, and the analogous transitions from the ACC and oSO. Within each block, the five rows and columns represent the zonal sectors ordered eastward, with sectors 5 and 1 adjacent because of circumpolar periodicity. Diagonal elements of the full matrix are omitted because their maximum value is unity by construction at $t=0$.}
+        \label{fig:15x15_transition_diagnostics_argo}
+    \end{figure}
+
+
+% Your Data Availability Statement is an unnumbered section right before the bibliography.
+\section*{Open Research Statement}
+Code is available at \url{https://github.com/JacopoBusatto/kinematicParcels}
+
+\section*{Acknowledgments}
+
+We warmly thank for suggestions and inspiration Gianluigi Ginorra and Fulvio Zilantra.
+
+% Bibliography
+%\cite{*} % If you have uncited bibliography items.
+%
+\bibliography{biblio}
+
+
+% Appendix sections are numbered differently than article ones.
+\appendix  % Put this first.
+
+% Can repeat for each appendix.
+\section{Three-region transition matrix}
+    \label{app:3_regions}
+    The three-region drifter results provide a simple illustration of the transition diagnostics. Figure~\ref{fig:3x3_transition_diagnostics_drifters} shows the evolution of the matrix row associated with particles initially located in the ACC, together with the maximum transition fractions and their corresponding peak ages. The diagonal element $P_{\mathrm{ACC},\mathrm{ACC}}(t)$ gives the fraction of the initial ACC population that remains in the ACC at age $t$, while the off-diagonal elements quantify southward transport toward iSO and northward transport toward oSO. For drifters released in the ACC, the northward transition toward oSO reaches a maximum fraction of
+    \begin{equation}
+        S_{\mathrm{ACC},\mathrm{oSO}}=0.120
+    \end{equation}
+    at
+    \begin{equation}
+        T_{\mathrm{ACC},\mathrm{oSO}}^{\mathrm{peak}} = 228~\mathrm{days}.
+    \end{equation}
+    The corresponding southward transition from ACC to iSO reaches a substantially smaller maximum,
+    \begin{equation}
+        S_{\mathrm{ACC},\mathrm{iSO}}=0.0234,
+    \end{equation}
+    at
+    \begin{equation}
+        T_{\mathrm{ACC},\mathrm{iSO}}^{\mathrm{peak}}
+        =122~\mathrm{days}.
+    \end{equation}
+    The maximum fraction transported northward is therefore approximately five times larger than that transported southward, although the weaker southward signal reaches its maximum earlier.
+
+    The complete three-region matrix confirms this asymmetry. The strongest drifter transition is $\mathrm{iSO} \rightarrow \mathrm{ACC}$, which reaches a maximum fraction of $0.166$ after $136$ days, followed by $\mathrm{ACC} \rightarrow \mathrm{oSO}$. The reverse adjacent transitions are weaker: $\mathrm{oSO} \rightarrow \mathrm{ACC}$ reaches $0.0408$ after $34$ days, while $\mathrm{ACC} \rightarrow \mathrm{iSO}$ reaches $0.0234$ after $122$ days. Complete northward crossings from iSO to oSO occur for approximately $1.6\%$ of the drifters and peak after $731$ days, whereas no complete southward $\mathrm{oSO} \rightarrow \mathrm{iSO}$ transition is detected.
+
+    % ESEMPIO 3x3
+    \begin{figure}
+        \centering
+        \begin{subfigure}{0.65\textwidth}
+            \centering
+            \includegraphics[width=\linewidth]{Figures/DRIFTERS/SO/3x3_transition_probability_ACC_plot.png}
+            \caption{Transition fractions from ACC, drifters.}
+            \label{fig:3x3_transition_fractions}
+        \end{subfigure}
+        
+        \par\medskip
+        
+        \begin{subfigure}{0.45\textwidth}
+            \centering
+            \includegraphics[width=\linewidth]{Figures/DRIFTERS/SO/3x3_transition_strength_heatmap.png}
+            \caption{Maximum transition fraction, $S_{i,j}$., drifters.}
+            \label{fig:3x3_transition_fraction}
+        \end{subfigure}
+        \hfill
+        \begin{subfigure}{0.45\textwidth}
+            \centering
+            \includegraphics[width=\linewidth]{Figures/DRIFTERS/SO/3x3_transition_tpeak_heatmap.png}
+            \caption{Time of maximum transition, $T_{i,j}^{\mathrm{peak}}$, drifters.}
+            \label{fig:3x3_transition_time}
+        \end{subfigure}
+    
+        \caption{\textcolor{blue}{QUI POTREMMO SOSTITUIRE LE MATRICI A FICURA CON TABELLE TESTUALI PER RISPARMIARE SPAZIO VISTO CHE QUESTE INFORMAZIONI NON SONO CHIAVE MA SOLO DI ESEMPIO. PER ESEMPIO TENIAMO D'OCCHIO LA FIG 2 DI art:chamberlain2023 CHE è INTERESSANTE COME SCHEMINO, SIA PER QUESTA MATRICE CHE PER SPIEGARE LE MAPPE DI ATTRAVERSAMENTI MERIDIONALI} Summary of the three-region transition analysis for surface drifters. The upper panel shows the time evolution of the transition fractions $P_{\mathrm{ACC},j}(t)$ for particles initially located in the ACC, where each curve corresponds to a different target region $j$. The lower-left panel shows the maximum off-diagonal transition fraction, $S_{i,j}=\max_t P_{i,j}(t)$, for each source--target pair. The lower-right panel shows the corresponding time of maximum transition, $T_{i,j}^{\mathrm{peak}}$, defined as the first sampled age at which $P_{i,j}(t)$ reaches $S_{i,j}$. Diagonal elements are omitted because their maximum value is unity by construction at $t=0$. Rows identify the source region and columns the target region.}
+        \label{fig:3x3_transition_diagnostics_drifters}
+    \end{figure}
+
+\end{document}

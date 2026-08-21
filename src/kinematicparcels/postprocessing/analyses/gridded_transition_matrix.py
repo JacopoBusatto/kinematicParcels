@@ -25,6 +25,10 @@ _TRANSITION_TABLE_DTYPES = {
     "transition_probability": "float64",
 }
 
+_CARDINAL_DIRECTIONS = ("north", "east", "south", "west")
+_DIRECTION_BOUNDARY_ATOL_DEGREES = 1.0e-10
+_UNDEFINED_BEARING_ATOL = 1.0e-12
+
 
 @dataclass(frozen=True)
 class GriddedTransitionMatrixResult:
@@ -296,6 +300,85 @@ def _build_transition_table(
     )
 
 
+def _spherical_initial_bearing_degrees(
+    start_lon: np.ndarray,
+    start_lat: np.ndarray,
+    end_lon: np.ndarray,
+    end_lat: np.ndarray,
+) -> tuple[np.ndarray, np.ndarray]:
+    """Return initial great-circle bearings and an undefined-bearing mask."""
+    start_lon = np.asarray(start_lon, dtype=float)
+    start_lat = np.asarray(start_lat, dtype=float)
+    end_lon = np.asarray(end_lon, dtype=float)
+    end_lat = np.asarray(end_lat, dtype=float)
+
+    phi1 = np.deg2rad(start_lat)
+    phi2 = np.deg2rad(end_lat)
+    delta_lon = ((end_lon - start_lon + 180.0) % 360.0) - 180.0
+    delta_lambda = np.deg2rad(delta_lon)
+
+    x = np.sin(delta_lambda) * np.cos(phi2)
+    y = (
+        np.cos(phi1) * np.sin(phi2)
+        - np.sin(phi1) * np.cos(phi2) * np.cos(delta_lambda)
+    )
+    undefined = np.hypot(x, y) <= _UNDEFINED_BEARING_ATOL
+    bearing = (np.rad2deg(np.arctan2(x, y)) + 360.0) % 360.0
+    bearing[undefined] = np.nan
+    return bearing, undefined
+
+
+def _cardinal_sector_weights(
+    bearing: np.ndarray,
+    *,
+    undefined: np.ndarray | None = None,
+) -> dict[str, np.ndarray]:
+    """Partition bearings into cardinal sectors, sharing exact boundaries."""
+    bearing = np.asarray(bearing, dtype=float)
+    if undefined is None:
+        undefined = np.zeros(bearing.shape, dtype=bool)
+    else:
+        undefined = np.asarray(undefined, dtype=bool)
+
+    weights = {
+        direction: np.zeros(bearing.shape, dtype=float)
+        for direction in _CARDINAL_DIRECTIONS
+    }
+    finite = np.isfinite(bearing) & ~undefined
+    boundary_45 = finite & np.isclose(
+        bearing, 45.0, rtol=0.0, atol=_DIRECTION_BOUNDARY_ATOL_DEGREES
+    )
+    boundary_135 = finite & np.isclose(
+        bearing, 135.0, rtol=0.0, atol=_DIRECTION_BOUNDARY_ATOL_DEGREES
+    )
+    boundary_225 = finite & np.isclose(
+        bearing, 225.0, rtol=0.0, atol=_DIRECTION_BOUNDARY_ATOL_DEGREES
+    )
+    boundary_315 = finite & np.isclose(
+        bearing, 315.0, rtol=0.0, atol=_DIRECTION_BOUNDARY_ATOL_DEGREES
+    )
+    on_boundary = boundary_45 | boundary_135 | boundary_225 | boundary_315
+    interior = finite & ~on_boundary
+
+    weights["north"][interior & ((bearing < 45.0) | (bearing > 315.0))] = 1.0
+    weights["east"][interior & (bearing > 45.0) & (bearing < 135.0)] = 1.0
+    weights["south"][interior & (bearing > 135.0) & (bearing < 225.0)] = 1.0
+    weights["west"][interior & (bearing > 225.0) & (bearing < 315.0)] = 1.0
+
+    for boundary, first, second in (
+        (boundary_45, "north", "east"),
+        (boundary_135, "east", "south"),
+        (boundary_225, "south", "west"),
+        (boundary_315, "west", "north"),
+    ):
+        weights[first][boundary] = 0.5
+        weights[second][boundary] = 0.5
+
+    for values in weights.values():
+        values[undefined] = 0.25
+    return weights
+
+
 def _direction_probability_maps(
     grid: RegularGrid,
     table: pd.DataFrame,
@@ -317,26 +400,36 @@ def _direction_probability_maps(
     if table.empty:
         return maps
 
-    dlon = (
-        table["end_lon_bin"].to_numpy(dtype=int)
-        - table["start_lon_bin"].to_numpy(dtype=int)
-    ) % grid.nlon
-    half_world = grid.nlon / 2.0
     probability = table["transition_probability"].to_numpy(dtype=float)
     start_lat = table["start_lat_bin"].to_numpy(dtype=int)
     start_lon = table["start_lon_bin"].to_numpy(dtype=int)
     end_lat = table["end_lat_bin"].to_numpy(dtype=int)
     end_lon = table["end_lon_bin"].to_numpy(dtype=int)
+    stay = (end_lat == start_lat) & (end_lon == start_lon)
+    np.add.at(
+        maps["probability_stay"],
+        (start_lat[stay], start_lon[stay]),
+        probability[stay],
+    )
 
-    masks = {
-        "probability_north": end_lat > start_lat,
-        "probability_south": end_lat < start_lat,
-        "probability_east": (dlon > 0) & (dlon < half_world),
-        "probability_west": dlon > half_world,
-        "probability_stay": (end_lat == start_lat) & (end_lon == start_lon),
-    }
-    for name, mask in masks.items():
-        np.add.at(maps[name], (start_lat[mask], start_lon[mask]), probability[mask])
+    moving = ~stay
+    if np.any(moving):
+        bearing, undefined = _spherical_initial_bearing_degrees(
+            table["start_lon_center"].to_numpy(dtype=float)[moving],
+            table["start_lat_center"].to_numpy(dtype=float)[moving],
+            table["end_lon_center"].to_numpy(dtype=float)[moving],
+            table["end_lat_center"].to_numpy(dtype=float)[moving],
+        )
+        weights = _cardinal_sector_weights(bearing, undefined=undefined)
+        moving_probability = probability[moving]
+        moving_start_lat = start_lat[moving]
+        moving_start_lon = start_lon[moving]
+        for direction, direction_weights in weights.items():
+            np.add.at(
+                maps[f"probability_{direction}"],
+                (moving_start_lat, moving_start_lon),
+                moving_probability * direction_weights,
+            )
 
     return maps
 
@@ -384,7 +477,8 @@ def _build_dataset(
         "title": "Sparse gridded transition matrix",
         "summary": (
             "Empirical transition probabilities between regular lon/lat grid cells, "
-            "stored as occupied sparse transitions plus start-cell directional summaries."
+            "stored as occupied sparse transitions plus start-cell cardinal-sector "
+            "summaries."
         ),
         "grid_type": "regular_lonlat",
         "lon_min": grid.lon_min,
@@ -401,7 +495,26 @@ def _build_dataset(
         "source_timestep_seconds": (
             "unknown" if source_timestep_ns is None else source_timestep_ns / 1.0e9
         ),
-        "normalization": "transition_count / n_segments_start(start_cell)",
+        "segment_inclusion": (
+            "both start and end points must lie inside the analysis grid"
+        ),
+        "normalization": (
+            "transition_count / n_valid_in_domain_segments_start(start_cell)"
+        ),
+        "direction_classification": (
+            "initial spherical great-circle bearing between start/end grid-cell centers"
+        ),
+        "direction_bearing_convention": (
+            "degrees clockwise from geographic north in [0, 360)"
+        ),
+        "direction_sector_boundaries_degrees": "45, 135, 225, 315",
+        "direction_boundary_rule": (
+            "split probability equally between adjacent cardinal sectors"
+        ),
+        "direction_boundary_tolerance_degrees": _DIRECTION_BOUNDARY_ATOL_DEGREES,
+        "undefined_bearing_rule": (
+            "split probability equally among all four cardinal sectors"
+        ),
         "longitude_convention": _longitude_convention_for_grid(grid),
         "created_at_utc": pd.Timestamp.now(tz="UTC").isoformat(),
         "software_version": __version__,
@@ -418,12 +531,18 @@ def _build_dataset(
     )
 
     ds["n_segments_start"].attrs.update(
-        long_name="number of segments starting in grid cell",
+        long_name=(
+            "number of valid segments with both endpoints inside the analysis domain "
+            "starting in grid cell"
+        ),
         units="count",
     )
-    for direction in ("north", "south", "east", "west"):
+    for direction in _CARDINAL_DIRECTIONS:
         ds[f"probability_{direction}"].attrs.update(
-            long_name=f"probability of moving {direction} from start cell",
+            long_name=(
+                f"probability of moving into the {direction} cardinal bearing sector "
+                "from start cell"
+            ),
             units="1",
         )
     ds["probability_stay"].attrs.update(
@@ -448,6 +567,9 @@ def compute_gridded_transition_matrix(
 ) -> GriddedTransitionMatrixResult:
     """
     Compute a sparse transition matrix between regular lon/lat grid cells.
+
+    Only displacement segments whose starting and ending points both lie inside
+    the analysis grid contribute to counts and probabilities.
     """
     required = [trajectory_col, lon_col, lat_col, time_col]
     missing = [col for col in required if col not in df.columns]
@@ -520,14 +642,17 @@ def compute_gridded_transition_matrix(
         grid=grid,
     )
 
-    start_state_all = start_lat_bin[valid_start] * grid.nlon + start_lon_bin[valid_start]
+    valid_transition = valid_start & valid_end
+    start_state_all = (
+        start_lat_bin[valid_transition] * grid.nlon
+        + start_lon_bin[valid_transition]
+    )
     start_counts_flat = np.bincount(
         start_state_all,
         minlength=grid.nlat * grid.nlon,
     ).astype(np.int64)
     start_counts = start_counts_flat.reshape((grid.nlat, grid.nlon))
 
-    valid_transition = valid_start & valid_end
     if not np.any(valid_transition):
         table = _empty_transition_table()
         ds = _build_dataset(

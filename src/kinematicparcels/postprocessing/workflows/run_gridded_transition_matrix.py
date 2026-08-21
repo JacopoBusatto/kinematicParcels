@@ -117,12 +117,15 @@ def run_gridded_transition_matrix(cfg: PostprocessConfig, context: dict) -> None
             / f"gridded_transition_probability_{direction}_{timestep_label}.png"
         )
         print(f"Saving {direction} transition probability plot:", plot_path)
+        direction_title = (
+            "stay" if direction == "stay" else f"{direction} cardinal sector"
+        )
         plot_grid_map(
             ds_plot,
             var_name=var_name,
             outpath=plot_path,
             projection=cfg.plotting.projection,
-            title=f"Gridded transition probability ({direction})",
+            title=f"Gridded transition probability ({direction_title})",
             vmin=vmin,
             vmax=vmax,
             cmap=cfg.gridded_transition_matrix.plotting.cmap,
