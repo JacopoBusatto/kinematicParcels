@@ -6,14 +6,18 @@ from typing import Any
 import yaml
 
 from .models import (
+    AliveLatitudeFractionConfig,
+    AliveLatitudeFractionOutputConfig,
+    AliveLatitudeFractionPlottingConfig,
     AnalysisConfig,
+    BeachingTimesConfig,
+    BeachingTimesPlottingConfig,
     CleaningConfig,
     ClusterStrengthAnimationConfig,
     ClusterStrengthConfig,
     ClusterStrengthSnapshotsConfig,
     DatasetConfig,
     DatasetCoordinatesConfig,
-    BeachingTimesPlottingConfig,
     DensityConfig,
     ExponentMapPlotConfig,
     ExponentMapsConfig,
@@ -21,19 +25,12 @@ from .models import (
     ExponentMapsFTLEConfig,
     ExportsConfig,
     FSLEConfig,
+    GridConfig,
     GriddedTransitionMatrixConfig,
+    GriddedTransitionMatrixEntropyPlottingConfig,
     GriddedTransitionMatrixMapPlottingConfig,
     GriddedTransitionMatrixOutputConfig,
     GriddedTransitionMatrixPlottingConfig,
-    GridConfig,
-    OutputConfig,
-    PostprocessConfig,
-    BeachingTimesConfig,
-    ReleaseConfig,
-    TrajectoriesConfig,
-    PlottingConfig,
-    StartEndRegionsConfig,
-    TransitionProbabilityConfig,
     MeridionalCrossingConfig,
     MeridionalCrossingCrossingConfig,
     MeridionalCrossingMapPlottingConfig,
@@ -45,6 +42,19 @@ from .models import (
     MeridionalExcursionOutputConfig,
     MeridionalExcursionPlottingConfig,
     MeridionalExcursionVariablePlotConfig,
+    OutputConfig,
+    PlottingConfig,
+    PostprocessConfig,
+    ReleaseConfig,
+    SampledMapConfig,
+    SampledMapGradientsConfig,
+    SampledMapOutputConfig,
+    SampledMapPlotConfig,
+    SampledMapVariableConfig,
+    SampledMapVariablePlottingConfig,
+    StartEndRegionsConfig,
+    TrajectoriesConfig,
+    TransitionProbabilityConfig,
 )
 
 
@@ -79,6 +89,12 @@ def _parse_optional_number(value: Any, name: str) -> float | None:
     if value is None:
         return None
     return _require_number(value, name)
+
+
+def _require_bool(value: Any, name: str) -> bool:
+    if not isinstance(value, bool):
+        raise ValueError(f"'{name}' must be true or false.")
+    return value
 
 
 def _parse_string_tuple(value: Any, name: str) -> tuple[str, ...]:
@@ -876,6 +892,29 @@ def _parse_trajectories(section: dict[str, Any] | None) -> TrajectoriesConfig:
             "'trajectories.plot_cmap_mode' must be 'auto', 'categorical', or 'numeric'."
         )
 
+    plot_vmin = _parse_optional_number(
+        section.get("plot_vmin", None),
+        "trajectories.plot_vmin",
+    )
+    plot_vmax = _parse_optional_number(
+        section.get("plot_vmax", None),
+        "trajectories.plot_vmax",
+    )
+    if plot_vmin is not None and plot_vmax is not None and plot_vmin > plot_vmax:
+        raise ValueError(
+            "'trajectories.plot_vmin' must be less than or equal to "
+            "'trajectories.plot_vmax'."
+        )
+
+    plot_label_raw = section.get("plot_label", None)
+    if plot_label_raw is None:
+        plot_label = None
+    else:
+        plot_label = _require_nonempty_string(
+            plot_label_raw,
+            "trajectories.plot_label",
+        )
+
     alpha_raw = section.get("alpha", 0.7)
     alpha = _require_number(alpha_raw, "trajectories.alpha")
     if not (0.0 <= alpha <= 1.0):
@@ -967,6 +1006,9 @@ def _parse_trajectories(section: dict[str, Any] | None) -> TrajectoriesConfig:
         plot_color_by=plot_color_by,
         plot_cmap=plot_cmap,
         plot_cmap_mode=plot_cmap_mode,
+        plot_vmin=plot_vmin,
+        plot_vmax=plot_vmax,
+        plot_label=plot_label,
         animate=animate,
         animation_fps=animation_fps,
         animation_every_n=animation_every_n_traj,
@@ -1706,6 +1748,7 @@ def _parse_gridded_transition_matrix(
         section.get("timestep_unit", "hours"),
         "gridded_transition_matrix.timestep_unit",
     )
+    resample = section.get("resample", False)
 
     output_section = section.get("output", None)
     if output_section is None:
@@ -1727,6 +1770,11 @@ def _parse_gridded_transition_matrix(
         plotting_section = _require_dict(
             plotting_section, "gridded_transition_matrix.plotting"
         )
+        if "cmap" in plotting_section:
+            raise ValueError(
+                "gridded_transition_matrix.plotting.cmap has moved to "
+                "gridded_transition_matrix.plotting.probability.cmap."
+            )
         probability_section = plotting_section.get("probability", None)
         if probability_section is None:
             probability = GriddedTransitionMatrixMapPlottingConfig()
@@ -1736,6 +1784,10 @@ def _parse_gridded_transition_matrix(
                 "gridded_transition_matrix.plotting.probability",
             )
             probability = GriddedTransitionMatrixMapPlottingConfig(
+                cmap=_require_nonempty_string(
+                    probability_section.get("cmap", "viridis"),
+                    "gridded_transition_matrix.plotting.probability.cmap",
+                ),
                 vmin=_parse_optional_number(
                     probability_section.get("vmin", None),
                     "gridded_transition_matrix.plotting.probability.vmin",
@@ -1747,20 +1799,329 @@ def _parse_gridded_transition_matrix(
                 as_percent=bool(probability_section.get("as_percent", False)),
             )
 
+        entropy_section = plotting_section.get("entropy", None)
+        if entropy_section is None:
+            entropy = GriddedTransitionMatrixEntropyPlottingConfig()
+        else:
+            entropy_section = _require_dict(
+                entropy_section,
+                "gridded_transition_matrix.plotting.entropy",
+            )
+            entropy = GriddedTransitionMatrixEntropyPlottingConfig(
+                enabled=bool(entropy_section.get("enabled", True)),
+                log_base=entropy_section.get("log_base", "e"),
+                cmap=_require_nonempty_string(
+                    entropy_section.get("cmap", "magma"),
+                    "gridded_transition_matrix.plotting.entropy.cmap",
+                ),
+                log_scale=bool(entropy_section.get("log_scale", False)),
+                zero_color=_require_nonempty_string(
+                    entropy_section.get("zero_color", "lightgray"),
+                    "gridded_transition_matrix.plotting.entropy.zero_color",
+                ),
+                vmin=_parse_optional_number(
+                    entropy_section.get("vmin", None),
+                    "gridded_transition_matrix.plotting.entropy.vmin",
+                ),
+                vmax=_parse_optional_number(
+                    entropy_section.get("vmax", None),
+                    "gridded_transition_matrix.plotting.entropy.vmax",
+                ),
+            )
+
         plotting = GriddedTransitionMatrixPlottingConfig(
             enabled=bool(plotting_section.get("enabled", True)),
-            cmap=_require_nonempty_string(
-                plotting_section.get("cmap", "viridis"),
-                "gridded_transition_matrix.plotting.cmap",
-            ),
             probability=probability,
+            entropy=entropy,
         )
 
     return GriddedTransitionMatrixConfig(
         timestep=timestep,
         timestep_unit=timestep_unit,
+        resample=resample,
         output=output,
         plotting=plotting,
+    )
+
+
+def _parse_alive_latitude_fraction(
+    section: dict[str, Any] | None,
+) -> AliveLatitudeFractionConfig:
+    if section is None:
+        return AliveLatitudeFractionConfig()
+
+    section = _require_dict(section, "alive_latitude_fraction")
+
+    output_section = section.get("output")
+    if output_section is None:
+        output = AliveLatitudeFractionOutputConfig()
+    else:
+        output_section = _require_dict(
+            output_section, "alive_latitude_fraction.output"
+        )
+        output = AliveLatitudeFractionOutputConfig(
+            save_csv=bool(output_section.get("save_csv", True)),
+            save_figure=bool(output_section.get("save_figure", True)),
+        )
+
+    plotting_section = section.get("plotting")
+    if plotting_section is None:
+        plotting = AliveLatitudeFractionPlottingConfig()
+    else:
+        plotting_section = _require_dict(
+            plotting_section, "alive_latitude_fraction.plotting"
+        )
+        plotting = AliveLatitudeFractionPlottingConfig(
+            cmap=_require_nonempty_string(
+                plotting_section.get("cmap", "viridis"),
+                "alive_latitude_fraction.plotting.cmap",
+            ),
+            vmin=_parse_optional_number(
+                plotting_section.get("vmin", 0.0),
+                "alive_latitude_fraction.plotting.vmin",
+            ),
+            vmax=_parse_optional_number(
+                plotting_section.get("vmax"),
+                "alive_latitude_fraction.plotting.vmax",
+            ),
+            min_mask_value=_parse_optional_number(
+                plotting_section.get("min_mask_value"),
+                "alive_latitude_fraction.plotting.min_mask_value",
+            ),
+            as_percent=bool(plotting_section.get("as_percent", True)),
+            masked_color=_require_nonempty_string(
+                plotting_section.get("masked_color", "lightgray"),
+                "alive_latitude_fraction.plotting.masked_color",
+            ),
+        )
+
+    return AliveLatitudeFractionConfig(
+        lat_min=_require_number(
+            section.get("lat_min", -90.0), "alive_latitude_fraction.lat_min"
+        ),
+        lat_max=_require_number(
+            section.get("lat_max", 90.0), "alive_latitude_fraction.lat_max"
+        ),
+        bin_width_deg=_require_number(
+            section.get("bin_width_deg", 1.0),
+            "alive_latitude_fraction.bin_width_deg",
+        ),
+        minimum_alive_tracers=_parse_positive_int(
+            section.get("minimum_alive_tracers", 1),
+            "alive_latitude_fraction.minimum_alive_tracers",
+        ),
+        time_axis=_require_nonempty_string(
+            section.get("time_axis", "age"),
+            "alive_latitude_fraction.time_axis",
+        ),
+        resample_days=_parse_optional_number(
+            section.get("resample_days"),
+            "alive_latitude_fraction.resample_days",
+        ),
+        max_time_days=_parse_optional_number(
+            section.get("max_time_days"),
+            "alive_latitude_fraction.max_time_days",
+        ),
+        max_group_member=_parse_optional_positive_int(
+            section.get("max_group_member"),
+            "alive_latitude_fraction.max_group_member",
+        ),
+        output=output,
+        plotting=plotting,
+    )
+
+
+def _parse_sampled_map_plot(
+    section: dict[str, Any] | None,
+    *,
+    name: str,
+    default: SampledMapPlotConfig,
+) -> SampledMapPlotConfig:
+    if section is None:
+        return default
+
+    section = _require_dict(section, name)
+    percentile_limits_raw = section.get("percentile_limits")
+    percentile_limits: tuple[float, float] | None
+    if percentile_limits_raw is None:
+        percentile_limits = None
+    else:
+        if (
+            not isinstance(percentile_limits_raw, (list, tuple))
+            or len(percentile_limits_raw) != 2
+        ):
+            raise ValueError(
+                f"'{name}.percentile_limits' must contain exactly two numbers."
+            )
+        percentile_limits = (
+            _require_number(
+                percentile_limits_raw[0], f"{name}.percentile_limits[0]"
+            ),
+            _require_number(
+                percentile_limits_raw[1], f"{name}.percentile_limits[1]"
+            ),
+        )
+
+    colorbar_label_raw = section.get("colorbar_label")
+    colorbar_label = (
+        None
+        if colorbar_label_raw is None
+        else _require_nonempty_string(
+            colorbar_label_raw, f"{name}.colorbar_label"
+        )
+    )
+
+    return SampledMapPlotConfig(
+        enabled=_require_bool(
+            section.get("enabled", default.enabled), f"{name}.enabled"
+        ),
+        cmap=_require_nonempty_string(
+            section.get("cmap", default.cmap), f"{name}.cmap"
+        ),
+        vmin=_parse_optional_number(section.get("vmin"), f"{name}.vmin"),
+        vmax=_parse_optional_number(section.get("vmax"), f"{name}.vmax"),
+        percentile_limits=percentile_limits,
+        colorbar_label=colorbar_label,
+    )
+
+
+def _parse_sampled_map_variable_plotting(
+    section: dict[str, Any] | None,
+    *,
+    name: str,
+) -> SampledMapVariablePlottingConfig:
+    defaults = SampledMapVariablePlottingConfig()
+    if section is None:
+        return defaults
+
+    section = _require_dict(section, name)
+    return SampledMapVariablePlottingConfig(
+        mean=_parse_sampled_map_plot(
+            section.get("mean"), name=f"{name}.mean", default=defaults.mean
+        ),
+        std=_parse_sampled_map_plot(
+            section.get("std"), name=f"{name}.std", default=defaults.std
+        ),
+        smoothed_mean=_parse_sampled_map_plot(
+            section.get("smoothed_mean"),
+            name=f"{name}.smoothed_mean",
+            default=defaults.smoothed_mean,
+        ),
+        zonal_gradient=_parse_sampled_map_plot(
+            section.get("zonal_gradient"),
+            name=f"{name}.zonal_gradient",
+            default=defaults.zonal_gradient,
+        ),
+        meridional_gradient=_parse_sampled_map_plot(
+            section.get("meridional_gradient"),
+            name=f"{name}.meridional_gradient",
+            default=defaults.meridional_gradient,
+        ),
+        gradient_magnitude=_parse_sampled_map_plot(
+            section.get("gradient_magnitude"),
+            name=f"{name}.gradient_magnitude",
+            default=defaults.gradient_magnitude,
+        ),
+    )
+
+
+def _parse_sampled_map(
+    section: dict[str, Any] | None,
+) -> SampledMapConfig | None:
+    if section is None:
+        return None
+
+    section = _require_dict(section, "sampled_map")
+
+    variables_section = _require_dict(
+        section.get("variables"), "sampled_map.variables"
+    )
+    if not variables_section:
+        raise ValueError("'sampled_map.variables' cannot be empty.")
+
+    variables: dict[str, SampledMapVariableConfig] = {}
+    for raw_name, raw_variable_section in variables_section.items():
+        variable_name = _require_nonempty_string(
+            raw_name, "sampled_map.variables key"
+        )
+        if variable_name in variables:
+            raise ValueError(
+                f"Duplicate sampled_map variable after trimming: {variable_name!r}."
+            )
+        variable_section = _require_dict(
+            raw_variable_section, f"sampled_map.variables.{variable_name}"
+        )
+        variables[variable_name] = SampledMapVariableConfig(
+            valid_min=_parse_optional_number(
+                variable_section.get("valid_min"),
+                f"sampled_map.variables.{variable_name}.valid_min",
+            ),
+            valid_max=_parse_optional_number(
+                variable_section.get("valid_max"),
+                f"sampled_map.variables.{variable_name}.valid_max",
+            ),
+            minimum_point_count=_parse_positive_int(
+                variable_section.get("minimum_point_count", 1),
+                f"sampled_map.variables.{variable_name}.minimum_point_count",
+            ),
+            minimum_trajectory_count=_parse_positive_int(
+                variable_section.get("minimum_trajectory_count", 1),
+                f"sampled_map.variables.{variable_name}.minimum_trajectory_count",
+            ),
+            plotting=_parse_sampled_map_variable_plotting(
+                variable_section.get("plotting"),
+                name=f"sampled_map.variables.{variable_name}.plotting",
+            ),
+        )
+
+    gradients_section = section.get("gradients")
+    if gradients_section is None:
+        gradients = SampledMapGradientsConfig()
+    else:
+        gradients_section = _require_dict(
+            gradients_section, "sampled_map.gradients"
+        )
+        gradients = SampledMapGradientsConfig(
+            enabled=_require_bool(
+                gradients_section.get("enabled", False),
+                "sampled_map.gradients.enabled",
+            ),
+            smoothing_sigma_km=_parse_optional_number(
+                gradients_section.get("smoothing_sigma_km"),
+                "sampled_map.gradients.smoothing_sigma_km",
+            ),
+        )
+
+    output_section = section.get("output")
+    if output_section is None:
+        output = SampledMapOutputConfig()
+    else:
+        output_section = _require_dict(output_section, "sampled_map.output")
+        output = SampledMapOutputConfig(
+            save_table=_require_bool(
+                output_section.get("save_table", True),
+                "sampled_map.output.save_table",
+            ),
+            save_netcdf=_require_bool(
+                output_section.get("save_netcdf", True),
+                "sampled_map.output.save_netcdf",
+            ),
+            save_figures=_require_bool(
+                output_section.get("save_figures", True),
+                "sampled_map.output.save_figures",
+            ),
+        )
+
+    return SampledMapConfig(
+        variables=variables,
+        weighting=_require_nonempty_string(
+            section.get("weighting", "points"), "sampled_map.weighting"
+        ),
+        max_group_member=_parse_optional_positive_int(
+            section.get("max_group_member"), "sampled_map.max_group_member"
+        ),
+        gradients=gradients,
+        output=output,
     )
 
 
@@ -1801,9 +2162,13 @@ def load_postprocess_config(path: str | Path) -> PostprocessConfig:
     )
     meridional_crossing = _parse_meridional_crossing(raw.get("meridional_crossing"))
     meridional_excursion = _parse_meridional_excursion(raw.get("meridional_excursion"))
+    alive_latitude_fraction = _parse_alive_latitude_fraction(
+        raw.get("alive_latitude_fraction")
+    )
     gridded_transition_matrix = _parse_gridded_transition_matrix(
         raw.get("gridded_transition_matrix")
     )
+    sampled_map = _parse_sampled_map(raw.get("sampled_map"))
 
     return PostprocessConfig(
         dataset=dataset,
@@ -1824,5 +2189,7 @@ def load_postprocess_config(path: str | Path) -> PostprocessConfig:
         transition_probability=transition_probability,
         meridional_crossing=meridional_crossing,
         meridional_excursion=meridional_excursion,
+        alive_latitude_fraction=alive_latitude_fraction,
         gridded_transition_matrix=gridded_transition_matrix,
+        sampled_map=sampled_map,
     )

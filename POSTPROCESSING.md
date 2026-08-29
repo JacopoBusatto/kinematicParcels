@@ -16,6 +16,8 @@ Typical diagnostics produced include:
 - start/end region classification
 - transition probability matrices
 - meridional excursion tables and maps
+- alive-tracer latitude fraction heatmaps
+- sampled observation mean, variability, and gradient maps
 - trajectory visualisation
 - FSLE spectra
 - FSLE and FTLE exponent maps
@@ -138,6 +140,15 @@ Reader function:
 ```python
 load_trajectory_table()
 ```
+
+The postprocessing base-product workflow automatically preserves every compatible
+non-canonical Zarr data variable defined on `trajectory` or on
+`(trajectory, obs)`. For example, sampled `temp`, `psal`, or future tracer
+variables are retained as complete series in `trajectory_table.parquet`, while
+trajectory metadata such as `platform_code`, `depth_bin`, and
+`depth_bin_interval` is repeated in the trajectory table. This discovery is
+specific to the base-product workflow; direct calls to `load_trajectory_table()`
+remain explicit and use `extra_vars` when additional fields are wanted.
 
 ------------------------------------------------------------
 TRAJECTORY CLEANING
@@ -282,6 +293,16 @@ This dataset is typically used for:
 
 When present in the trajectory dataset, release metadata such as `circle_id`,
 `group_id`, `group_member`, and `group_size` is preserved in the particle summary.
+Other trajectory-level variables, including `platform_code`, `depth_bin`, and
+`depth_bin_interval`, are also copied once per trajectory.
+
+For every automatically discovered numeric `(trajectory, obs)` variable, the
+summary adds five columns. For `temp`, these are `temp0`, `tempf`, `temp_min`,
+`temp_max`, and `temp_mean`; `psal` and future numeric variables use the same
+naming pattern. Start and final values preserve endpoint `NaN` values, while the
+minimum, maximum, and mean use finite values only. Nonnumeric observation
+variables remain available in the trajectory table without numeric summary
+statistics.
 
 
 ------------------------------------------------------------
@@ -370,6 +391,12 @@ This means:
 
 This rule avoids repeated overwriting of the same parquet/csv files
 and keeps responsibilities clearly separated.
+
+Exported-table caching is schema-aware. When the input Zarr gains a compatible
+optional variable that is absent from an existing trajectory table, the cached
+table is treated as stale and rebuilt. A cached particle summary is likewise
+rebuilt when its expected metadata or numeric-variable statistics are missing.
+Run `summary` first with exports enabled to persist the rebuilt base products.
 
 Typical use:
 
@@ -1185,6 +1212,76 @@ meridional_excursion:
 - ties for minimum or maximum latitude use the first occurrence in trajectory time
 
 ------------------------------------------------------------
+ALIVE LATITUDE FRACTION
+------------------------------------------------------------
+
+Builds a latitude-versus-time or latitude-versus-age histogram of the fraction
+of selected tracers alive at each coordinate. The denominator is every selected
+tracer represented at that coordinate, including tracers outside the configured
+latitude band. Consequently, fractions across the plotted latitude bins can sum
+to less than one.
+
+Outputs:
+
+- `alive_latitude_fraction.csv`, a long-form table with raw counts, total alive
+  support, canonical fractions in `[0, 1]`, and the support-mask flag
+- `alive_latitude_fraction.png`, a heatmap displayed as percentages by default
+
+Options:
+
+```yaml
+alive_latitude_fraction:
+  lat_min: -80.0
+  lat_max: -30.0
+  bin_width_deg: 1.0
+  minimum_alive_tracers: 10
+  time_axis: age
+  resample_days: null
+  max_time_days: null
+  max_group_member: null
+
+  output:
+    save_csv: true
+    save_figure: true
+
+  plotting:
+    cmap: viridis
+    vmin: 0.0
+    vmax: null
+    min_mask_value: null
+    as_percent: true
+    masked_color: lightgray
+```
+
+- `time_axis` is `time` for absolute datetimes or `age` for signed days from
+  each tracer's first observation; backward trajectories have negative ages
+- `resample_days: null` groups exact native observations; a positive value
+  constructs a regular axis and linearly interpolates latitude within each
+  tracer's observed lifetime, without extrapolation
+- `max_time_days` is an inclusive global crop; in `time` mode it is measured
+  from the earliest selected timestamp, while in `age` mode it retains
+  `abs(age_days) <= max_time_days`; `null` keeps the full dataset
+- `max_group_member: null` counts all expanded members; a positive integer
+  retains member numbers up to that value
+- columns with fewer than `minimum_alive_tracers` retain their raw counts but
+  have `NaN` fractions and use `plotting.masked_color` in the heatmap
+- latitude bins are lower-inclusive and upper-exclusive, except that the final
+  bin includes `lat_max`; the final bin may be shorter than `bin_width_deg`
+- `plotting.vmin` and `plotting.vmax` are always canonical fractions, even when
+  `as_percent: true` multiplies the plotted values and colorbar by 100
+- `plotting.min_mask_value` masks plotted fractions less than or equal to the
+  configured canonical 0–1 threshold; CSV fractions and counts remain unchanged
+- interpolation is allowed across any gap bounded by two valid observations
+
+CSV columns are:
+
+```text
+time or age_days, latitude_bin, lat_lower, lat_center, lat_upper,
+latitude_bin_count, alive_tracer_count, alive_tracer_fraction,
+meets_minimum_alive
+```
+
+------------------------------------------------------------
 START / END REGIONS
 ------------------------------------------------------------
 
@@ -1364,6 +1461,54 @@ the selected region set, not necessarily the fraction of tracers still alive in 
 full domain.
 
 ------------------------------------------------------------
+SAMPLED OBSERVATION MAPS
+------------------------------------------------------------
+
+The `sampled_map` analysis bins numeric observation variables such as `temp`,
+`psal`, or future `(trajectory, obs)` variables onto the configured regular
+longitude/latitude grid. Add `sampled_map` to `analysis.types` and configure one
+or more entries under `sampled_map.variables`.
+
+Each output cell contains the raw valid observation-point count, distinct
+trajectory count, mean, and sample standard deviation (`ddof=1`). With
+`weighting: points`, every observation contributes equally. With
+`weighting: trajectories`, observations are first averaged within each
+trajectory/cell and each resulting trajectory mean receives equal weight.
+`max_group_member` retains expanded members less than or equal to the configured
+value.
+
+Per-variable `valid_min` and `valid_max` are inclusive calculation filters.
+They are deliberately separate from plotting `vmin` and `vmax`: changing a
+colour limit never removes an outlier from the statistics. Cells below
+`minimum_point_count` or `minimum_trajectory_count` keep their count diagnostics
+but their scientific fields are set to `NaN`.
+
+When gradients are enabled, the supported raw mean is smoothed with a normalized,
+physical-cell-area-weighted Gaussian whose sigma is configured in kilometres.
+The Gaussian uses WGS84 geodesic distance, wraps naturally across a global
+longitude seam, and is evaluated only at cells already supported by the raw
+mean. Empty cells are not filled and missing values are never treated as zero.
+Zonal and meridional derivatives use adjacent cell centres and their exact WGS84
+distance; centred differences are preferred and one-sided differences are used
+at boundaries or beside missing cells. Gradient outputs are eastward, northward,
+and magnitude, in source-variable units per kilometre. The smoothed mean and the
+actual differentiation distances are also exported.
+
+The analysis writes one combined `sampled_map_table.<format>` and
+`sampled_map.nc`, plus `sampled_map_<variable>_<product>.png` for each enabled
+figure. Source `units`, `long_name`, and `standard_name` are carried from the
+input dataset. `percentile_limits: [lower, upper]` can supply robust automatic
+plot limits when `vmin` or `vmax` is null; explicit limits take precedence, and
+automatically resolved signed-gradient limits are symmetric around zero.
+Each plotting product accepts an optional `colorbar_label`. A non-empty string
+is used verbatim; when it is omitted or set to `null`, the label is generated
+from the variable name, product, and available source units.
+
+See `experiments/configs/examples/postprocessing/14_sampled_map.yml` for the
+complete option reference.
+
+
+------------------------------------------------------------
 GRIDDED TRANSITION MATRIX
 ------------------------------------------------------------
 
@@ -1391,6 +1536,7 @@ Options:
 gridded_transition_matrix:
   timestep: null
   timestep_unit: hours
+  resample: false
 
   output:
     save_table: true
@@ -1399,9 +1545,17 @@ gridded_transition_matrix:
 
   plotting:
     enabled: true
-    cmap: viridis
     probability:
+      cmap: viridis
       as_percent: false
+      vmin: null
+      vmax: null
+    entropy:
+      enabled: true
+      log_base: e
+      cmap: magma
+      log_scale: false
+      zero_color: lightgray
       vmin: null
       vmax: null
 ```
@@ -1409,13 +1563,21 @@ gridded_transition_matrix:
 - `timestep: null` uses consecutive native observations as the two-point segments
 - `timestep` set to a number uses endpoints at `start_time + timestep`
 - `timestep_unit` must be `seconds`, `hours`, or `days`
-- if `timestep` is smaller than the inferred source timestep, the endpoint is linearly interpolated between observed points; observed points are still used as segment starts
+- `resample: false` (default) retains every observed point as a potential segment start, so configured-timestep segments can overlap
+- `resample: true` requires an explicit `timestep` and constructs consecutive non-overlapping segments anchored at each trajectory's first valid observation: `t0 -> t0 + timestep`, then `t0 + timestep -> t0 + 2*timestep`, and so on
+- resampled positions that fall between observations are linearly interpolated; any final remainder shorter than `timestep` is omitted
+- if `timestep` is smaller than the inferred source timestep, positions are linearly interpolated between observed points; with `resample: false`, observed points are still used as segment starts
 - if `timestep` is larger than the inferred source timestep, it must be an integer multiple of the source timestep
 - `output.save_table` writes `gridded_transition_matrix_<dt>_table.parquet` or `.csv`
 - `output.save_netcdf` writes `gridded_transition_matrix_<dt>.nc`
-- `output.save_figures` and `plotting.enabled` control the summary probability maps
-- `plotting.cmap` sets the Matplotlib colormap for the summary probability maps
-- `plotting.probability.as_percent`, `vmin`, and `vmax` control probability scaling and color limits
+- `output.save_figures` and `plotting.enabled` control all transition-matrix figures
+- `plotting.probability.cmap`, `as_percent`, `vmin`, and `vmax` control the summary probability maps
+- `plotting.entropy.enabled` controls the entropy figure; the entropy variable is computed and stored regardless of this plotting flag
+- `plotting.entropy.log_base` accepts `e`, `2`, or `10`, producing entropy in nats, bits, or hartleys respectively
+- `plotting.entropy.cmap`, `vmin`, and `vmax` control the entropy map; defaults are `magma`, `null`, and `null`
+- `plotting.entropy.log_scale: true` uses logarithmic color normalization for positive entropy values; configured `vmin` and `vmax` must then be positive, and the map must contain at least one positive entropy value
+- in log scale, exact-zero entropy cells retain their numeric value and are drawn with `plotting.entropy.zero_color` (default `lightgray`), while `NaN` cells remain missing
+- the former `plotting.cmap` key is invalid; use `plotting.probability.cmap`
 
 Sparse transition table columns:
 
@@ -1433,6 +1595,7 @@ NetCDF variables include:
 - `probability_east(lat, lon)`
 - `probability_west(lat, lon)`
 - `probability_stay(lat, lon)`
+- `entropy(lat, lon)`
 - sparse transition columns on `transition`
 
 The summary maps describe each start cell:
@@ -1442,6 +1605,13 @@ The summary maps describe each start cell:
 - `probability_east`: sum of wrapped eastward longitudinal moves
 - `probability_west`: sum of wrapped westward longitudinal moves
 - `probability_stay`: transition probability with unchanged start and end grid cell
+
+The entropy map is the unnormalized Shannon entropy of the complete sparse
+destination distribution for each populated start cell,
+`H_i = -sum_j P_i,j log_b(P_i,j)`. Deterministic rows have entropy zero and
+cells without valid in-domain segments are `NaN`. Like the transition
+probabilities, entropy is conditional on both segment endpoints lying inside the
+analysis grid.
 
 East/west classification uses periodic longitude for global 360-degree grids. Exact
 half-world jumps are not assigned to either east or west.
@@ -1471,6 +1641,9 @@ trajectories:
   plot_color_by: null
   plot_cmap: null
   plot_cmap_mode: auto
+  plot_vmin: null
+  plot_vmax: null
+  plot_label: null
 
   animate: true
   title: "Trajectories"
@@ -1499,6 +1672,8 @@ trajectories:
 - `plot_color_by` selects the summary or trajectory column used to color the static plot; `null` enables automatic grouped-member coloring when available
 - `plot_cmap` explicitly chooses the static-plot colormap
 - `plot_cmap_mode` controls whether the static coloring is treated as `auto`, `categorical`, or `numeric`
+- `plot_vmin` and `plot_vmax` optionally constrain the static PNG color scale; `null` infers that limit from the plotted values
+- `plot_label` sets the static PNG colorbar label; `null` uses `plot_color_by`
 - `animation_fps`
 - `animation_every_n` use every Nth frame in the animation
 - `animation_color_by` and `animation_label` variable to plot as color and colorbar label
@@ -1619,15 +1794,24 @@ fsle:
 gridded_transition_matrix:
   timestep: null
   timestep_unit: hours
+  resample: false
   output:
     save_table: true
     save_netcdf: true
     save_figures: true
   plotting:
     enabled: true
-    cmap: viridis
     probability:
+      cmap: viridis
       as_percent: false
+      vmin: null
+      vmax: null
+    entropy:
+      enabled: true
+      log_base: e
+      cmap: magma
+      log_scale: false
+      zero_color: lightgray
       vmin: null
       vmax: null
 
@@ -1733,6 +1917,9 @@ trajectories:
   plot_color_by: null
   plot_cmap: null
   plot_cmap_mode: auto
+  plot_vmin: null
+  plot_vmax: null
+  plot_label: null
   animate: false
   animation_every_n: 1
   animation_color_by: lat0

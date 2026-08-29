@@ -128,8 +128,31 @@ def run_gridded_transition_matrix(cfg: PostprocessConfig, context: dict) -> None
             title=f"Gridded transition probability ({direction_title})",
             vmin=vmin,
             vmax=vmax,
-            cmap=cfg.gridded_transition_matrix.plotting.cmap,
+            cmap=probability_cfg.cmap,
             colorbar_label=colorbar_label,
+            title_fontsize=cfg.plotting.title_fontsize,
+            colorbar_fontsize=cfg.plotting.colorbar_fontsize,
+            colorbar_tick_fontsize=cfg.plotting.colorbar_tick_fontsize,
+            axis_tick_fontsize=cfg.plotting.axis_tick_fontsize,
+        )
+
+    entropy_cfg = cfg.gridded_transition_matrix.plotting.entropy
+    if entropy_cfg.enabled and _has_finite_values(result.dataset, "entropy"):
+        plot_path = outdir / f"gridded_transition_entropy_{timestep_label}.png"
+        print("Saving transition entropy plot:", plot_path)
+        entropy_units = result.dataset["entropy"].attrs["units"]
+        plot_grid_map(
+            result.dataset,
+            var_name="entropy",
+            outpath=plot_path,
+            projection=cfg.plotting.projection,
+            title="Gridded transition Shannon entropy",
+            vmin=entropy_cfg.vmin,
+            vmax=entropy_cfg.vmax,
+            cmap=entropy_cfg.cmap,
+            log_scale=entropy_cfg.log_scale,
+            zero_color=entropy_cfg.zero_color,
+            colorbar_label=f"Entropy [{entropy_units}]",
             title_fontsize=cfg.plotting.title_fontsize,
             colorbar_fontsize=cfg.plotting.colorbar_fontsize,
             colorbar_tick_fontsize=cfg.plotting.colorbar_tick_fontsize,

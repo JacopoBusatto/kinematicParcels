@@ -1,0 +1,22 @@
+input:
+  transition_table: 'C:\Users\Jacopo\Documents\SIMULATIONS\kinematicParcels\southern_ocean\ARGO_850-1150\postprocessing\gridded_transition_matrix_dt_10d_table.parquet'
+  companion_netcdf: null
+  timestep_days: 10
+output:
+  root: 'C:\Users\Jacopo\Documents\SIMULATIONS\kinematicParcels\southern_ocean\ARGO_850-1150\postprocessing\lagrangian_barriers'
+  run_name: argo_10d_baseline
+grid:
+  lon_min: -180
+  lon_max: 180
+  lat_min: -80
+  lat_max: -30
+  dlon: 1
+  dlat: 1
+  periodic_longitude: true
+permeability:
+  save_contributions: true
+plotting:
+  projection: SouthPolarStereo
+  central_longitude: 0
+  circular_boundary: true
+  draw_coastlines: true

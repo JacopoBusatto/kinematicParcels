@@ -15,6 +15,8 @@ requires-python = ">=3.10"
 dependencies = [
     "parcels",
     "numpy",
+    "pandas",
+    "pyarrow",
     "xarray",
     "netcdf4",
     "zarr",
@@ -22,6 +24,9 @@ dependencies = [
     "scipy",
     "matplotlib",
     "cartopy",
+    "networkx",
+    "pyproj",
+    "shapely",
     "tqdm",
     "imageio>=2.34"
 ]
@@ -31,6 +36,7 @@ where = ["src"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+pythonpath = ["."]
 
 
 [project.scripts]

@@ -5,6 +5,8 @@ dependencies:
   - python=3.11
   - parcels
   - numpy
+  - pandas
+  - pyarrow
   - xarray
   - netcdf4
   - zarr
@@ -12,5 +14,8 @@ dependencies:
   - scipy
   - matplotlib
   - cartopy
+  - networkx
+  - pyproj
+  - shapely
   - pip
   - pytest

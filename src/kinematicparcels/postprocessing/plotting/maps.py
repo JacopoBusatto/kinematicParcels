@@ -13,6 +13,38 @@ from .colorbar import colorbar_extend_from_limits
 from .projections import get_projection
 
 
+def _prepare_log_scaled_grid_values(
+    values: np.ndarray,
+    *,
+    vmin: float | None,
+    vmax: float | None,
+) -> tuple[np.ma.MaskedArray, np.ndarray, mcolors.LogNorm]:
+    values = np.asarray(values, dtype=float)
+    finite = np.isfinite(values)
+    positive = finite & (values > 0.0)
+    if not np.any(positive):
+        raise ValueError("Log-scale grid maps require at least one positive value.")
+
+    positive_values = values[positive]
+    norm_vmin = float(vmin) if vmin is not None else float(np.min(positive_values))
+    norm_vmax = float(vmax) if vmax is not None else float(np.max(positive_values))
+    if norm_vmin <= 0.0 or norm_vmax <= 0.0:
+        raise ValueError("Log-scale grid-map limits must be strictly positive.")
+    if norm_vmin == norm_vmax:
+        if vmin is None:
+            norm_vmin = norm_vmin / 10.0
+        elif vmax is None:
+            norm_vmax = norm_vmax * 10.0
+    if norm_vmin >= norm_vmax:
+        raise ValueError(
+            "Resolved log-scale grid-map vmin must be less than vmax."
+        )
+
+    plot_values = np.ma.masked_where(~positive, values)
+    zero_mask = finite & (values == 0.0)
+    return plot_values, zero_mask, mcolors.LogNorm(vmin=norm_vmin, vmax=norm_vmax)
+
+
 def plot_grid_map(
     ds: xr.Dataset,
     *,
@@ -24,6 +56,8 @@ def plot_grid_map(
     vmin: float | None = None,
     vmax: float | None = None,
     cmap: str | None = None,
+    log_scale: bool = False,
+    zero_color: str = "lightgray",
     colorbar_label: str | None = None,
     title_fontsize: int | None = None,
     colorbar_fontsize: int | None = None,
@@ -56,6 +90,7 @@ def plot_grid_map(
     raw_values = da.values
     colorbar_extend = colorbar_extend_from_limits(vmin=vmin, vmax=vmax)
     values = raw_values
+    zero_mask = np.zeros(np.shape(raw_values), dtype=bool)
     cmap_for_plot = cmap
     if colorbar_extend != "neither":
         cmap_for_plot = plt.get_cmap(cmap).copy() if cmap is not None else plt.get_cmap().copy()
@@ -64,7 +99,13 @@ def plot_grid_map(
         if colorbar_extend in {"max", "both"}:
             cmap_for_plot.set_over("red")
     norm = None
-    if vmin is not None or vmax is not None:
+    if log_scale:
+        values, zero_mask, norm = _prepare_log_scaled_grid_values(
+            raw_values,
+            vmin=vmin,
+            vmax=vmax,
+        )
+    elif vmin is not None or vmax is not None:
         norm = mcolors.Normalize(vmin=vmin, vmax=vmax, clip=False)
 
     outpath = Path(outpath)
@@ -105,6 +146,19 @@ def plot_grid_map(
         cmap=cmap_for_plot,
         norm=norm,
     )
+
+    if log_scale and np.any(zero_mask):
+        zero_values = np.ma.masked_where(~zero_mask, np.ones_like(raw_values, dtype=float))
+        ax.pcolormesh(
+            ds["lon"].values,
+            ds["lat"].values,
+            zero_values,
+            transform=ccrs.PlateCarree(),
+            shading="auto",
+            cmap=mcolors.ListedColormap([zero_color]),
+            vmin=0.0,
+            vmax=1.0,
+        )
 
     cbar = plt.colorbar(
         mesh,

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass, field
 
 
@@ -426,6 +427,9 @@ class TrajectoriesConfig:
         None  # None = auto (viridis for numeric, tab10/20/hsv for categorical)
     )
     plot_cmap_mode: str = "auto"  # "auto" | "categorical" | "numeric"
+    plot_vmin: float | None = None
+    plot_vmax: float | None = None
+    plot_label: str | None = None
 
     animate: bool = False
     animation_fps: int = 8
@@ -813,6 +817,118 @@ class MeridionalExcursionConfig:
 
 
 @dataclass(frozen=True)
+class AliveLatitudeFractionOutputConfig:
+    save_csv: bool = True
+    save_figure: bool = True
+
+
+@dataclass(frozen=True)
+class AliveLatitudeFractionPlottingConfig:
+    cmap: str = "viridis"
+    vmin: float | None = 0.0
+    vmax: float | None = None
+    min_mask_value: float | None = None
+    as_percent: bool = True
+    masked_color: str = "lightgray"
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.cmap, str) or not self.cmap.strip():
+            raise ValueError(
+                "alive_latitude_fraction.plotting.cmap must be non-empty."
+            )
+        if not isinstance(self.masked_color, str) or not self.masked_color.strip():
+            raise ValueError(
+                "alive_latitude_fraction.plotting.masked_color must be non-empty."
+            )
+
+        _validate_plot_limits(
+            "alive_latitude_fraction.plotting", self.vmin, self.vmax
+        )
+        for name, value in (("vmin", self.vmin), ("vmax", self.vmax)):
+            if value is not None and (
+                not math.isfinite(value) or not 0.0 <= value <= 1.0
+            ):
+                raise ValueError(
+                    f"alive_latitude_fraction.plotting.{name} must be between "
+                    "0 and 1 or null."
+                )
+        if self.min_mask_value is not None and (
+            not math.isfinite(self.min_mask_value)
+            or not 0.0 <= self.min_mask_value <= 1.0
+        ):
+            raise ValueError(
+                "alive_latitude_fraction.plotting.min_mask_value must be "
+                "between 0 and 1 or null."
+            )
+
+
+@dataclass(frozen=True)
+class AliveLatitudeFractionConfig:
+    lat_min: float = -90.0
+    lat_max: float = 90.0
+    bin_width_deg: float = 1.0
+    minimum_alive_tracers: int = 1
+    time_axis: str = "age"
+    resample_days: float | None = None
+    max_time_days: float | None = None
+    max_group_member: int | None = None
+    output: AliveLatitudeFractionOutputConfig = field(
+        default_factory=AliveLatitudeFractionOutputConfig
+    )
+    plotting: AliveLatitudeFractionPlottingConfig = field(
+        default_factory=AliveLatitudeFractionPlottingConfig
+    )
+
+    def __post_init__(self) -> None:
+        if (
+            not math.isfinite(self.lat_min)
+            or not math.isfinite(self.lat_max)
+            or not -90.0 <= self.lat_min < self.lat_max <= 90.0
+        ):
+            raise ValueError(
+                "alive_latitude_fraction latitude bounds must satisfy "
+                "-90 <= lat_min < lat_max <= 90."
+            )
+        if not math.isfinite(self.bin_width_deg) or self.bin_width_deg <= 0:
+            raise ValueError(
+                "alive_latitude_fraction.bin_width_deg must be positive."
+            )
+        if (
+            not isinstance(self.minimum_alive_tracers, int)
+            or isinstance(self.minimum_alive_tracers, bool)
+            or self.minimum_alive_tracers < 1
+        ):
+            raise ValueError(
+                "alive_latitude_fraction.minimum_alive_tracers must be an integer >= 1."
+            )
+        if self.time_axis not in {"time", "age"}:
+            raise ValueError(
+                "alive_latitude_fraction.time_axis must be 'time' or 'age'."
+            )
+        if self.resample_days is not None and (
+            not math.isfinite(self.resample_days) or self.resample_days <= 0
+        ):
+            raise ValueError(
+                "alive_latitude_fraction.resample_days must be positive or null."
+            )
+        if self.max_time_days is not None and (
+            not math.isfinite(self.max_time_days) or self.max_time_days <= 0
+        ):
+            raise ValueError(
+                "alive_latitude_fraction.max_time_days must be positive or null."
+            )
+        if self.max_group_member is not None and (
+            not isinstance(self.max_group_member, int)
+            or isinstance(self.max_group_member, bool)
+            or self.max_group_member <= 0
+        ):
+            raise ValueError(
+                "alive_latitude_fraction.max_group_member must be an integer "
+                "> 0 or null."
+            )
+
+
+@dataclass(frozen=True)
 class GriddedTransitionMatrixOutputConfig:
     save_table: bool = True
     save_netcdf: bool = True
@@ -821,11 +937,16 @@ class GriddedTransitionMatrixOutputConfig:
 
 @dataclass(frozen=True)
 class GriddedTransitionMatrixMapPlottingConfig:
+    cmap: str = "viridis"
     vmin: float | None = None
     vmax: float | None = None
     as_percent: bool = False
 
     def __post_init__(self) -> None:
+        if not self.cmap.strip():
+            raise ValueError(
+                "gridded_transition_matrix.plotting.probability.cmap must be non-empty."
+            )
         _validate_plot_limits(
             "gridded_transition_matrix.plotting.probability",
             self.vmin,
@@ -834,18 +955,69 @@ class GriddedTransitionMatrixMapPlottingConfig:
 
 
 @dataclass(frozen=True)
+class GriddedTransitionMatrixEntropyPlottingConfig:
+    enabled: bool = True
+    log_base: str | int = "e"
+    cmap: str = "magma"
+    log_scale: bool = False
+    zero_color: str = "lightgray"
+    vmin: float | None = None
+    vmax: float | None = None
+
+    def __post_init__(self) -> None:
+        valid_log_base = self.log_base == "e" or (
+            not isinstance(self.log_base, bool) and self.log_base in {2, 10}
+        )
+        if not valid_log_base:
+            raise ValueError(
+                "gridded_transition_matrix.plotting.entropy.log_base must be "
+                "one of: 'e', 2, 10."
+            )
+        if not self.cmap.strip():
+            raise ValueError(
+                "gridded_transition_matrix.plotting.entropy.cmap must be non-empty."
+            )
+        if not self.zero_color.strip():
+            raise ValueError(
+                "gridded_transition_matrix.plotting.entropy.zero_color must be "
+                "non-empty."
+            )
+        _validate_plot_limits(
+            "gridded_transition_matrix.plotting.entropy",
+            self.vmin,
+            self.vmax,
+        )
+        if self.log_scale:
+            if self.vmin is not None and self.vmin <= 0:
+                raise ValueError(
+                    "gridded_transition_matrix.plotting.entropy.vmin must be > 0 "
+                    "when log_scale is true."
+                )
+            if self.vmax is not None and self.vmax <= 0:
+                raise ValueError(
+                    "gridded_transition_matrix.plotting.entropy.vmax must be > 0 "
+                    "when log_scale is true."
+                )
+            if (
+                self.vmin is not None
+                and self.vmax is not None
+                and self.vmin == self.vmax
+            ):
+                raise ValueError(
+                    "gridded_transition_matrix.plotting.entropy.vmin must be less "
+                    "than vmax when log_scale is true."
+                )
+
+
+@dataclass(frozen=True)
 class GriddedTransitionMatrixPlottingConfig:
     enabled: bool = True
-    cmap: str = "viridis"
     probability: GriddedTransitionMatrixMapPlottingConfig = field(
         default_factory=GriddedTransitionMatrixMapPlottingConfig
     )
-
-    def __post_init__(self) -> None:
-        if not self.cmap.strip():
-            raise ValueError(
-                "gridded_transition_matrix.plotting.cmap must be non-empty."
-            )
+    entropy: GriddedTransitionMatrixEntropyPlottingConfig = field(
+        default_factory=GriddedTransitionMatrixEntropyPlottingConfig
+    )
 
 
 @dataclass(frozen=True)
@@ -858,15 +1030,220 @@ class GriddedTransitionMatrixConfig:
     plotting: GriddedTransitionMatrixPlottingConfig = field(
         default_factory=GriddedTransitionMatrixPlottingConfig
     )
+    resample: bool = False
 
     def __post_init__(self) -> None:
         if self.timestep is not None and self.timestep <= 0:
             raise ValueError("gridded_transition_matrix.timestep must be > 0 or null.")
 
+        if not isinstance(self.resample, bool):
+            raise ValueError("gridded_transition_matrix.resample must be true or false.")
+
+        if self.resample and self.timestep is None:
+            raise ValueError(
+                "gridded_transition_matrix.timestep must be set when resample is true."
+            )
+
         if self.timestep_unit not in {"seconds", "hours", "days"}:
             raise ValueError(
                 "gridded_transition_matrix.timestep_unit must be one of: "
                 "'seconds', 'hours', 'days'."
+            )
+
+
+@dataclass(frozen=True)
+class SampledMapOutputConfig:
+    save_table: bool = True
+    save_netcdf: bool = True
+    save_figures: bool = True
+
+    def __post_init__(self) -> None:
+        for name, value in (
+            ("save_table", self.save_table),
+            ("save_netcdf", self.save_netcdf),
+            ("save_figures", self.save_figures),
+        ):
+            if not isinstance(value, bool):
+                raise ValueError(f"sampled_map.output.{name} must be true or false.")
+
+
+@dataclass(frozen=True)
+class SampledMapGradientsConfig:
+    enabled: bool = False
+    smoothing_sigma_km: float | None = None
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.enabled, bool):
+            raise ValueError("sampled_map.gradients.enabled must be true or false.")
+        if self.smoothing_sigma_km is not None and (
+            not math.isfinite(self.smoothing_sigma_km)
+            or self.smoothing_sigma_km <= 0
+        ):
+            raise ValueError(
+                "sampled_map.gradients.smoothing_sigma_km must be positive or null."
+            )
+        if self.enabled and self.smoothing_sigma_km is None:
+            raise ValueError(
+                "sampled_map.gradients.smoothing_sigma_km is required when "
+                "gradients are enabled."
+            )
+
+
+@dataclass(frozen=True)
+class SampledMapPlotConfig:
+    enabled: bool = False
+    cmap: str = "viridis"
+    vmin: float | None = None
+    vmax: float | None = None
+    percentile_limits: tuple[float, float] | None = None
+    colorbar_label: str | None = None
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.enabled, bool):
+            raise ValueError("sampled_map plotting enabled values must be boolean.")
+        if not isinstance(self.cmap, str) or not self.cmap.strip():
+            raise ValueError("sampled_map plotting colormaps must be non-empty.")
+        if self.colorbar_label is not None and (
+            not isinstance(self.colorbar_label, str)
+            or not self.colorbar_label.strip()
+        ):
+            raise ValueError(
+                "sampled_map plotting colorbar_label must be a non-empty "
+                "string or null."
+            )
+        for name, value in (("vmin", self.vmin), ("vmax", self.vmax)):
+            if value is not None and not math.isfinite(value):
+                raise ValueError(
+                    f"sampled_map plotting {name} must be finite or null."
+                )
+        _validate_plot_limits("sampled_map plotting", self.vmin, self.vmax)
+        if self.percentile_limits is not None:
+            if len(self.percentile_limits) != 2:
+                raise ValueError(
+                    "sampled_map plotting percentile_limits must contain two values."
+                )
+            lower, upper = self.percentile_limits
+            if (
+                not math.isfinite(lower)
+                or not math.isfinite(upper)
+                or not 0.0 <= lower < upper <= 100.0
+            ):
+                raise ValueError(
+                    "sampled_map plotting percentile_limits must satisfy "
+                    "0 <= lower < upper <= 100."
+                )
+
+
+@dataclass(frozen=True)
+class SampledMapVariablePlottingConfig:
+    mean: SampledMapPlotConfig = field(
+        default_factory=lambda: SampledMapPlotConfig(enabled=True)
+    )
+    std: SampledMapPlotConfig = field(
+        default_factory=lambda: SampledMapPlotConfig(enabled=True)
+    )
+    smoothed_mean: SampledMapPlotConfig = field(
+        default_factory=SampledMapPlotConfig
+    )
+    zonal_gradient: SampledMapPlotConfig = field(
+        default_factory=lambda: SampledMapPlotConfig(cmap="RdBu_r")
+    )
+    meridional_gradient: SampledMapPlotConfig = field(
+        default_factory=lambda: SampledMapPlotConfig(cmap="RdBu_r")
+    )
+    gradient_magnitude: SampledMapPlotConfig = field(
+        default_factory=lambda: SampledMapPlotConfig(cmap="magma")
+    )
+
+
+@dataclass(frozen=True)
+class SampledMapVariableConfig:
+    valid_min: float | None = None
+    valid_max: float | None = None
+    minimum_point_count: int = 1
+    minimum_trajectory_count: int = 1
+    plotting: SampledMapVariablePlottingConfig = field(
+        default_factory=SampledMapVariablePlottingConfig
+    )
+
+    def __post_init__(self) -> None:
+        for name, value in (
+            ("valid_min", self.valid_min),
+            ("valid_max", self.valid_max),
+        ):
+            if value is not None and not math.isfinite(value):
+                raise ValueError(
+                    f"sampled_map.variables.*.{name} must be finite or null."
+                )
+        if (
+            self.valid_min is not None
+            and self.valid_max is not None
+            and self.valid_min > self.valid_max
+        ):
+            raise ValueError(
+                "sampled_map.variables.*.valid_min must be less than or equal "
+                "to valid_max."
+            )
+        for name, value in (
+            ("minimum_point_count", self.minimum_point_count),
+            ("minimum_trajectory_count", self.minimum_trajectory_count),
+        ):
+            if (
+                not isinstance(value, int)
+                or isinstance(value, bool)
+                or value < 1
+            ):
+                raise ValueError(
+                    f"sampled_map.variables.*.{name} must be an integer >= 1."
+                )
+
+
+@dataclass(frozen=True)
+class SampledMapConfig:
+    variables: dict[str, SampledMapVariableConfig]
+    weighting: str = "points"
+    max_group_member: int | None = None
+    gradients: SampledMapGradientsConfig = field(
+        default_factory=SampledMapGradientsConfig
+    )
+    output: SampledMapOutputConfig = field(default_factory=SampledMapOutputConfig)
+
+    def __post_init__(self) -> None:
+        if self.weighting not in {"points", "trajectories"}:
+            raise ValueError(
+                "sampled_map.weighting must be 'points' or 'trajectories'."
+            )
+        if not self.variables:
+            raise ValueError("sampled_map.variables cannot be empty.")
+        invalid_names = [
+            name
+            for name in self.variables
+            if not isinstance(name, str) or not name.strip()
+        ]
+        if invalid_names:
+            raise ValueError(
+                "sampled_map.variables keys must be non-empty strings."
+            )
+        if self.max_group_member is not None and (
+            not isinstance(self.max_group_member, int)
+            or isinstance(self.max_group_member, bool)
+            or self.max_group_member <= 0
+        ):
+            raise ValueError(
+                "sampled_map.max_group_member must be an integer > 0 or null."
+            )
+
+        gradient_plots = (
+            variable.plotting.smoothed_mean.enabled
+            or variable.plotting.zonal_gradient.enabled
+            or variable.plotting.meridional_gradient.enabled
+            or variable.plotting.gradient_magnitude.enabled
+            for variable in self.variables.values()
+        )
+        if any(gradient_plots) and not self.gradients.enabled:
+            raise ValueError(
+                "sampled_map gradient and smoothed-mean plots require "
+                "sampled_map.gradients.enabled: true."
             )
 
 
@@ -943,9 +1320,13 @@ class PostprocessConfig:
     meridional_excursion: MeridionalExcursionConfig = field(
         default_factory=MeridionalExcursionConfig
     )
+    alive_latitude_fraction: AliveLatitudeFractionConfig = field(
+        default_factory=AliveLatitudeFractionConfig
+    )
     gridded_transition_matrix: GriddedTransitionMatrixConfig = field(
         default_factory=GriddedTransitionMatrixConfig
     )
+    sampled_map: SampledMapConfig | None = None
 
 
 @dataclass(frozen=True)

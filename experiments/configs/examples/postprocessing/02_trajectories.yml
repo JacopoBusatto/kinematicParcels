@@ -47,6 +47,9 @@ trajectories:
   plot_color_by: null  # Null means auto; grouped data falls back to group_member.
   plot_cmap: null  # Null means auto palette selection.
   plot_cmap_mode: auto  # auto | categorical | numeric
+  plot_vmin: null  # Numeric color limit; null infers it from the plotted values.
+  plot_vmax: null  # Numeric color limit; null infers it from the plotted values.
+  plot_label: null  # Colorbar label; null uses plot_color_by.
 
   animate: false
   animation_fps: 8

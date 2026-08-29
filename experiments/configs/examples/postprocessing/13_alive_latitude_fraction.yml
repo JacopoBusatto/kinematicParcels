@@ -1,0 +1,68 @@
+# Example postprocessing config for the `alive_latitude_fraction` analysis.
+
+dataset:
+  input_path: ./outputs/one_trajectory_test.zarr
+  coordinates:
+    trajectory: trajectory
+    obs: obs
+    time: time
+    lon: lon
+    lat: lat
+    z: z
+
+analysis:
+  types:
+    - alive_latitude_fraction
+
+output:
+  output_dir: ./outputs/postprocessing/examples/alive_latitude_fraction
+
+exports:
+  save_trajectory_table: false
+  save_particle_summary: false
+  table_format: parquet
+
+cleaning:
+  truncate_stagnant: false
+  stagnant_tol: 1.0e-6
+  stagnant_min_consecutive: 2
+
+release:
+  mode: region_grid
+  continuous: false
+
+plotting:
+  projection: PlateCarree
+  # title_fontsize: 14
+  # colorbar_fontsize: 12
+  # colorbar_tick_fontsize: 10
+  # axis_tick_fontsize: 10
+
+alive_latitude_fraction:
+  lat_min: -80.0
+  lat_max: -30.0
+  bin_width_deg: 1.0
+  minimum_alive_tracers: 10
+  time_axis: age  # time | age
+  # null keeps exact native samples; a positive value interpolates onto a
+  # regular grid with this spacing in days.
+  resample_days: null
+  # null uses the full axis. For time this is measured from the earliest
+  # timestamp; for age it retains abs(age_days) <= max_time_days.
+  max_time_days: null
+  # null counts all expanded group members.
+  max_group_member: null
+
+  output:
+    save_csv: true
+    save_figure: true
+
+  plotting:
+    cmap: viridis
+    # Limits are fractions in [0, 1], including when as_percent is true.
+    vmin: 0.0
+    vmax: null
+    # Mask plotted fractions <= this threshold; CSV values remain unchanged.
+    min_mask_value: null
+    as_percent: true
+    masked_color: lightgray

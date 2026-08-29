@@ -1,32 +1,141 @@
 from __future__ import annotations
 
+from dataclasses import dataclass
 from pathlib import Path
 
 import pandas as pd
+import xarray as xr
 
-from ..config.models import PostprocessConfig
+from ..config.models import ParcelsSchema, PostprocessConfig
 from ..core import build_particle_summary
-from ..io import load_trajectory_table, open_parcels_dataset
+from ..io import (
+    load_trajectory_table,
+    open_parcels_dataset,
+    resolve_parcels_schema,
+)
+
+_OBSERVATION_VARIABLES_ATTR = "postprocessing_observation_variables"
+_TRAJECTORY_METADATA_VARIABLES_ATTR = "postprocessing_trajectory_metadata_variables"
+OBSERVATION_VARIABLE_METADATA_CONTEXT_KEY = "observation_variable_metadata"
+_GROUP_METADATA_VARIABLES = {
+    "circle_id",
+    "group_id",
+    "group_member",
+    "group_size",
+}
+_MEMBER_COORDINATE_VARIABLES = {
+    f"{axis}_{member}"
+    for axis in ("lon", "lat")
+    for member in (1, 2, 3, 4, 5)
+}
 
 
-def _candidate_extra_vars(available_vars: set[str]) -> list[str]:
-    candidate_extra_vars = [
-        "circle_id",
-        "group_id",
-        "group_member",
-        "group_size",
-        "lon_1",
-        "lat_1",
-        "lon_2",
-        "lat_2",
-        "lon_3",
-        "lat_3",
-        "lon_4",
-        "lat_4",
-        "lon_5",
-        "lat_5",
-    ]
-    return [v for v in candidate_extra_vars if v in available_vars]
+@dataclass(frozen=True)
+class _OptionalVariableRoles:
+    observation: tuple[str, ...] = ()
+    trajectory_metadata: tuple[str, ...] = ()
+
+    @property
+    def all(self) -> tuple[str, ...]:
+        return self.trajectory_metadata + self.observation
+
+
+def _discover_optional_variables(
+    ds: xr.Dataset,
+    schema: ParcelsSchema,
+) -> _OptionalVariableRoles:
+    """Discover compatible non-canonical data variables in a Parcels dataset."""
+    canonical = {
+        schema.time_var,
+        schema.lon_var,
+        schema.lat_var,
+    }
+    if schema.z_var is not None:
+        canonical.add(schema.z_var)
+
+    observation: list[str] = []
+    trajectory_metadata: list[str] = []
+    observation_dims = {schema.trajectory_dim, schema.obs_dim}
+
+    for name, variable in ds.data_vars.items():
+        name = str(name)
+        if name in canonical:
+            continue
+
+        dims = tuple(str(dim) for dim in variable.dims)
+        if dims == (schema.trajectory_dim,):
+            trajectory_metadata.append(name)
+        elif len(dims) == 2 and set(dims) == observation_dims:
+            if name in _GROUP_METADATA_VARIABLES:
+                trajectory_metadata.append(name)
+            else:
+                observation.append(name)
+
+    return _OptionalVariableRoles(
+        observation=tuple(observation),
+        trajectory_metadata=tuple(trajectory_metadata),
+    )
+
+
+def _attach_optional_variable_roles(
+    df: pd.DataFrame,
+    roles: _OptionalVariableRoles,
+) -> pd.DataFrame:
+    df.attrs[_OBSERVATION_VARIABLES_ATTR] = tuple(
+        name
+        for name in roles.observation
+        if name in df.columns and name not in _MEMBER_COORDINATE_VARIABLES
+    )
+    df.attrs[_TRAJECTORY_METADATA_VARIABLES_ATTR] = tuple(
+        name for name in roles.trajectory_metadata if name in df.columns
+    )
+    return df
+
+
+def _collect_observation_variable_metadata(
+    ds: xr.Dataset,
+    roles: _OptionalVariableRoles,
+) -> dict[str, dict[str, object]]:
+    return {
+        name: {
+            key: ds[name].attrs[key]
+            for key in ("units", "long_name", "standard_name")
+            if key in ds[name].attrs
+        }
+        for name in roles.observation
+        if name in ds.variables
+    }
+
+
+def _required_cached_trajectory_columns(
+    roles: _OptionalVariableRoles,
+) -> set[str]:
+    has_wide_group_members = {"lon_1", "lat_1"}.issubset(roles.all)
+    required = set(roles.all)
+    if has_wide_group_members:
+        required -= _MEMBER_COORDINATE_VARIABLES
+        required.add("group_member")
+    return required
+
+
+def _required_cached_summary_columns(df: pd.DataFrame) -> set[str]:
+    required = {
+        name
+        for name in df.attrs.get(_TRAJECTORY_METADATA_VARIABLES_ATTR, ())
+        if name in df.columns
+    }
+    for name in df.attrs.get(_OBSERVATION_VARIABLES_ATTR, ()):
+        if name in df.columns and pd.api.types.is_numeric_dtype(df[name].dtype):
+            required.update(
+                {
+                    f"{name}0",
+                    f"{name}f",
+                    f"{name}_min",
+                    f"{name}_max",
+                    f"{name}_mean",
+                }
+            )
+    return required
 
 
 def _expand_memberwise_rows(df: pd.DataFrame) -> pd.DataFrame:
@@ -118,26 +227,33 @@ def get_trajectory_table(
 
     ds = open_parcels_dataset(cfg.dataset.input_path)
     try:
-        available_vars = set(str(v) for v in ds.variables)
+        schema = resolve_parcels_schema(ds, coordinates=cfg.dataset.coordinates)
+        roles = _discover_optional_variables(ds, schema)
+        context[OBSERVATION_VARIABLE_METADATA_CONTEXT_KEY] = (
+            _collect_observation_variable_metadata(ds, roles)
+        )
     finally:
         ds.close()
 
-    extra_vars = _candidate_extra_vars(available_vars)
+    required_cached_columns = _required_cached_trajectory_columns(roles)
 
     if path.exists():
         df = _expand_memberwise_rows(_load_exported_table(path))
-        if ("group_member" in df.columns) or (not extra_vars):
+        if required_cached_columns.issubset(df.columns):
+            df = _attach_optional_variable_roles(df, roles)
             context["trajectory_table"] = df
             return df
 
     df = load_trajectory_table(
         cfg.dataset.input_path,
+        coordinates=cfg.dataset.coordinates,
         truncate_stagnant=cfg.cleaning.truncate_stagnant,
         stagnant_tol=cfg.cleaning.stagnant_tol,
         stagnant_min_consecutive=cfg.cleaning.stagnant_min_consecutive,
-        extra_vars=extra_vars,
+        extra_vars=list(roles.all),
     )
     df = _expand_memberwise_rows(df)
+    df = _attach_optional_variable_roles(df, roles)
 
     context["trajectory_table"] = df
     return df
@@ -156,13 +272,15 @@ def get_particle_summary(
     if "particle_summary" in context:
         return context["particle_summary"]
 
+    traj = get_trajectory_table(cfg, context)
     path = _table_path(cfg, "particle_summary")
     if path.exists():
         df = _load_exported_table(path)
-        context["particle_summary"] = df
-        return df
+        required_cached_columns = _required_cached_summary_columns(traj)
+        if required_cached_columns.issubset(df.columns):
+            context["particle_summary"] = df
+            return df
 
-    traj = get_trajectory_table(cfg, context)
     summary = build_particle_summary(traj)
     context["particle_summary"] = summary
     return summary

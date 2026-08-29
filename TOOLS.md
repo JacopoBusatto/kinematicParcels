@@ -647,6 +647,7 @@ Supported top-level sections:
 - `output`
 - `source_variables`
 - `normalized_variables`
+- `observations`
 - `trajectory_fixes`
 - `parking_depth`
 - `qc`
@@ -696,6 +697,42 @@ Supported keys:
 - `fallback_value`: optional value used when representative or inferred parking pressure cannot be assigned
 - `fill_missing`: forward/backward fill missing cycle depths from neighboring valid cycles
 - `infer_from_park_window`: controls pressure inference between `JULD_PARK_START` and `JULD_PARK_END`
+
+#### `observations`
+
+Optionally samples original Rtraj measurements onto final resampled trajectory
+points. Configure adjusted/raw sources for observation time and pressure, then
+map each desired output name to its adjusted/raw Rtraj variable. Adjusted values
+are preferred row by row; missing or non-finite adjusted values fall back to
+raw values. `adjusted: null` is supported.
+
+Numeric pressure and observation-variable sources optionally accept
+`adjusted_qc`, `fallback_qc`, `valid_qc`, `missing_qc`, `valid_min`, and
+`valid_max`. QC is read from the same adjusted or raw source selected for that
+row. An explicit `"0"` flag can be accepted through `valid_qc`; it is not the
+same as absent, blank, or fill-valued QC. `missing_qc` is `accept` by default
+for backward compatibility and can be set to `reject`. A finite adjusted value
+that fails QC or inclusive numerical bounds becomes `NaN` and does not fall
+back to raw. Raw fallback is attempted only when the adjusted value itself is
+missing or non-finite.
+
+Observation time retains its existing adjusted/raw fallback behavior; these
+QC and numerical-range controls apply to numeric pressure and output variables.
+
+Sampling runs after resampling, so observed values are not interpolated. Each
+variable is matched independently by same depth bin, closest time, closest
+representative parking pressure, then original measurement index. There is no
+pressure tolerance. `sample_at_fallback_depth` defaults to `false`, which skips
+points whose parking pressure came from `parking_depth.fallback_value` and
+leaves their configured observations as `NaN`. Set it to `true` to match those
+points using the fallback pressure, assigned depth bin, and normal ranking
+order.
+
+Adding another variable requires only another `observations.variables` YAML
+entry. Observation time and pressure remain internal matching fields. The
+controlled-stage CSV records per-file observation filtering counts, and the
+diagnostics summary aggregates adjusted/raw acceptance, QC rejection,
+missing-QC rejection, and numerical-range rejection.
 
 #### `qc`
 
@@ -787,6 +824,7 @@ Typical variables written:
 - `z`
 - `platform_code`
 - `depth_bin` and `depth_bin_interval` when depth-bin output is enabled
+- configured observation variables such as `temp` and `psal`
 
 **Examples**
 

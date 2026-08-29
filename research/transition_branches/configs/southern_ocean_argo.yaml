@@ -1,0 +1,54 @@
+input:
+  # transition_table: 'C:/Users/Jacopo/Documents/SIMULATIONS/kinematicParcels/southern_ocean/ARGO_850-1150/postprocessing/gridded_transition_matrix_dt_10d_table.parquet'
+  # matrix_id: argo_10d_nonoverlapping
+  # transition_table: "F:/PLATFORMS/ARGO/postprocessing/SO_no_fallback_depth/z0850_1150/gridded_transition_matrix_dt_10d_table.parquet"
+  # matrix_id: argo_10d
+  transition_table: "F:/PLATFORMS/ARGO/postprocessing/SO_no_fallback_depth/z0850_1150/gridded_transition_matrix_dt_60d_table.parquet"
+  matrix_id: argo_60d
+  timestep_days: 60.0
+  # timestep_days: 30.0
+  # timestep_days: 10.0
+
+output:
+  # root: 'C:/Users/Jacopo/Documents/SIMULATIONS/kinematicParcels/southern_ocean/ARGO_850-1150/postprocessing/transition_branches_10d'
+  # run_name: argo_10d_lagrangian_currents
+  # root: "F:/PLATFORMS/ARGO/postprocessing/SO_no_fallback_depth/z0850_1150/transition_branches_10d"
+  # run_name: argo_10d
+  root: "F:/PLATFORMS/ARGO/postprocessing/SO_no_fallback_depth/z0850_1150/transition_branches_60d"
+  run_name: argo_60d
+grid:
+  lon_min: -180.0
+  lon_max: 180.0
+  lat_min: -80.0
+  lat_max: -30.0
+  dlon: 1.0
+  dlat: 1.0
+  periodic_longitude: true
+statistics:
+  min_moving_support: 2
+  angular_bins: 18
+branches:
+  transport_percentile: 0.90
+  ridge_field: raw
+  transverse_scale_grid: 1.0
+edges:
+  half_width_grid_scales: 5
+  sampling_interval_grid_scales: 1.0
+  core_refinement_grid_scales: 1.0
+  robust_median_window_samples: 3
+  composite_half_window_sections: 2
+  minimum_persistent_neighbor_sections: 2
+  minimum_persistent_fraction: 0.5
+validation:
+  gradient_search_radius_grid_scales: 1.0
+  local_background_radius_grid_scales: 2.0
+plotting:
+  enabled: true
+  projection: SouthPolarStereo
+  central_longitude: 0.0
+  vector_stride_cells: 2
+  vector_reference_km_day: 2.0
+  structure_map_max_percentile: 90.0
+  debug_plots: true
+write_debug_outputs: false
+run_validation: true

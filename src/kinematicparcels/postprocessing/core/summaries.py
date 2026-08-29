@@ -1,7 +1,12 @@
 from __future__ import annotations
 
+from collections.abc import Iterable
+
 import numpy as np
 import pandas as pd
+
+_OBSERVATION_VARIABLES_ATTR = "postprocessing_observation_variables"
+_TRAJECTORY_METADATA_VARIABLES_ATTR = "postprocessing_trajectory_metadata_variables"
 
 
 def _scalarize_identifier(value):
@@ -20,6 +25,9 @@ def _scalarize_identifier(value):
 
 def build_particle_summary(
     df: pd.DataFrame,
+    *,
+    observation_variables: Iterable[str] | None = None,
+    trajectory_metadata_variables: Iterable[str] | None = None,
 ) -> pd.DataFrame:
     """
     Build a per-particle summary table from a cleaned trajectory table.
@@ -29,7 +37,15 @@ def build_particle_summary(
     df
         Clean trajectory table with at least:
         trajectory, obs, time, lon, lat
-        optionally z.
+        optionally z. Tables created by the postprocessing base-product loader
+        also carry the optional-variable roles used below.
+    observation_variables
+        Optional observation-series columns for which numeric start, final,
+        minimum, maximum, and mean values are calculated. If omitted, use the
+        roles attached by the base-product loader.
+    trajectory_metadata_variables
+        Optional trajectory-level columns to copy into the summary. If omitted,
+        use the roles attached by the base-product loader.
 
     Returns
     -------
@@ -64,12 +80,37 @@ def build_particle_summary(
 
     has_z = "z" in df.columns
 
+    if observation_variables is None:
+        observation_variables = df.attrs.get(_OBSERVATION_VARIABLES_ATTR, ())
+    if trajectory_metadata_variables is None:
+        trajectory_metadata_variables = df.attrs.get(
+            _TRAJECTORY_METADATA_VARIABLES_ATTR,
+            (),
+        )
+
+    observation_cols = [
+        col
+        for col in dict.fromkeys(observation_variables)
+        if col in df.columns and pd.api.types.is_numeric_dtype(df[col].dtype)
+    ]
+
     summaries = []
     group_cols = ["trajectory"]
     has_group_member = "group_member" in df.columns
     if has_group_member:
         group_cols.append("group_member")
-    metadata_cols = [col for col in ("circle_id", "group_id", "group_size") if col in df.columns]
+    metadata_cols = [
+        col
+        for col in dict.fromkeys(
+            (
+                "circle_id",
+                "group_id",
+                "group_size",
+                *trajectory_metadata_variables,
+            )
+        )
+        if col in df.columns and col not in group_cols
+    ]
 
     for group_key, g in df.groupby(group_cols, sort=False):
 
@@ -101,7 +142,22 @@ def build_particle_summary(
             row["group_member"] = _scalarize_identifier(group_member)
 
         for col in metadata_cols:
-            row[col] = first[col]
+            row[col] = _scalarize_identifier(first[col])
+
+        for col in observation_cols:
+            row[f"{col}0"] = first[col]
+            row[f"{col}f"] = last[col]
+
+            values = pd.to_numeric(g[col], errors="coerce").to_numpy()
+            finite_values = values[np.isfinite(values)]
+            if finite_values.size:
+                row[f"{col}_min"] = finite_values.min()
+                row[f"{col}_max"] = finite_values.max()
+                row[f"{col}_mean"] = finite_values.mean()
+            else:
+                row[f"{col}_min"] = np.nan
+                row[f"{col}_max"] = np.nan
+                row[f"{col}_mean"] = np.nan
 
         if has_z:
             row["z0"] = first["z"]

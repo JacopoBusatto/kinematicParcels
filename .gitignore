@@ -64,6 +64,7 @@ cpp_legacy/
 legacy/
 !src/kinematicparcels/tools/legacy/
 !src/kinematicparcels/tools/legacy/**
+src/kinematicparcels/tools/legacy/__pycache__/
 !experiments/configs/examples/Rtraj/legacy/
 !experiments/configs/examples/Rtraj/legacy/**
 !experiments/configs/southern_ocean/

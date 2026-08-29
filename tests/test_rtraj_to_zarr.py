@@ -5,6 +5,7 @@ from pathlib import Path
 
 import numpy as np
 import pandas as pd
+import pytest
 import xarray as xr
 
 from kinematicparcels.tools.rtraj_to_zarr import (
@@ -14,24 +15,30 @@ from kinematicparcels.tools.rtraj_to_zarr import (
     JumpQcConfig,
     MergeConfig,
     MissingDepthConfig,
+    ObservationConfig,
+    ObservationSourceConfig,
     OutputConfig,
     ParkingDepthConfig,
-    RtrajConfig,
-    TrajectoryFixConfig,
     RegionSelectionConfig,
     ResampleConfig,
+    RtrajConfig,
+    TrajectoryFixConfig,
     _adjusted_time_with_raw_fallback,
+    _build_observation_table,
     _count_nested_reasons,
     _filter_trajectory_fixes,
     _map_representative_pressure_to_observations,
     _resolve_parking_depth_to_observations,
     _select_cycle_representative_fixes,
-    apply_jump_qc_segments,
     apply_depth_bin_segmentation,
+    apply_jump_qc_segments,
     apply_region_selection_segments,
     apply_resampling_segments,
     prepare_output_trajectories,
     process_qc_stage,
+    resolve_config,
+    sample_observations_onto_segments,
+    write_output_zarr,
 )
 
 
@@ -56,6 +63,12 @@ def _config() -> RtrajConfig:
             "lat": "lat",
             "depth": "depth",
         },
+        observations=ObservationConfig(
+            enabled=False,
+            time=ObservationSourceConfig(adjusted="JULD_ADJUSTED", fallback="JULD"),
+            pressure=ObservationSourceConfig(adjusted="PRES_ADJUSTED", fallback="PRES"),
+            variables={},
+        ),
         trajectory_fixes=TrajectoryFixConfig(
             one_per_cycle=False,
             require_finite_cycle=True,
@@ -155,6 +168,7 @@ def _depth_config() -> RtrajConfig:
         input_files=base.input_files,
         source_variables=base.source_variables,
         normalized_variables=base.normalized_variables,
+        observations=base.observations,
         trajectory_fixes=base.trajectory_fixes,
         parking_depth=base.parking_depth,
         qc=base.qc,
@@ -199,6 +213,39 @@ def _jump_config(*, min_segment_points: int = 1) -> RtrajConfig:
             max_block_points=3,
             max_block_duration_days=10.0,
             split_remaining_jumps=True,
+        ),
+    )
+
+
+def _sampling_config(
+    *,
+    variable_names: tuple[str, ...] = ("temp", "psal"),
+    sample_at_fallback_depth: bool = False,
+) -> RtrajConfig:
+    base = _config()
+    return replace(
+        base,
+        observations=ObservationConfig(
+            enabled=True,
+            time=ObservationSourceConfig(adjusted="JULD_ADJUSTED", fallback="JULD"),
+            pressure=ObservationSourceConfig(adjusted="PRES_ADJUSTED", fallback="PRES"),
+            variables={
+                name: ObservationSourceConfig(adjusted=None, fallback=name.upper())
+                for name in variable_names
+            },
+            sample_at_fallback_depth=sample_at_fallback_depth,
+        ),
+        depth_bins=DepthBinConfig(
+            enabled=True,
+            output_mode="all",
+            bins=(
+                DepthBin(label="z0000_0001", min_value=0.0, max_value=1.0),
+                DepthBin(label="z0900_1100", min_value=900.0, max_value=1100.0),
+                DepthBin(label="z1150_1900", min_value=1150.0, max_value=1900.0),
+                DepthBin(label="z1900_inf", min_value=1900.0, max_value=None),
+            ),
+            missing_depth=base.depth_bins.missing_depth,
+            isolated_outlier=base.depth_bins.isolated_outlier,
         ),
     )
 
@@ -677,3 +724,700 @@ def test_prepare_output_trajectories_renames_depth_to_z_and_drops_internal_colum
     assert "position_qc" not in prepared[0].columns
     assert prepared[0]["z"].tolist() == [1000.0, 1005.0]
     assert prepared[0]["depth_bin"].tolist() == ["z0900_1100", "z0900_1100"]
+
+
+def test_observation_table_resolves_adjusted_raw_fallback_and_metadata() -> None:
+    ds = xr.Dataset(
+        data_vars={
+            "JULD": (("N_MEASUREMENT",), np.asarray([0.0, 1.0, 2.0])),
+            "JULD_ADJUSTED": (("N_MEASUREMENT",), np.asarray([0.25, np.nan, 2.25])),
+            "PRES": (("N_MEASUREMENT",), np.asarray([100.0, 200.0, 300.0])),
+            "PRES_ADJUSTED": (("N_MEASUREMENT",), np.asarray([101.0, np.nan, np.inf])),
+            "TEMP": (("N_MEASUREMENT",), np.asarray([10.0, 11.0, 12.0])),
+            "TEMP_ADJUSTED": (("N_MEASUREMENT",), np.asarray([10.5, np.nan, 12.5])),
+            "PSAL": (("N_MEASUREMENT",), np.asarray([34.0, 34.1, 34.2])),
+            "DOXY": (("N_MEASUREMENT",), np.asarray([210.0, 211.0, 212.0])),
+        }
+    )
+    ds["TEMP_ADJUSTED"].attrs.update(
+        units="degree_Celsius",
+        long_name="Sea temperature in-situ ITS-90 scale",
+        standard_name="sea_water_temperature",
+    )
+    observation_config = ObservationConfig(
+        enabled=True,
+        time=ObservationSourceConfig(adjusted="JULD_ADJUSTED", fallback="JULD"),
+        pressure=ObservationSourceConfig(adjusted="PRES_ADJUSTED", fallback="PRES"),
+        variables={
+            "temp": ObservationSourceConfig(adjusted="TEMP_ADJUSTED", fallback="TEMP"),
+            "psal": ObservationSourceConfig(adjusted="PSAL_ADJUSTED", fallback="PSAL"),
+            "doxy": ObservationSourceConfig(adjusted=None, fallback="DOXY"),
+            "missing": ObservationSourceConfig(adjusted="MISSING_ADJUSTED", fallback="MISSING"),
+        },
+    )
+
+    observations, attrs, filter_counts = _build_observation_table(
+        ds,
+        observation_config,
+        length=3,
+    )
+
+    expected_time = pd.to_datetime(
+        ["1950-01-01 06:00:00", "1950-01-02 00:00:00", "1950-01-03 06:00:00"]
+    )
+    assert observations["_observation_time"].tolist() == expected_time.tolist()
+    np.testing.assert_allclose(observations["_observation_pressure"], [101.0, 200.0, 300.0])
+    np.testing.assert_allclose(observations["temp"], [10.5, 11.0, 12.5])
+    np.testing.assert_allclose(observations["psal"], [34.0, 34.1, 34.2])
+    np.testing.assert_allclose(observations["doxy"], [210.0, 211.0, 212.0])
+    assert observations["missing"].isna().all()
+    assert attrs["temp"] == {
+        "units": "degree_Celsius",
+        "long_name": "Sea temperature in-situ ITS-90 scale",
+        "standard_name": "sea_water_temperature",
+    }
+    assert filter_counts == {
+        "pressure.adjusted_accepted": 1,
+        "pressure.raw_fallback_accepted": 2,
+        "temp.adjusted_accepted": 2,
+        "temp.raw_fallback_accepted": 1,
+        "psal.raw_fallback_accepted": 3,
+        "doxy.raw_fallback_accepted": 3,
+        "missing.unavailable": 3,
+    }
+
+
+def test_observation_table_filters_chosen_source_qc_and_inclusive_bounds() -> None:
+    length = 8
+    ds = xr.Dataset(
+        data_vars={
+            "JULD": (("N_MEASUREMENT",), np.arange(length, dtype=float)),
+            "PRES": (("N_MEASUREMENT",), np.full(length, 1000.0)),
+            "TEMP_ADJUSTED": (
+                ("N_MEASUREMENT",),
+                np.asarray([5.0, np.nan, -3.0, 15.0, 16.0, np.nan, np.nan, np.nan]),
+            ),
+            "TEMP_ADJUSTED_QC": (
+                ("N_MEASUREMENT",),
+                np.asarray(["4", "", "0", "2", "1", "", "", ""]),
+            ),
+            "TEMP": (
+                ("N_MEASUREMENT",),
+                np.asarray([10.0, 6.0, 7.0, 8.0, 9.0, -4.0, 5.0, 6.0]),
+            ),
+            "TEMP_QC": (
+                ("N_MEASUREMENT",),
+                np.asarray(["1", "1", "1", "1", "1", "1", "", "0"]),
+            ),
+            "PSAL": (("N_MEASUREMENT",), np.full(length, 34.5)),
+            "PSAL_QC": (("N_MEASUREMENT",), np.full(length, "1")),
+        }
+    )
+    filtered = ObservationSourceConfig(
+        adjusted="TEMP_ADJUSTED",
+        fallback="TEMP",
+        adjusted_qc="TEMP_ADJUSTED_QC",
+        fallback_qc="TEMP_QC",
+        valid_qc=("0", "1", "2"),
+        missing_qc="reject",
+        valid_min=-3.0,
+        valid_max=15.0,
+    )
+    config = ObservationConfig(
+        enabled=True,
+        time=ObservationSourceConfig(adjusted=None, fallback="JULD"),
+        pressure=ObservationSourceConfig(adjusted=None, fallback="PRES"),
+        variables={
+            "temp": filtered,
+            "psal": ObservationSourceConfig(
+                adjusted=None,
+                fallback="PSAL",
+                fallback_qc="PSAL_QC",
+                valid_qc=("0", "1", "2"),
+                missing_qc="reject",
+                valid_min=30.0,
+                valid_max=40.0,
+            ),
+        },
+    )
+
+    observations, _, counts = _build_observation_table(ds, config, length=length)
+
+    expected_temp = [np.nan, 6.0, -3.0, 15.0, np.nan, np.nan, np.nan, 6.0]
+    np.testing.assert_allclose(observations["temp"], expected_temp, equal_nan=True)
+    np.testing.assert_allclose(observations["psal"], np.full(length, 34.5))
+    assert counts["temp.adjusted_qc_4_rejected"] == 1
+    assert counts["temp.adjusted_accepted"] == 2
+    assert counts["temp.raw_fallback_accepted"] == 2
+    assert counts["temp.adjusted_above_valid_max_rejected"] == 1
+    assert counts["temp.raw_fallback_below_valid_min_rejected"] == 1
+    assert counts["temp.raw_fallback_missing_qc_rejected"] == 1
+    assert counts["psal.raw_fallback_accepted"] == length
+
+
+def test_observation_pressure_qc_excludes_row_from_all_sampling_candidates() -> None:
+    ds = xr.Dataset(
+        data_vars={
+            "JULD": (("N_MEASUREMENT",), np.asarray([0.0])),
+            "PRES": (("N_MEASUREMENT",), np.asarray([1000.0])),
+            "PRES_QC": (("N_MEASUREMENT",), np.asarray(["4"])),
+            "TEMP": (("N_MEASUREMENT",), np.asarray([5.0])),
+            "TEMP_QC": (("N_MEASUREMENT",), np.asarray(["1"])),
+            "PSAL": (("N_MEASUREMENT",), np.asarray([34.5])),
+            "PSAL_QC": (("N_MEASUREMENT",), np.asarray(["1"])),
+        }
+    )
+    source = lambda fallback, fallback_qc: ObservationSourceConfig(
+        adjusted=None,
+        fallback=fallback,
+        fallback_qc=fallback_qc,
+        valid_qc=("0", "1", "2"),
+        missing_qc="reject",
+    )
+    observation_config = ObservationConfig(
+        enabled=True,
+        time=ObservationSourceConfig(adjusted=None, fallback="JULD"),
+        pressure=source("PRES", "PRES_QC"),
+        variables={
+            "temp": source("TEMP", "TEMP_QC"),
+            "psal": source("PSAL", "PSAL_QC"),
+        },
+    )
+    observations, _, counts = _build_observation_table(
+        ds,
+        observation_config,
+        length=1,
+    )
+    config = replace(_sampling_config(), observations=observation_config)
+    segment = pd.DataFrame(
+        {
+            "time": pd.to_datetime(["1950-01-01"]),
+            "lon": [0.0],
+            "lat": [-50.0],
+            "depth": [1000.0],
+            "depth_source": ["representative_park_pressure"],
+            "depth_bin": ["z0900_1100"],
+            "depth_bin_interval": ["[900, 1100)"],
+        }
+    )
+
+    sampled = sample_observations_onto_segments([segment], observations, config)
+
+    assert np.isnan(observations["_observation_pressure"].iloc[0])
+    assert observations[["temp", "psal"]].notna().all().all()
+    assert sampled.segments[0][["temp", "psal"]].isna().all().all()
+    assert sampled.summary["observation_unmatched_counts"] == {"temp": 1, "psal": 1}
+    assert counts["pressure.raw_fallback_qc_4_rejected"] == 1
+
+
+def test_observation_missing_qc_accepts_absent_qc_source_when_configured() -> None:
+    ds = xr.Dataset(
+        data_vars={
+            "JULD": (("N_MEASUREMENT",), np.asarray([0.0])),
+            "PRES": (("N_MEASUREMENT",), np.asarray([1000.0])),
+            "TEMP": (("N_MEASUREMENT",), np.asarray([5.0])),
+        }
+    )
+    config = ObservationConfig(
+        enabled=True,
+        time=ObservationSourceConfig(adjusted=None, fallback="JULD"),
+        pressure=ObservationSourceConfig(adjusted=None, fallback="PRES"),
+        variables={
+            "temp": ObservationSourceConfig(
+                adjusted=None,
+                fallback="TEMP",
+                fallback_qc="MISSING_TEMP_QC",
+                valid_qc=("0", "1", "2"),
+                missing_qc="accept",
+                valid_min=-3.0,
+                valid_max=15.0,
+            )
+        },
+    )
+
+    observations, _, counts = _build_observation_table(ds, config, length=1)
+
+    assert observations["temp"].iloc[0] == 5.0
+    assert counts["temp.raw_fallback_accepted"] == 1
+    assert not any("missing_qc_rejected" in reason for reason in counts)
+
+
+def test_observation_qc_accepts_only_configured_flags() -> None:
+    flags = np.asarray(["0", "1", "2", "3", "4", "5", "8", "9"])
+    length = len(flags)
+    ds = xr.Dataset(
+        data_vars={
+            "JULD": (("N_MEASUREMENT",), np.arange(length, dtype=float)),
+            "PRES": (("N_MEASUREMENT",), np.full(length, 1000.0)),
+            "TEMP": (("N_MEASUREMENT",), np.arange(length, dtype=float)),
+            "TEMP_QC": (("N_MEASUREMENT",), flags),
+        }
+    )
+    config = ObservationConfig(
+        enabled=True,
+        time=ObservationSourceConfig(adjusted=None, fallback="JULD"),
+        pressure=ObservationSourceConfig(adjusted=None, fallback="PRES"),
+        variables={
+            "temp": ObservationSourceConfig(
+                adjusted=None,
+                fallback="TEMP",
+                fallback_qc="TEMP_QC",
+                valid_qc=("0", "1", "2"),
+                missing_qc="reject",
+            )
+        },
+    )
+
+    observations, _, counts = _build_observation_table(ds, config, length=length)
+
+    np.testing.assert_allclose(
+        observations["temp"],
+        [0.0, 1.0, 2.0, np.nan, np.nan, np.nan, np.nan, np.nan],
+        equal_nan=True,
+    )
+    assert counts["temp.raw_fallback_accepted"] == 3
+    for flag in ("3", "4", "5", "8", "9"):
+        assert counts[f"temp.raw_fallback_qc_{flag}_rejected"] == 1
+
+
+def test_filtered_observation_roundtrip_keeps_variables_independent(
+    tmp_path: Path,
+) -> None:
+    ds = xr.Dataset(
+        data_vars={
+            "JULD": (("N_MEASUREMENT",), np.asarray([0.0])),
+            "PRES": (("N_MEASUREMENT",), np.asarray([1000.0])),
+            "PRES_QC": (("N_MEASUREMENT",), np.asarray(["1"])),
+            "TEMP": (("N_MEASUREMENT",), np.asarray([342.0])),
+            "TEMP_QC": (("N_MEASUREMENT",), np.asarray(["0"])),
+            "PSAL": (("N_MEASUREMENT",), np.asarray([34.5])),
+            "PSAL_QC": (("N_MEASUREMENT",), np.asarray(["1"])),
+        }
+    )
+    pressure = ObservationSourceConfig(
+        adjusted=None,
+        fallback="PRES",
+        fallback_qc="PRES_QC",
+        valid_qc=("0", "1", "2"),
+        missing_qc="reject",
+    )
+    variables = {
+        "temp": ObservationSourceConfig(
+            adjusted=None,
+            fallback="TEMP",
+            fallback_qc="TEMP_QC",
+            valid_qc=("0", "1", "2"),
+            missing_qc="reject",
+            valid_min=-3.0,
+            valid_max=15.0,
+        ),
+        "psal": ObservationSourceConfig(
+            adjusted=None,
+            fallback="PSAL",
+            fallback_qc="PSAL_QC",
+            valid_qc=("0", "1", "2"),
+            missing_qc="reject",
+            valid_min=30.0,
+            valid_max=40.0,
+        ),
+    }
+    observation_config = ObservationConfig(
+        enabled=True,
+        time=ObservationSourceConfig(adjusted=None, fallback="JULD"),
+        pressure=pressure,
+        variables=variables,
+    )
+    observations, _, counts = _build_observation_table(
+        ds,
+        observation_config,
+        length=1,
+    )
+    config = replace(
+        _sampling_config(),
+        observations=observation_config,
+        output=OutputConfig(
+            zarr_path=tmp_path / "filtered.zarr",
+            write_zarr=True,
+            overwrite=False,
+        ),
+    )
+    segment = pd.DataFrame(
+        {
+            "platform_code": [1900000],
+            "time": pd.to_datetime(["1950-01-01"]),
+            "lon": [0.0],
+            "lat": [-50.0],
+            "depth": [1000.0],
+            "depth_source": ["representative_park_pressure"],
+            "depth_bin": ["z0900_1100"],
+            "depth_bin_interval": ["[900, 1100)"],
+        }
+    )
+
+    sampled = sample_observations_onto_segments([segment], observations, config)
+    write_output_zarr(sampled.segments, config)
+
+    assert counts["temp.raw_fallback_above_valid_max_rejected"] == 1
+    assert counts["psal.raw_fallback_accepted"] == 1
+    with xr.open_zarr(config.output.zarr_path) as reopened:
+        assert np.isnan(reopened["temp"].values).all()
+        assert float(reopened["psal"].values[0, 0]) == 34.5
+        assert float(reopened["z"].values[0, 0]) == 1000.0
+
+
+def test_observation_sampling_uses_depth_time_pressure_index_and_current_depth() -> None:
+    config = _sampling_config(variable_names=("temp", "psal"))
+    segment = pd.DataFrame(
+        {
+            "time": pd.to_datetime(
+                ["2000-01-10", "2000-01-20", "2000-01-30", "2000-02-10", "2000-02-10", "2000-03-01"]
+            ),
+            "lon": [0.0] * 6,
+            "lat": [-50.0] * 6,
+            "depth": [1000.0, 1000.0, 1000.0, 1000.0, 2000.0, 1500.0],
+            "depth_source": ["representative_park_pressure"] * 6,
+            "depth_bin": [
+                "z0900_1100",
+                "z0900_1100",
+                "z0900_1100",
+                "z0900_1100",
+                "z1900_inf",
+                "z1150_1900",
+            ],
+            "depth_bin_interval": [
+                "[900, 1100)",
+                "[900, 1100)",
+                "[900, 1100)",
+                "[900, 1100)",
+                "[1900, +inf)",
+                "[1150, 1900)",
+            ],
+        }
+    )
+    unknown = pd.DataFrame(
+        {
+            "time": pd.to_datetime(["2000-03-10"]),
+            "lon": [0.0],
+            "lat": [-50.0],
+            "depth": [0.0],
+            "depth_source": ["fallback"],
+            "depth_bin": ["z0000_0001"],
+            "depth_bin_interval": ["[0, 1)"],
+        }
+    )
+    observations = pd.DataFrame(
+        {
+            "_observation_index": [10, 11, 12, 13, 20, 19, 15, 16, 17],
+            "_observation_time": pd.to_datetime(
+                [
+                    "2000-01-09",
+                    "2000-01-10",
+                    "2000-01-19",
+                    "2000-01-21",
+                    "2000-01-29",
+                    "2000-01-31",
+                    "2000-02-10",
+                    "2000-02-11",
+                    "2000-03-10",
+                ]
+            ),
+            "_observation_pressure": [1000.0, 900.0, 950.0, 990.0, 1000.0, 1000.0, 2000.0, 1000.0, 0.0],
+            "temp": [1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 99.0, 7.0, 88.0],
+            "psal": [31.0, np.nan, 32.0, 33.0, 34.0, 35.0, 36.0, 37.0, 38.0],
+        }
+    )
+
+    sampled = sample_observations_onto_segments([segment, unknown], observations, config)
+
+    assert sampled.segments[0]["temp"].tolist()[:5] == [2.0, 4.0, 6.0, 7.0, 99.0]
+    assert np.isnan(sampled.segments[0]["temp"].iloc[5])
+    assert sampled.segments[0]["psal"].iloc[0] == 31.0
+    assert sampled.segments[0]["psal"].iloc[4] == 36.0
+    assert sampled.segments[1][["temp", "psal"]].isna().all().all()
+    assert sampled.summary["observation_eligible_points"] == 6
+    assert sampled.summary["observation_unknown_depth_skipped_points"] == 1
+    assert sampled.summary["observation_matched_counts"] == {"temp": 5, "psal": 5}
+    assert sampled.summary["observation_unmatched_counts"] == {"temp": 1, "psal": 1}
+
+
+def test_observation_sampling_can_match_fallback_depth_points() -> None:
+    disabled = _sampling_config(variable_names=("temp",))
+    enabled = _sampling_config(
+        variable_names=("temp",),
+        sample_at_fallback_depth=True,
+    )
+    fallback = pd.DataFrame(
+        {
+            "time": pd.to_datetime(["2000-01-10"]),
+            "lon": [0.0],
+            "lat": [-50.0],
+            "depth": [1000.0],
+            "depth_source": ["fallback"],
+            "depth_bin": ["z0900_1100"],
+            "depth_bin_interval": ["[900, 1100)"],
+        }
+    )
+    known = fallback.assign(depth_source="representative_park_pressure")
+    observations = pd.DataFrame(
+        {
+            "_observation_index": [11, 10],
+            "_observation_time": pd.to_datetime(["2000-01-09", "2000-01-11"]),
+            "_observation_pressure": [950.0, 1000.0],
+            "temp": [4.0, 5.0],
+        }
+    )
+
+    skipped = sample_observations_onto_segments([fallback], observations, disabled)
+    sampled = sample_observations_onto_segments([fallback], observations, enabled)
+    known_disabled = sample_observations_onto_segments([known], observations, disabled)
+    known_enabled = sample_observations_onto_segments([known], observations, enabled)
+
+    assert np.isnan(skipped.segments[0]["temp"].iloc[0])
+    assert skipped.summary["observation_eligible_points"] == 0
+    assert skipped.summary["observation_unknown_depth_skipped_points"] == 1
+    assert sampled.segments[0]["temp"].iloc[0] == 5.0
+    assert sampled.summary["observation_eligible_points"] == 1
+    assert sampled.summary["observation_unknown_depth_skipped_points"] == 0
+    assert sampled.summary["observation_matched_counts"] == {"temp": 1}
+    assert sampled.summary["observation_unmatched_counts"] == {"temp": 0}
+    assert sampled.summary["observation_median_abs_time_mismatch_days"] == {"temp": 1.0}
+    assert sampled.summary["observation_median_abs_pressure_mismatch_dbar"] == {"temp": 0.0}
+    pd.testing.assert_frame_equal(known_enabled.segments[0], known_disabled.segments[0])
+
+
+def test_observation_sampling_fallback_depth_without_candidate_is_unmatched() -> None:
+    config = _sampling_config(
+        variable_names=("temp",),
+        sample_at_fallback_depth=True,
+    )
+    fallback = pd.DataFrame(
+        {
+            "time": pd.to_datetime(["2000-01-10"]),
+            "lon": [0.0],
+            "lat": [-50.0],
+            "depth": [1000.0],
+            "depth_source": ["fallback"],
+            "depth_bin": ["z0900_1100"],
+            "depth_bin_interval": ["[900, 1100)"],
+        }
+    )
+    observations = pd.DataFrame(
+        {
+            "_observation_index": [10],
+            "_observation_time": pd.to_datetime(["2000-01-10"]),
+            "_observation_pressure": [2000.0],
+            "temp": [4.0],
+        }
+    )
+
+    sampled = sample_observations_onto_segments([fallback], observations, config)
+
+    assert np.isnan(sampled.segments[0]["temp"].iloc[0])
+    assert sampled.summary["observation_eligible_points"] == 1
+    assert sampled.summary["observation_unknown_depth_skipped_points"] == 0
+    assert sampled.summary["observation_matched_counts"] == {"temp": 0}
+    assert sampled.summary["observation_unmatched_counts"] == {"temp": 1}
+
+
+def test_yaml_adds_third_observation_variable_without_sampler_changes(tmp_path: Path) -> None:
+    input_path = tmp_path / "1900000_Rtraj.nc"
+    input_path.touch()
+    config_path = tmp_path / "rtraj.yml"
+    config_path.write_text(
+        f"""
+input:
+  rtraj_files: ['{input_path.as_posix()}']
+output:
+  zarr_path: '{(tmp_path / 'output.zarr').as_posix()}'
+diagnostics:
+  output_dir: '{(tmp_path / 'diagnostics').as_posix()}'
+depth_bins:
+  enabled: true
+  output_mode: all
+  bins:
+    - label: z0000_inf
+      min: 0.0
+      max: null
+observations:
+  enabled: true
+  time:
+    adjusted: JULD_ADJUSTED
+    fallback: JULD
+  pressure:
+    adjusted: PRES_ADJUSTED
+    adjusted_qc: PRES_ADJUSTED_QC
+    fallback: PRES
+    fallback_qc: PRES_QC
+    valid_qc: ["0", "1", "2"]
+    missing_qc: reject
+  variables:
+    temp:
+      adjusted: TEMP_ADJUSTED
+      adjusted_qc: TEMP_ADJUSTED_QC
+      fallback: TEMP
+      fallback_qc: TEMP_QC
+      valid_qc: ["0", "1", "2"]
+      missing_qc: reject
+      valid_min: -3
+      valid_max: 15
+    psal:
+      adjusted: PSAL_ADJUSTED
+      fallback: PSAL
+    doxy:
+      adjusted: null
+      fallback: DOXY
+""",
+        encoding="utf-8",
+    )
+
+    config = resolve_config(config_path)
+
+    assert tuple(config.observations.variables) == ("temp", "psal", "doxy")
+    assert config.observations.variables["doxy"].adjusted is None
+    assert config.observations.variables["doxy"].fallback == "DOXY"
+    assert config.observations.sample_at_fallback_depth is False
+    assert config.observations.pressure.valid_qc == ("0", "1", "2")
+    assert config.observations.pressure.missing_qc == "reject"
+    assert config.observations.variables["temp"] == ObservationSourceConfig(
+        adjusted="TEMP_ADJUSTED",
+        fallback="TEMP",
+        adjusted_qc="TEMP_ADJUSTED_QC",
+        fallback_qc="TEMP_QC",
+        valid_qc=("0", "1", "2"),
+        missing_qc="reject",
+        valid_min=-3.0,
+        valid_max=15.0,
+    )
+
+
+@pytest.mark.parametrize(
+    ("extra_yaml", "message"),
+    [
+        ("missing_qc: maybe", "missing_qc"),
+        ("valid_qc: []", "valid_qc"),
+        ("valid_min: 5\n      valid_max: 4", "valid_min"),
+        ("valid_min: .inf", "valid_min"),
+    ],
+)
+def test_yaml_rejects_invalid_observation_filters(
+    tmp_path: Path,
+    extra_yaml: str,
+    message: str,
+) -> None:
+    input_path = tmp_path / "1900000_Rtraj.nc"
+    input_path.touch()
+    config_path = tmp_path / "rtraj.yml"
+    config_path.write_text(
+        f"""
+input:
+  rtraj_files: ['{input_path.as_posix()}']
+output:
+  zarr_path: '{(tmp_path / 'output.zarr').as_posix()}'
+diagnostics:
+  output_dir: '{(tmp_path / 'diagnostics').as_posix()}'
+depth_bins:
+  enabled: true
+  output_mode: all
+  bins:
+    - label: z0000_inf
+      min: 0.0
+      max: null
+observations:
+  enabled: true
+  variables:
+    temp:
+      adjusted: TEMP_ADJUSTED
+      fallback: TEMP
+      {extra_yaml}
+""",
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ValueError, match=message):
+        resolve_config(config_path)
+
+
+def test_yaml_enables_sampling_at_fallback_depth(tmp_path: Path) -> None:
+    input_path = tmp_path / "1900000_Rtraj.nc"
+    input_path.touch()
+    config_path = tmp_path / "rtraj.yml"
+    config_path.write_text(
+        f"""
+input:
+  rtraj_files: ['{input_path.as_posix()}']
+output:
+  zarr_path: '{(tmp_path / 'output.zarr').as_posix()}'
+diagnostics:
+  output_dir: '{(tmp_path / 'diagnostics').as_posix()}'
+depth_bins:
+  enabled: true
+  output_mode: all
+  bins:
+    - label: z0000_inf
+      min: 0.0
+      max: null
+observations:
+  enabled: true
+  sample_at_fallback_depth: true
+  variables:
+    temp:
+      adjusted: TEMP_ADJUSTED
+      fallback: TEMP
+""",
+        encoding="utf-8",
+    )
+
+    config = resolve_config(config_path)
+
+    assert config.observations.sample_at_fallback_depth is True
+
+
+def test_final_zarr_adds_only_configured_observations_and_preserves_existing_variables(tmp_path: Path) -> None:
+    base_config = replace(
+        _sampling_config(variable_names=("temp", "psal")),
+        output=OutputConfig(zarr_path=tmp_path / "with_observations.zarr", write_zarr=True, overwrite=False),
+    )
+    disabled_config = replace(
+        base_config,
+        observations=replace(base_config.observations, enabled=False, variables={}),
+        output=OutputConfig(zarr_path=tmp_path / "without_observations.zarr", write_zarr=True, overwrite=False),
+    )
+    existing = pd.DataFrame(
+        {
+            "platform_code": [1902267, 1902267],
+            "time": pd.to_datetime(["2000-01-01", "2000-01-11"]),
+            "lon": [-40.0, -39.0],
+            "lat": [-55.0, -54.0],
+            "depth": [1000.0, 1000.0],
+            "depth_source": ["representative_park_pressure"] * 2,
+            "depth_bin": ["z0900_1100"] * 2,
+            "depth_bin_interval": ["[900, 1100)"] * 2,
+        }
+    )
+    sampled = existing.assign(temp=[5.0, 6.0], psal=[34.0, 34.1])
+
+    write_output_zarr([existing], disabled_config)
+    write_output_zarr(
+        [sampled],
+        base_config,
+        variable_attrs={
+            "temp": {
+                "units": "degree_Celsius",
+                "long_name": "Sea temperature in-situ ITS-90 scale",
+                "standard_name": "sea_water_temperature",
+            },
+            "psal": {"units": "psu", "long_name": "Practical salinity"},
+        },
+    )
+
+    with xr.open_zarr(disabled_config.output.zarr_path) as baseline, xr.open_zarr(
+        base_config.output.zarr_path
+    ) as observed:
+        for name in baseline.data_vars:
+            xr.testing.assert_equal(observed[name], baseline[name])
+        assert {"temp", "psal"}.issubset(observed.data_vars)
+        assert "doxy" not in observed
+        assert "_observation_time" not in observed
+        assert "_observation_pressure" not in observed
+        assert observed["temp"].attrs["units"] == "degree_Celsius"
+        assert observed["temp"].attrs["standard_name"] == "sea_water_temperature"

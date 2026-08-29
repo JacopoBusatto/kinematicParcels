@@ -211,6 +211,23 @@ REGIONS_DATA = [
     ),
 
     dict(
+        name="Sicily Channel",
+        label="sic_chan",
+        numericLabel=1,
+        polygons=[
+            [
+                (11.50, 38.50),
+                ( 9.50, 37.00),
+                (10.80, 35.50),
+                (10.90, 35.00),
+                (15.00, 35.00),
+                (15.00, 37.00),
+            ]
+        ],
+        priority=5,
+    ),
+
+    dict(
         name="Aegean Sea 1",
         label="aeg",
         numericLabel=9,

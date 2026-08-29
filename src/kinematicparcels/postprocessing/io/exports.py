@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+from contextlib import ExitStack
 from pathlib import Path
+from unittest.mock import patch
 
 import numpy as np
 import pandas as pd
@@ -37,6 +39,32 @@ def _prepare_dataset_for_netcdf(ds: xr.Dataset) -> xr.Dataset:
         }
 
     return out
+
+
+def _write_eager_dataset_netcdf(ds: xr.Dataset, path: Path) -> None:
+    """
+    Write an eager dataset without probing for a distributed Dask scheduler.
+
+    Recent xarray versions perform that probe even when every variable is
+    NumPy-backed. Importing ``distributed`` can initialize unrelated network
+    and SSL dependencies, so it is both unnecessary and potentially fragile
+    for an eager local write. Lazy datasets do not use this helper.
+    """
+    with ExitStack() as stack:
+        for module_name in (
+            "xarray.backends.writers",
+            "xarray.backends.api",
+            "xarray.backends.locks",
+        ):
+            try:
+                module = __import__(module_name, fromlist=["get_dask_scheduler"])
+            except ImportError:
+                continue
+            if hasattr(module, "get_dask_scheduler"):
+                stack.enter_context(
+                    patch.object(module, "get_dask_scheduler", return_value=None)
+                )
+        ds.to_netcdf(path)
 
 
 def save_table(
@@ -121,6 +149,10 @@ def save_dataset_netcdf(
     path.parent.mkdir(parents=True, exist_ok=True)
 
     ds_to_save = _prepare_dataset_for_netcdf(ds)
-    ds_to_save.to_netcdf(path)
+    is_eager = all(variable.chunks is None for variable in ds_to_save.variables.values())
+    if is_eager:
+        _write_eager_dataset_netcdf(ds_to_save, path)
+    else:
+        ds_to_save.to_netcdf(path)
 
     return path

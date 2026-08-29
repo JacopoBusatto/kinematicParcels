@@ -54,6 +54,10 @@ gridded_transition_matrix:
   # Larger-than-source timesteps must be integer multiples of the source step.
   timestep: null
   timestep_unit: hours
+  # false uses every observation as a segment start (current behavior).
+  # true requires timestep and creates non-overlapping segments anchored at
+  # each trajectory's first valid observation.
+  resample: false
 
   output:
     save_table: true
@@ -62,8 +66,16 @@ gridded_transition_matrix:
 
   plotting:
     enabled: true
-    cmap: viridis
     probability:
+      cmap: viridis
       as_percent: true
+      vmin: null
+      vmax: null
+    entropy:
+      enabled: true
+      log_base: e  # e | 2 | 10
+      cmap: magma
+      log_scale: false
+      zero_color: lightgray
       vmin: null
       vmax: null

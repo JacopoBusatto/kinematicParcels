@@ -1,13 +1,13 @@
 from __future__ import annotations
 
 import argparse
+import glob
+import re
+import warnings
 from contextlib import contextmanager
 from dataclasses import dataclass
-import glob
 from pathlib import Path
-import re
 from typing import Any
-import warnings
 
 import numpy as np
 import pandas as pd
@@ -20,20 +20,19 @@ except ModuleNotFoundError:  # pragma: no cover - exercised only in minimal envi
         return iterable
 
 from kinematicparcels.tools.trajectory_processing import (
+    RegionSelectionConfig,
+    ResampleConfig,
     apply_region_selection,
     apply_resampling,
     filter_trajectories_by_min_duration,
     normalize_trajectories,
-    RegionSelectionConfig,
     resolve_resample_config,
-    ResampleConfig,
 )
 from kinematicparcels.tools.zarr_writer import (
     DEFAULT_TRAJECTORY_DATASET_ATTRS,
     build_dataset_from_trajectories,
     build_zarr_encoding,
 )
-
 
 SECONDS_PER_DAY = 86400.0
 NON_INTERPOLATED_COLUMNS = {
@@ -73,6 +72,10 @@ INTERNAL_OUTPUT_COLUMNS = {
     "jump_qc_drop_reason",
     "jump_qc_block_id",
 }
+OBSERVATION_TIME_COLUMN = "_observation_time"
+OBSERVATION_PRESSURE_COLUMN = "_observation_pressure"
+OBSERVATION_INDEX_COLUMN = "_observation_index"
+OBSERVATION_METADATA_KEYS = ("units", "long_name", "standard_name")
 
 
 @dataclass(frozen=True)
@@ -125,6 +128,27 @@ class ParkingDepthConfig:
 
 
 @dataclass(frozen=True)
+class ObservationSourceConfig:
+    adjusted: str | None
+    fallback: str
+    adjusted_qc: str | None = None
+    fallback_qc: str | None = None
+    valid_qc: tuple[str, ...] | None = None
+    missing_qc: str = "accept"
+    valid_min: float | None = None
+    valid_max: float | None = None
+
+
+@dataclass(frozen=True)
+class ObservationConfig:
+    enabled: bool
+    time: ObservationSourceConfig
+    pressure: ObservationSourceConfig
+    variables: dict[str, ObservationSourceConfig]
+    sample_at_fallback_depth: bool = False
+
+
+@dataclass(frozen=True)
 class DepthBin:
     label: str
     min_value: float
@@ -168,6 +192,7 @@ class RtrajConfig:
     input_files: list[Path]
     source_variables: dict[str, str]
     normalized_variables: dict[str, str]
+    observations: ObservationConfig
     trajectory_fixes: TrajectoryFixConfig
     parking_depth: ParkingDepthConfig
     qc: dict[str, Any]
@@ -196,6 +221,29 @@ class QcSegmentResult:
     merge_events: list[dict[str, Any]]
     jump_events: list[dict[str, Any]]
     summary: dict[str, Any]
+
+
+@dataclass(frozen=True)
+class RtrajFileData:
+    trajectory_fixes: pd.DataFrame
+    observations: pd.DataFrame
+    observation_variable_attrs: dict[str, dict[str, Any]]
+    observation_filter_counts: dict[str, int]
+
+
+@dataclass(frozen=True)
+class ObservationSamplingResult:
+    segments: list[pd.DataFrame]
+    summary: dict[str, Any]
+    time_mismatch_days: dict[str, list[float]]
+    pressure_mismatch_dbar: dict[str, list[float]]
+
+
+@dataclass
+class ObservationRunArtifacts:
+    variable_attrs: dict[str, dict[str, Any]]
+    time_mismatch_days: dict[str, list[float]]
+    pressure_mismatch_dbar: dict[str, list[float]]
 
 
 def load_config(path: str | Path) -> dict[str, Any]:
@@ -251,6 +299,15 @@ def _optional_positive_float(value: Any, name: str) -> float | None:
     parsed = float(value)
     if not np.isfinite(parsed) or parsed <= 0:
         raise ValueError(f"{name} must be null or a positive finite number")
+    return parsed
+
+
+def _optional_finite_float(value: Any, name: str) -> float | None:
+    if value is None:
+        return None
+    parsed = float(value)
+    if not np.isfinite(parsed):
+        raise ValueError(f"{name} must be null or a finite number")
     return parsed
 
 
@@ -356,6 +413,137 @@ def _resolve_parking_depth_config(config: dict[str, Any]) -> ParkingDepthConfig:
         fallback_pressure_variable=None if fallback_pressure is None else str(fallback_pressure),
         percentile=percentile,
         min_pressure=min_pressure,
+    )
+
+
+def _resolve_observation_source_config(
+    raw: Any,
+    *,
+    name: str,
+    default_adjusted: str | None,
+    default_fallback: str,
+) -> ObservationSourceConfig:
+    if raw is None:
+        raw = {}
+    if not isinstance(raw, dict):
+        raise TypeError(f"{name} must be a mapping with adjusted and fallback keys")
+
+    adjusted_raw = raw.get("adjusted", default_adjusted)
+    adjusted = None if adjusted_raw is None else str(adjusted_raw).strip()
+    if adjusted == "":
+        raise ValueError(f"{name}.adjusted must be null or a non-empty variable name")
+
+    fallback = str(raw.get("fallback", default_fallback)).strip()
+    if not fallback:
+        raise ValueError(f"{name}.fallback must be a non-empty variable name")
+
+    adjusted_qc_raw = raw.get("adjusted_qc")
+    adjusted_qc = None if adjusted_qc_raw is None else str(adjusted_qc_raw).strip()
+    if adjusted_qc == "":
+        raise ValueError(f"{name}.adjusted_qc must be null or a non-empty variable name")
+
+    fallback_qc_raw = raw.get("fallback_qc")
+    fallback_qc = None if fallback_qc_raw is None else str(fallback_qc_raw).strip()
+    if fallback_qc == "":
+        raise ValueError(f"{name}.fallback_qc must be null or a non-empty variable name")
+
+    valid_qc_raw = raw.get("valid_qc")
+    valid_qc = (
+        None
+        if valid_qc_raw is None
+        else _normalize_qc_values(valid_qc_raw, f"{name}.valid_qc")
+    )
+    missing_qc = str(raw.get("missing_qc", "accept")).strip().lower()
+    if missing_qc not in {"accept", "reject"}:
+        raise ValueError(f"{name}.missing_qc must be 'accept' or 'reject'")
+
+    valid_min = _optional_finite_float(raw.get("valid_min"), f"{name}.valid_min")
+    valid_max = _optional_finite_float(raw.get("valid_max"), f"{name}.valid_max")
+    if valid_min is not None and valid_max is not None and valid_min > valid_max:
+        raise ValueError(f"{name}.valid_min must be less than or equal to valid_max")
+
+    return ObservationSourceConfig(
+        adjusted=adjusted,
+        fallback=fallback,
+        adjusted_qc=adjusted_qc,
+        fallback_qc=fallback_qc,
+        valid_qc=valid_qc,
+        missing_qc=missing_qc,
+        valid_min=valid_min,
+        valid_max=valid_max,
+    )
+
+
+def _resolve_observation_config(
+    config: dict[str, Any],
+    *,
+    normalized_variables: dict[str, str],
+    depth_bins: DepthBinConfig,
+) -> ObservationConfig:
+    raw = config.get("observations", {}) or {}
+    if not isinstance(raw, dict):
+        raise TypeError("observations must be a mapping")
+
+    enabled = bool(raw.get("enabled", False))
+    sample_at_fallback_depth = bool(raw.get("sample_at_fallback_depth", False))
+    time = _resolve_observation_source_config(
+        raw.get("time"),
+        name="observations.time",
+        default_adjusted="JULD_ADJUSTED",
+        default_fallback="JULD",
+    )
+    pressure = _resolve_observation_source_config(
+        raw.get("pressure"),
+        name="observations.pressure",
+        default_adjusted="PRES_ADJUSTED",
+        default_fallback="PRES",
+    )
+
+    variables_raw = raw.get("variables", {}) or {}
+    if not isinstance(variables_raw, dict):
+        raise TypeError("observations.variables must be a mapping")
+
+    reserved_names = {
+        "trajectory",
+        "obs",
+        "z",
+        "platform_code",
+        "depth_bin",
+        "depth_bin_interval",
+        OBSERVATION_TIME_COLUMN,
+        OBSERVATION_PRESSURE_COLUMN,
+        OBSERVATION_INDEX_COLUMN,
+        "_observation_depth_bin",
+        *normalized_variables.values(),
+        *INTERNAL_OUTPUT_COLUMNS,
+    }
+    variables: dict[str, ObservationSourceConfig] = {}
+    for output_name_raw, source_raw in variables_raw.items():
+        output_name = str(output_name_raw).strip()
+        if not output_name:
+            raise ValueError("observations.variables output names must be non-empty")
+        if output_name in reserved_names:
+            raise ValueError(
+                f"observations.variables output name {output_name!r} conflicts with a trajectory field"
+            )
+        variables[output_name] = _resolve_observation_source_config(
+            source_raw,
+            name=f"observations.variables.{output_name}",
+            default_adjusted=None,
+            default_fallback=output_name,
+        )
+
+    if enabled and not variables:
+        raise ValueError("observations.variables must contain at least one variable when observations are enabled")
+    if enabled and not depth_bins.enabled:
+        raise ValueError("depth_bins.enabled must be true when observations are enabled")
+
+    return ObservationConfig(
+        enabled=enabled,
+        time=time,
+        pressure=pressure,
+        variables=variables,
+        sample_at_fallback_depth=sample_at_fallback_depth,
     )
 
 
@@ -483,6 +671,12 @@ def resolve_config(path: str | Path) -> RtrajConfig:
         "depth": "depth",
         **(config.get("normalized_variables", {}) or {}),
     }
+    depth_bins = _resolve_depth_bin_config(config)
+    observations = _resolve_observation_config(
+        config,
+        normalized_variables=normalized_variables,
+        depth_bins=depth_bins,
+    )
 
     segmentation_cfg = config.get("segmentation", {}) or {}
     min_segment_points = int(segmentation_cfg.get("min_segment_points", 2))
@@ -506,12 +700,13 @@ def resolve_config(path: str | Path) -> RtrajConfig:
         input_files=resolved_input_files,
         source_variables={key: str(value) for key, value in source_variables.items()},
         normalized_variables={key: str(value) for key, value in normalized_variables.items()},
+        observations=observations,
         trajectory_fixes=_resolve_trajectory_fix_config(config),
         parking_depth=_resolve_parking_depth_config(config),
         qc=config.get("qc", {}) or {},
         merge=_resolve_merge_config(config),
         jump_qc=_resolve_jump_qc_config(config),
-        depth_bins=_resolve_depth_bin_config(config),
+        depth_bins=depth_bins,
         region_selection=_resolve_region_selection_config(config),
         resample=_resolve_resample_stage_config(config),
         output=_resolve_output_config(config),
@@ -612,11 +807,11 @@ def _datetime_variable(ds: xr.Dataset, name: str) -> pd.Series:
     values = np.asarray(variable.values)
 
     if np.issubdtype(values.dtype, np.datetime64):
-        return pd.Series(pd.to_datetime(values.ravel(), errors="coerce")).dt.tz_localize(None)
+        return pd.Series(pd.to_datetime(values.ravel(), errors="coerce")).dt.tz_localize(None).reset_index(drop=True)
 
     if np.issubdtype(values.dtype, np.number):
         numeric = pd.to_numeric(pd.Series(values.ravel()), errors="coerce").to_numpy(dtype=float)
-        out = pd.Series(pd.NaT, index=np.arange(len(numeric)), dtype="datetime64[ns]")
+        out = pd.Series(pd.NaT, index=pd.RangeIndex(len(numeric)), dtype="datetime64[ns]")
         valid = np.isfinite(numeric)
         if not valid.any():
             return out
@@ -628,16 +823,16 @@ def _datetime_variable(ds: xr.Dataset, name: str) -> pd.Series:
                 with _suppress_xarray_time_serialization_warning():
                     decoded = xr.coding.times.decode_cf_datetime(numeric[valid], units, calendar=calendar)
                 out.loc[valid] = pd.to_datetime(decoded, errors="coerce")
-                return out.dt.tz_localize(None)
+                return out.dt.tz_localize(None).reset_index(drop=True)
             except Exception:
                 pass
 
         origin = pd.Timestamp("1950-01-01T00:00:00")
         out.loc[valid] = origin + pd.to_timedelta(numeric[valid], unit="D")
-        return out
+        return out.reset_index(drop=True)
 
     decoded = pd.to_datetime(pd.Series(values.ravel()), utc=True, errors="coerce")
-    return decoded.dt.tz_convert(None)
+    return decoded.dt.tz_convert(None).reset_index(drop=True)
 
 
 def _optional_datetime_variable(ds: xr.Dataset, name: str) -> pd.Series | None:
@@ -649,17 +844,213 @@ def _optional_datetime_variable(ds: xr.Dataset, name: str) -> pd.Series | None:
 def _adjusted_time_with_raw_fallback(ds: xr.Dataset, raw_name: str) -> pd.Series:
     raw_time = _datetime_variable(ds, raw_name)
     if raw_name == "JULD_ADJUSTED":
-        return raw_time
+        return raw_time.reset_index(drop=True)
 
     adjusted_time = _optional_datetime_variable(ds, "JULD_ADJUSTED")
     if adjusted_time is None or len(adjusted_time) != len(raw_time):
-        return raw_time
+        return raw_time.reset_index(drop=True)
 
     out = adjusted_time.copy()
     missing = out.isna()
     if missing.any():
         out.loc[missing] = raw_time.loc[missing]
-    return out
+    return out.reset_index(drop=True)
+
+
+def _observation_datetime_with_raw_fallback(
+    ds: xr.Dataset,
+    source: ObservationSourceConfig,
+    *,
+    length: int,
+) -> pd.Series:
+    out = pd.Series(pd.NaT, index=pd.RangeIndex(length), dtype="datetime64[ns]")
+    if source.adjusted:
+        adjusted = _optional_datetime_variable(ds, source.adjusted)
+        if adjusted is not None and len(adjusted) == length:
+            out.loc[:] = adjusted.reset_index(drop=True)
+
+    fallback = _optional_datetime_variable(ds, source.fallback)
+    if fallback is not None and len(fallback) == length:
+        missing = out.isna()
+        if missing.any():
+            fallback = fallback.reset_index(drop=True)
+            out.loc[missing] = fallback.loc[missing]
+    return out.reset_index(drop=True)
+
+
+def _observation_numeric_with_raw_fallback(
+    ds: xr.Dataset,
+    source: ObservationSourceConfig,
+    *,
+    length: int,
+) -> tuple[np.ndarray, dict[str, int]]:
+    """Resolve one numeric observation source and filter the chosen values."""
+
+    out = np.full(length, np.nan, dtype=float)
+    counts: dict[str, int] = {}
+
+    def add_count(reason: str, mask: np.ndarray) -> None:
+        count = int(np.count_nonzero(mask))
+        if count:
+            counts[reason] = count
+
+    adjusted = None
+    if source.adjusted:
+        adjusted = _optional_numeric_variable(ds, source.adjusted)
+        if adjusted is None or len(adjusted) != length:
+            adjusted = None
+
+    fallback = _optional_numeric_variable(ds, source.fallback)
+    if fallback is None or len(fallback) != length:
+        fallback = None
+
+    adjusted_selected = (
+        np.isfinite(adjusted)
+        if adjusted is not None
+        else np.zeros(length, dtype=bool)
+    )
+    fallback_selected = (
+        ~adjusted_selected & np.isfinite(fallback)
+        if fallback is not None
+        else np.zeros(length, dtype=bool)
+    )
+
+    def resolve_selected_source(
+        *,
+        values: np.ndarray | None,
+        selected: np.ndarray,
+        qc_name: str | None,
+        label: str,
+    ) -> None:
+        if values is None or not selected.any():
+            return
+
+        accepted = selected.copy()
+        if source.valid_qc is not None:
+            qc = _qc_variable(ds, qc_name) if qc_name else None
+            if qc is None or len(qc) != length:
+                normalized_qc = np.full(length, "", dtype=object)
+            else:
+                normalized_qc = np.asarray(
+                    [str(value).strip() for value in qc],
+                    dtype=object,
+                )
+
+            qc_lower = np.asarray(
+                [str(value).strip().lower() for value in normalized_qc],
+                dtype=object,
+            )
+            qc_missing = np.isin(qc_lower, ["", "nan", "none", "<na>"])
+            missing_rejected = (
+                accepted & qc_missing
+                if source.missing_qc == "reject"
+                else np.zeros(length, dtype=bool)
+            )
+            add_count(f"{label}_missing_qc_rejected", missing_rejected)
+            accepted &= ~missing_rejected
+
+            present = accepted & ~qc_missing
+            valid_qc = np.isin(normalized_qc, source.valid_qc)
+            invalid_qc = present & ~valid_qc
+            for flag in sorted(set(normalized_qc[invalid_qc].tolist())):
+                add_count(
+                    f"{label}_qc_{flag}_rejected",
+                    invalid_qc & (normalized_qc == flag),
+                )
+            accepted &= ~(present & ~valid_qc)
+
+        if source.valid_min is not None:
+            below_minimum = accepted & (values < source.valid_min)
+            add_count(f"{label}_below_valid_min_rejected", below_minimum)
+            accepted &= ~below_minimum
+        if source.valid_max is not None:
+            above_maximum = accepted & (values > source.valid_max)
+            add_count(f"{label}_above_valid_max_rejected", above_maximum)
+            accepted &= ~above_maximum
+
+        out[accepted] = values[accepted]
+        add_count(f"{label}_accepted", accepted)
+
+    resolve_selected_source(
+        values=adjusted,
+        selected=adjusted_selected,
+        qc_name=source.adjusted_qc,
+        label="adjusted",
+    )
+    resolve_selected_source(
+        values=fallback,
+        selected=fallback_selected,
+        qc_name=source.fallback_qc,
+        label="raw_fallback",
+    )
+
+    add_count("unavailable", ~(adjusted_selected | fallback_selected))
+    return out, counts
+
+
+def _observation_source_metadata(
+    ds: xr.Dataset,
+    source: ObservationSourceConfig,
+    *,
+    length: int,
+) -> dict[str, Any]:
+    attrs: dict[str, Any] = {}
+    source_names = [name for name in (source.adjusted, source.fallback) if name]
+    for source_name in source_names:
+        if source_name not in ds or int(ds[source_name].size) != length:
+            continue
+        for key in OBSERVATION_METADATA_KEYS:
+            value = ds[source_name].attrs.get(key)
+            if value is not None and str(value).strip() and key not in attrs:
+                attrs[key] = value
+    return attrs
+
+
+def _build_observation_table(
+    ds: xr.Dataset,
+    config: ObservationConfig,
+    *,
+    length: int,
+) -> tuple[pd.DataFrame, dict[str, dict[str, Any]], dict[str, int]]:
+    if not config.enabled:
+        return pd.DataFrame(), {}, {}
+
+    pressure, pressure_counts = _observation_numeric_with_raw_fallback(
+        ds,
+        config.pressure,
+        length=length,
+    )
+
+    data: dict[str, Any] = {
+        OBSERVATION_INDEX_COLUMN: np.arange(length, dtype=np.int64),
+        OBSERVATION_TIME_COLUMN: _observation_datetime_with_raw_fallback(
+            ds,
+            config.time,
+            length=length,
+        ),
+        OBSERVATION_PRESSURE_COLUMN: pressure,
+    }
+    filter_counts = {
+        f"pressure.{reason}": count
+        for reason, count in pressure_counts.items()
+    }
+    variable_attrs: dict[str, dict[str, Any]] = {}
+    for output_name, source in config.variables.items():
+        values, counts = _observation_numeric_with_raw_fallback(
+            ds,
+            source,
+            length=length,
+        )
+        data[output_name] = values
+        filter_counts.update(
+            {
+                f"{output_name}.{reason}": count
+                for reason, count in counts.items()
+            }
+        )
+        variable_attrs[output_name] = _observation_source_metadata(ds, source, length=length)
+
+    return pd.DataFrame(data), variable_attrs, filter_counts
 
 
 def _time_window_values(ds: xr.Dataset, name: str) -> tuple[np.ndarray, np.ndarray] | None:
@@ -1058,7 +1449,7 @@ def _select_cycle_representative_fixes(frame: pd.DataFrame, config: RtrajConfig)
     return selected
 
 
-def read_and_normalize_rtraj_file(file_path: Path, config: RtrajConfig) -> pd.DataFrame:
+def _read_rtraj_file_data(file_path: Path, config: RtrajConfig) -> RtrajFileData:
     names = config.source_variables
     out_names = config.normalized_variables
 
@@ -1080,17 +1471,26 @@ def read_and_normalize_rtraj_file(file_path: Path, config: RtrajConfig) -> pd.Da
         time_qc = _qc_variable(ds, names["time_qc"])
         cycle_number = _optional_numeric_variable(ds, "CYCLE_NUMBER")
         measurement_code = _optional_numeric_variable(ds, "MEASUREMENT_CODE")
+        n_rows = _validate_equal_lengths(
+            file_path,
+            time=time,
+            lon=lon,
+            lat=lat,
+            depth=depth,
+            depth_source=depth_source,
+            position_qc=position_qc,
+            time_qc=time_qc,
+        )
+        (
+            observations,
+            observation_variable_attrs,
+            observation_filter_counts,
+        ) = _build_observation_table(
+            ds,
+            config.observations,
+            length=n_rows,
+        )
 
-    n_rows = _validate_equal_lengths(
-        file_path,
-        time=time,
-        lon=lon,
-        lat=lat,
-        depth=depth,
-        depth_source=depth_source,
-        position_qc=position_qc,
-        time_qc=time_qc,
-    )
     if cycle_number is not None and len(cycle_number) != n_rows:
         cycle_number = None
     if measurement_code is not None and len(measurement_code) != n_rows:
@@ -1116,7 +1516,16 @@ def read_and_normalize_rtraj_file(file_path: Path, config: RtrajConfig) -> pd.Da
         frame["measurement_code"] = measurement_code
 
     fixes = _filter_trajectory_fixes(frame, out_names)
-    return _select_cycle_representative_fixes(fixes, config)
+    return RtrajFileData(
+        trajectory_fixes=_select_cycle_representative_fixes(fixes, config),
+        observations=observations,
+        observation_variable_attrs=observation_variable_attrs,
+        observation_filter_counts=observation_filter_counts,
+    )
+
+
+def read_and_normalize_rtraj_file(file_path: Path, config: RtrajConfig) -> pd.DataFrame:
+    return _read_rtraj_file_data(file_path, config).trajectory_fixes
 
 
 def _normalize_qc_values(values: Any, name: str) -> tuple[str, ...]:
@@ -2046,6 +2455,150 @@ def apply_resampling_segments(
     }
 
 
+def sample_observations_onto_segments(
+    segments: list[pd.DataFrame],
+    observations: pd.DataFrame,
+    config: RtrajConfig,
+) -> ObservationSamplingResult:
+    output = [segment.copy().reset_index(drop=True) for segment in segments]
+    variable_names = tuple(config.observations.variables)
+    empty_mismatches = {name: [] for name in variable_names}
+    if not config.observations.enabled:
+        return ObservationSamplingResult(
+            segments=output,
+            summary={
+                "observation_sampling_enabled": False,
+                "observation_eligible_points": 0,
+                "observation_unknown_depth_skipped_points": 0,
+                "observation_matched_counts": {},
+                "observation_unmatched_counts": {},
+                "observation_median_abs_time_mismatch_days": {},
+                "observation_median_abs_pressure_mismatch_dbar": {},
+            },
+            time_mismatch_days=empty_mismatches,
+            pressure_mismatch_dbar={name: [] for name in variable_names},
+        )
+
+    for segment in output:
+        for name in variable_names:
+            segment[name] = np.nan
+
+    observation_work = observations.copy().reset_index(drop=True)
+    if OBSERVATION_TIME_COLUMN not in observation_work:
+        observation_work[OBSERVATION_TIME_COLUMN] = pd.NaT
+    if OBSERVATION_PRESSURE_COLUMN not in observation_work:
+        observation_work[OBSERVATION_PRESSURE_COLUMN] = np.nan
+    if OBSERVATION_INDEX_COLUMN not in observation_work:
+        observation_work[OBSERVATION_INDEX_COLUMN] = np.arange(len(observation_work), dtype=np.int64)
+    observation_work[OBSERVATION_TIME_COLUMN] = pd.to_datetime(
+        observation_work[OBSERVATION_TIME_COLUMN],
+        errors="coerce",
+    )
+    observation_work[OBSERVATION_PRESSURE_COLUMN] = pd.to_numeric(
+        observation_work[OBSERVATION_PRESSURE_COLUMN],
+        errors="coerce",
+    )
+    observation_work["_observation_depth_bin"] = [
+        None if (depth_bin := _find_depth_bin(value, config.depth_bins)) is None else depth_bin.label
+        for value in observation_work[OBSERVATION_PRESSURE_COLUMN]
+    ]
+
+    candidate_groups: dict[str, dict[str, pd.DataFrame]] = {}
+    for name in variable_names:
+        if name not in observation_work:
+            observation_work[name] = np.nan
+        observation_work[name] = pd.to_numeric(observation_work[name], errors="coerce")
+        valid = (
+            observation_work[OBSERVATION_TIME_COLUMN].notna()
+            & np.isfinite(observation_work[OBSERVATION_PRESSURE_COLUMN].to_numpy(dtype=float))
+            & np.isfinite(observation_work[name].to_numpy(dtype=float))
+            & observation_work["_observation_depth_bin"].notna()
+        )
+        candidates = observation_work.loc[valid].copy()
+        candidate_groups[name] = {
+            str(label): group.reset_index(drop=True)
+            for label, group in candidates.groupby("_observation_depth_bin", sort=False)
+        }
+
+    eligible_points = 0
+    unknown_depth_points = 0
+    matched_counts = {name: 0 for name in variable_names}
+    time_mismatches = {name: [] for name in variable_names}
+    pressure_mismatches = {name: [] for name in variable_names}
+    time_name = config.normalized_variables["time"]
+    depth_name = config.normalized_variables["depth"]
+
+    for segment in output:
+        for point_index, point in segment.iterrows():
+            if (
+                str(point.get("depth_source", "")) == "fallback"
+                and not config.observations.sample_at_fallback_depth
+            ):
+                unknown_depth_points += 1
+                continue
+
+            eligible_points += 1
+            point_time = pd.to_datetime(point.get(time_name), errors="coerce")
+            point_pressure = pd.to_numeric(pd.Series([point.get(depth_name)]), errors="coerce").iloc[0]
+            depth_bin_raw = point.get("depth_bin")
+            depth_bin_label = None if pd.isna(depth_bin_raw) else str(depth_bin_raw)
+            if pd.isna(point_time) or pd.isna(point_pressure) or depth_bin_label is None:
+                continue
+
+            point_time_ns = np.datetime64(point_time, "ns").astype(np.int64)
+            point_pressure_float = float(point_pressure)
+            for name in variable_names:
+                candidates = candidate_groups[name].get(depth_bin_label)
+                if candidates is None or candidates.empty:
+                    continue
+
+                candidate_time_ns = candidates[OBSERVATION_TIME_COLUMN].to_numpy(dtype="datetime64[ns]").astype(
+                    np.int64
+                )
+                time_difference_ns = np.abs(candidate_time_ns - point_time_ns)
+                pressure_difference = np.abs(
+                    candidates[OBSERVATION_PRESSURE_COLUMN].to_numpy(dtype=float) - point_pressure_float
+                )
+                measurement_index = pd.to_numeric(
+                    candidates[OBSERVATION_INDEX_COLUMN],
+                    errors="coerce",
+                ).to_numpy(dtype=np.int64)
+                selected_position = int(
+                    np.lexsort((measurement_index, pressure_difference, time_difference_ns))[0]
+                )
+                selected = candidates.iloc[selected_position]
+                segment.at[point_index, name] = float(selected[name])
+                matched_counts[name] += 1
+                time_mismatches[name].append(
+                    float(time_difference_ns[selected_position]) / (SECONDS_PER_DAY * 1.0e9)
+                )
+                pressure_mismatches[name].append(float(pressure_difference[selected_position]))
+
+    unmatched_counts = {name: eligible_points - count for name, count in matched_counts.items()}
+    median_time = {
+        name: (float(np.median(values)) if values else np.nan)
+        for name, values in time_mismatches.items()
+    }
+    median_pressure = {
+        name: (float(np.median(values)) if values else np.nan)
+        for name, values in pressure_mismatches.items()
+    }
+    return ObservationSamplingResult(
+        segments=output,
+        summary={
+            "observation_sampling_enabled": True,
+            "observation_eligible_points": int(eligible_points),
+            "observation_unknown_depth_skipped_points": int(unknown_depth_points),
+            "observation_matched_counts": matched_counts,
+            "observation_unmatched_counts": unmatched_counts,
+            "observation_median_abs_time_mismatch_days": median_time,
+            "observation_median_abs_pressure_mismatch_dbar": median_pressure,
+        },
+        time_mismatch_days=time_mismatches,
+        pressure_mismatch_dbar=pressure_mismatches,
+    )
+
+
 def process_qc_stage(raw: pd.DataFrame, config: RtrajConfig) -> QcSegmentResult:
     qc_frame = apply_qc_mask(raw, config)
     kept = qc_frame.loc[qc_frame["qc_keep"]].copy().reset_index(drop=True)
@@ -2536,7 +3089,11 @@ def _format_reason_counts(counts: dict[str, int]) -> str:
     return ", ".join(f"{reason}: {count}" for reason, count in counts.items())
 
 
-def _print_diagnostics_summary(summaries: list[dict[str, Any]], merge_events: list[dict[str, Any]]) -> None:
+def _print_diagnostics_summary(
+    summaries: list[dict[str, Any]],
+    merge_events: list[dict[str, Any]],
+    observation_artifacts: ObservationRunArtifacts | None = None,
+) -> None:
     if not summaries:
         print("No RTRAJ files were processed.")
         return
@@ -2603,6 +3160,18 @@ def _print_diagnostics_summary(summaries: list[dict[str, Any]], merge_events: li
     jump_reasons = _count_nested_reasons(summaries, "jump_qc_reason_counts")
     depth_bin_counts = _count_nested_reasons(summaries, "depth_bin_counts")
     depth_source_counts = _count_nested_reasons(summaries, "depth_source_counts")
+    observation_matched_counts = _count_nested_reasons(summaries, "observation_matched_counts")
+    observation_unmatched_counts = _count_nested_reasons(summaries, "observation_unmatched_counts")
+    observation_filter_counts = _count_nested_reasons(summaries, "observation_filter_counts")
+    observation_enabled = bool(
+        frame.get("observation_sampling_enabled", pd.Series([False] * len(frame))).astype(bool).any()
+    )
+    observation_eligible_points = int(
+        frame.get("observation_eligible_points", pd.Series([0] * len(frame))).sum()
+    )
+    observation_unknown_depth_points = int(
+        frame.get("observation_unknown_depth_skipped_points", pd.Series([0] * len(frame))).sum()
+    )
     zero_output = int((controlled_segments == 0).sum())
 
     print("")
@@ -2663,6 +3232,33 @@ def _print_diagnostics_summary(summaries: list[dict[str, Any]], merge_events: li
     print(f"  jump-QC reasons: {_format_reason_counts(jump_reasons)}")
     print(f"  depth sources: {_format_reason_counts(depth_source_counts)}")
     print(f"  depth-bin point counts: {_format_reason_counts(depth_bin_counts)}")
+    if observation_enabled:
+        print(f"  observation-eligible resampled points: {observation_eligible_points}")
+        print(f"  observation points skipped for unknown depth: {observation_unknown_depth_points}")
+        print(
+            "  observation source filtering: "
+            f"{_format_reason_counts(observation_filter_counts)}"
+        )
+        variable_names = sorted(set(observation_matched_counts) | set(observation_unmatched_counts))
+        for name in variable_names:
+            time_values = (
+                observation_artifacts.time_mismatch_days.get(name, [])
+                if observation_artifacts is not None
+                else []
+            )
+            pressure_values = (
+                observation_artifacts.pressure_mismatch_dbar.get(name, [])
+                if observation_artifacts is not None
+                else []
+            )
+            median_time = float(np.median(time_values)) if time_values else np.nan
+            median_pressure = float(np.median(pressure_values)) if pressure_values else np.nan
+            print(
+                f"  observation {name}: matched={observation_matched_counts.get(name, 0)}, "
+                f"unmatched={observation_unmatched_counts.get(name, 0)}, "
+                f"median |time mismatch|={median_time:.6g} days, "
+                f"median |pressure mismatch|={median_pressure:.6g} dbar"
+            )
 
 
 def _diagnostic_plots_enabled(config: RtrajConfig) -> bool:
@@ -2735,16 +3331,21 @@ def _build_rtraj_dataset(
     trajectories: list[pd.DataFrame],
     *,
     dataset_attrs: dict[str, Any] | None = None,
+    variable_attrs: dict[str, dict[str, Any]] | None = None,
 ) -> xr.Dataset:
     attrs = dict(DEFAULT_DATASET_ATTRS)
     if dataset_attrs:
         attrs.update(dataset_attrs)
 
-    return build_dataset_from_trajectories(
+    ds = build_dataset_from_trajectories(
         trajectories,
         trajectory_level_columns=TRAJECTORY_LEVEL_COLUMNS,
         dataset_attrs=attrs,
     )
+    for name, attrs_for_variable in (variable_attrs or {}).items():
+        if name in ds:
+            ds[name].attrs.update(attrs_for_variable)
+    return ds
 
 
 def _write_dataset_to_zarr(ds: xr.Dataset, output_path: Path, *, overwrite: bool) -> None:
@@ -2758,6 +3359,8 @@ def _write_dataset_to_zarr(ds: xr.Dataset, output_path: Path, *, overwrite: bool
 def write_output_zarr(
     segments: list[pd.DataFrame],
     config: RtrajConfig,
+    *,
+    variable_attrs: dict[str, dict[str, Any]] | None = None,
 ) -> dict[str, dict[str, Any]]:
     prepared = prepare_output_trajectories(segments, config)
     if not prepared:
@@ -2782,7 +3385,11 @@ def write_output_zarr(
                 continue
 
             normalized = normalize_trajectories(bin_trajectories, show_progress=False)
-            ds = _build_rtraj_dataset(normalized, dataset_attrs=_depth_bin_attrs(depth_bin))
+            ds = _build_rtraj_dataset(
+                normalized,
+                dataset_attrs=_depth_bin_attrs(depth_bin),
+                variable_attrs=variable_attrs,
+            )
             current_output_path = _depth_bin_output_path(config.output.zarr_path, depth_bin.label)
             _write_dataset_to_zarr(ds, current_output_path, overwrite=config.output.overwrite)
             output_counts[depth_bin.label] = {
@@ -2801,6 +3408,7 @@ def write_output_zarr(
     ds = _build_rtraj_dataset(
         normalized,
         dataset_attrs={"depth_bins_enabled": bool(config.depth_bins.enabled)},
+        variable_attrs=variable_attrs,
     )
     _write_dataset_to_zarr(ds, config.output.zarr_path, overwrite=config.output.overwrite)
     output_counts["all"] = {
@@ -2825,11 +3433,22 @@ def _print_output_summary(output_counts: dict[str, dict[str, Any]]) -> None:
 
 def run_stage_one(
     config: RtrajConfig,
-) -> tuple[list[dict[str, Any]], list[dict[str, Any]], list[dict[str, Any]], list[pd.DataFrame]]:
+) -> tuple[
+    list[dict[str, Any]],
+    list[dict[str, Any]],
+    list[dict[str, Any]],
+    list[pd.DataFrame],
+    ObservationRunArtifacts,
+]:
     summaries: list[dict[str, Any]] = []
     merge_events: list[dict[str, Any]] = []
     jump_events: list[dict[str, Any]] = []
     output_segments: list[pd.DataFrame] = []
+    observation_artifacts = ObservationRunArtifacts(
+        variable_attrs={},
+        time_mismatch_days={name: [] for name in config.observations.variables},
+        pressure_mismatch_dbar={name: [] for name in config.observations.variables},
+    )
     should_write_plots = _diagnostic_plots_enabled(config)
     file_iterator = (
         tqdm(config.input_files, desc="Processing RTRAJ files", unit="file")
@@ -2837,9 +3456,23 @@ def run_stage_one(
         else config.input_files
     )
     for file_index, file_path in enumerate(file_iterator, start=1):
-        raw = read_and_normalize_rtraj_file(file_path, config)
+        file_data = _read_rtraj_file_data(file_path, config)
+        raw = file_data.trajectory_fixes
         result = process_qc_stage(raw, config)
-        output_segments.extend(segment.copy().reset_index(drop=True) for segment in result.output_segments)
+        sampled = sample_observations_onto_segments(
+            result.output_segments,
+            file_data.observations,
+            config,
+        )
+        output_segments.extend(sampled.segments)
+        for name, attrs in file_data.observation_variable_attrs.items():
+            merged_attrs = observation_artifacts.variable_attrs.setdefault(name, {})
+            for key, value in attrs.items():
+                merged_attrs.setdefault(key, value)
+        for name, values in sampled.time_mismatch_days.items():
+            observation_artifacts.time_mismatch_days.setdefault(name, []).extend(values)
+        for name, values in sampled.pressure_mismatch_dbar.items():
+            observation_artifacts.pressure_mismatch_dbar.setdefault(name, []).extend(values)
         written = (
             write_diagnostics(result, file_path=file_path, file_index=file_index, config=config)
             if should_write_plots
@@ -2867,16 +3500,18 @@ def run_stage_one(
                 "file": str(file_path),
                 "platform_code": platform_code,
                 **result.summary,
+                "observation_filter_counts": file_data.observation_filter_counts,
+                **sampled.summary,
                 "plots": ";".join(str(path) for path in written),
             }
         )
-    return summaries, merge_events, jump_events, output_segments
+    return summaries, merge_events, jump_events, output_segments, observation_artifacts
 
 
 def main(argv: list[str] | None = None) -> None:
     args = build_parser().parse_args(argv)
     config = resolve_config(args.config)
-    summaries, merge_events, jump_events, output_segments = run_stage_one(config)
+    summaries, merge_events, jump_events, output_segments, observation_artifacts = run_stage_one(config)
 
     summary_path = config.diagnostics_dir / "controlled_stage_summary.csv"
     summary_path.parent.mkdir(parents=True, exist_ok=True)
@@ -2886,13 +3521,17 @@ def main(argv: list[str] | None = None) -> None:
         pd.DataFrame(merge_events).to_csv(merge_events_path, index=False)
         jump_events_path = config.diagnostics_dir / "jump_qc_events.csv"
         pd.DataFrame(jump_events).to_csv(jump_events_path, index=False)
-        _print_diagnostics_summary(summaries, merge_events)
+        _print_diagnostics_summary(summaries, merge_events, observation_artifacts)
         print(f"Wrote staged diagnostics for {len(summaries)} RTRAJ file(s) to {config.diagnostics_dir}")
     else:
         print(f"Wrote staged conversion summary for {len(summaries)} RTRAJ file(s) to {summary_path}")
 
     if config.output.write_zarr:
-        output_counts = write_output_zarr(output_segments, config)
+        output_counts = write_output_zarr(
+            output_segments,
+            config,
+            variable_attrs=observation_artifacts.variable_attrs,
+        )
         _print_output_summary(output_counts)
 
 

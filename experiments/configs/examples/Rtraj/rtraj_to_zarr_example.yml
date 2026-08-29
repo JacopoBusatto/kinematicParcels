@@ -29,6 +29,39 @@ normalized_variables:
   lat: lat
   depth: depth
 
+observations:
+  enabled: true
+  sample_at_fallback_depth: false
+  time:
+    adjusted: JULD_ADJUSTED
+    fallback: JULD
+  pressure:
+    adjusted: PRES_ADJUSTED
+    adjusted_qc: PRES_ADJUSTED_QC
+    fallback: PRES
+    fallback_qc: PRES_QC
+    valid_qc: ["0", "1", "2"]
+    missing_qc: reject
+  variables:
+    temp:
+      adjusted: TEMP_ADJUSTED
+      adjusted_qc: TEMP_ADJUSTED_QC
+      fallback: TEMP
+      fallback_qc: TEMP_QC
+      valid_qc: ["0", "1", "2"]
+      missing_qc: reject
+      valid_min: null
+      valid_max: null
+    psal:
+      adjusted: PSAL_ADJUSTED
+      adjusted_qc: PSAL_ADJUSTED_QC
+      fallback: PSAL
+      fallback_qc: PSAL_QC
+      valid_qc: ["0", "1", "2"]
+      missing_qc: reject
+      valid_min: null
+      valid_max: null
+
 trajectory_fixes:
   one_per_cycle: true
   cycle_selection:

@@ -14,6 +14,8 @@ This folder contains one self-contained YAML example for each supported postproc
 - `10_cluster_strength.yml`
 - `11_meridional_excursion.yml`
 - `12_gridded_transition_matrix.yml`
+- `13_alive_latitude_fraction.yml`
+- `14_sampled_map.yml`
 
 Each file is intended as an option reference rather than a minimal runnable config.
 The shared sections (`dataset`, `analysis`, `output`, `exports`, `cleaning`, `release`, `plotting`, and `grid` where relevant) are kept explicit so a user can copy a single file and edit it locally.

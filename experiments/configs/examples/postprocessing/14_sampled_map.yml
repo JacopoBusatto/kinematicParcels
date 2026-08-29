@@ -1,0 +1,165 @@
+# Example postprocessing config for the generic `sampled_map` analysis.
+
+dataset:
+  input_path: ./outputs/rtraj_with_observations.zarr
+  coordinates:
+    trajectory: trajectory
+    obs: obs
+    time: time
+    lon: lon
+    lat: lat
+    z: z
+
+analysis:
+  types:
+    - sampled_map
+
+output:
+  output_dir: ./outputs/postprocessing/examples/sampled_map
+
+exports:
+  save_trajectory_table: false
+  save_particle_summary: false
+  table_format: parquet  # parquet | csv
+
+cleaning:
+  truncate_stagnant: false
+  stagnant_tol: 1.0e-6
+  stagnant_min_consecutive: 2
+
+grid:
+  mode: explicit_edges
+  lon_min: -180.0
+  lon_max: 180.0
+  lat_min: -80.0
+  lat_max: -30.0
+  dlon: 1.0
+  dlat: 1.0
+
+release:
+  mode: point_list
+  continuous: false
+
+plotting:
+  projection: SouthPolarStereo
+  # title_fontsize: 14
+  # colorbar_fontsize: 12
+  # colorbar_tick_fontsize: 10
+  # axis_tick_fontsize: 10
+
+sampled_map:
+  # points: every valid trajectory observation has equal weight.
+  # trajectories: average within each trajectory/cell first, then weight each
+  # trajectory equally.
+  weighting: points  # points | trajectories
+  # null includes all expanded group members. An integer keeps members <= it.
+  max_group_member: null
+
+  gradients:
+    enabled: true
+    # Gaussian sigma applied to supported cell means before adjacent-cell
+    # WGS84 differentiation. Raw mean and std fields are never smoothed.
+    smoothing_sigma_km: 100
+
+  output:
+    save_table: true
+    save_netcdf: true
+    save_figures: true
+
+  variables:
+    temp:
+      # These bounds remove values from the calculation. They are independent
+      # of plotting vmin/vmax. null accepts every finite value.
+      valid_min: null
+      valid_max: null
+      minimum_point_count: 1
+      minimum_trajectory_count: 1
+      plotting:
+        mean:
+          enabled: true
+          cmap: rainbow
+          colorbar_label: Temperature mean [degree_Celsius]
+          vmin: 0
+          vmax: 6
+        std:
+          enabled: true
+          cmap: viridis
+          colorbar_label: Temperature standard deviation [degree_Celsius]
+          vmin: 0
+          vmax: null
+          percentile_limits: [2, 98]
+        smoothed_mean:
+          enabled: true
+          cmap: rainbow
+          colorbar_label: Smoothed temperature mean [degree_Celsius]
+          vmin: 0
+          vmax: 6
+        zonal_gradient:
+          enabled: true
+          cmap: RdBu_r
+          colorbar_label: Temperature zonal gradient [degree_Celsius km-1]
+          vmin: null
+          vmax: null
+          percentile_limits: [2, 98]
+        meridional_gradient:
+          enabled: true
+          cmap: RdBu_r
+          colorbar_label: Temperature meridional gradient [degree_Celsius km-1]
+          vmin: null
+          vmax: null
+          percentile_limits: [2, 98]
+        gradient_magnitude:
+          enabled: true
+          cmap: magma
+          colorbar_label: Temperature gradient magnitude [degree_Celsius km-1]
+          vmin: 0
+          vmax: null
+          percentile_limits: [2, 98]
+
+    psal:
+      # For physical screening of practical salinity, use 30 and 40.
+      valid_min: null
+      valid_max: null
+      minimum_point_count: 1
+      minimum_trajectory_count: 1
+      plotting:
+        mean:
+          enabled: true
+          cmap: turbo
+          colorbar_label: Salinity mean [psu]
+          vmin: 34.25
+          vmax: 34.75
+        std:
+          enabled: true
+          cmap: viridis
+          colorbar_label: Salinity standard deviation [psu]
+          vmin: 0
+          vmax: null
+          percentile_limits: [2, 98]
+        smoothed_mean:
+          enabled: true
+          cmap: turbo
+          colorbar_label: Smoothed salinity mean [psu]
+          vmin: 34.25
+          vmax: 34.75
+        zonal_gradient:
+          enabled: true
+          cmap: RdBu_r
+          colorbar_label: Salinity zonal gradient [psu km-1]
+          vmin: null
+          vmax: null
+          percentile_limits: [2, 98]
+        meridional_gradient:
+          enabled: true
+          cmap: RdBu_r
+          colorbar_label: Salinity meridional gradient [psu km-1]
+          vmin: null
+          vmax: null
+          percentile_limits: [2, 98]
+        gradient_magnitude:
+          enabled: true
+          cmap: magma
+          colorbar_label: Salinity gradient magnitude [psu km-1]
+          vmin: 0
+          vmax: null
+          percentile_limits: [2, 98]

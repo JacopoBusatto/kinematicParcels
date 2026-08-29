@@ -64,6 +64,10 @@ def _run_single_analysis(
         from ..workflows.run_meridional_excursion import run_meridional_excursion
         run_meridional_excursion(cfg, context)
 
+    elif analysis_name == "alive_latitude_fraction":
+        from ..workflows.run_alive_latitude_fraction import run_alive_latitude_fraction
+        run_alive_latitude_fraction(cfg, context)
+
     elif analysis_name == "transition_probability":
         from ..workflows.run_transition_probability import run_transition_probability
         run_transition_probability(cfg, context)
@@ -71,6 +75,10 @@ def _run_single_analysis(
     elif analysis_name == "gridded_transition_matrix":
         from ..workflows.run_gridded_transition_matrix import run_gridded_transition_matrix
         run_gridded_transition_matrix(cfg, context)
+
+    elif analysis_name == "sampled_map":
+        from ..workflows.run_sampled_map import run_sampled_map
+        run_sampled_map(cfg, context)
 
     elif analysis_name == "summary":
         from ..workflows.run_summary import run_summary

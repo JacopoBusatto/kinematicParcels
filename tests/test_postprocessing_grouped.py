@@ -21,6 +21,7 @@ from kinematicparcels.postprocessing.core.gridding import RegularGrid, build_gri
 from kinematicparcels.postprocessing.core.summaries import build_particle_summary
 from kinematicparcels.postprocessing.io.parcels import sanitize_trajectories
 from kinematicparcels.postprocessing.plotting.trajectories import (
+    _build_colorizer,
     _split_longitude_wrapped_path,
     plot_trajectories_map,
 )
@@ -95,6 +96,18 @@ def test_resolve_trail_color_depends_on_tracer_visibility() -> None:
 
     assert grey == "0.4"
     assert colored != "0.4"
+
+
+def test_build_trajectory_colorizer_uses_explicit_numeric_limits() -> None:
+    colorizer = _build_colorizer(
+        pd.Series([-2.0, 1.0, 8.0]),
+        cmap_mode="numeric",
+        vmin=0.0,
+        vmax=5.0,
+    )
+
+    assert colorizer["norm"].vmin == 0.0
+    assert colorizer["norm"].vmax == 5.0
 
 
 def test_split_longitude_wrapped_path_breaks_antimeridian_jump() -> None:
@@ -591,6 +604,9 @@ def test_load_postprocess_config_parses_connectivity_alpha(tmp_path: Path) -> No
                     input_path: ./dummy.zarr
                 trajectories:
                     alpha: 0.35
+                    plot_vmin: -2.5
+                    plot_vmax: 4.5
+                    plot_label: Potential temperature (degC)
                 density:
                     group_member: 2
                 start_end_regions:
@@ -603,6 +619,9 @@ def test_load_postprocess_config_parses_connectivity_alpha(tmp_path: Path) -> No
     cfg = load_postprocess_config(cfg_path)
 
     assert cfg.trajectories.alpha == 0.35
+    assert cfg.trajectories.plot_vmin == -2.5
+    assert cfg.trajectories.plot_vmax == 4.5
+    assert cfg.trajectories.plot_label == "Potential temperature (degC)"
     assert cfg.density.group_member == 2
     assert cfg.start_end_regions.connectivity_alpha == 0.25
     assert cfg.start_end_regions.connectivity_animation_show_tracer is False

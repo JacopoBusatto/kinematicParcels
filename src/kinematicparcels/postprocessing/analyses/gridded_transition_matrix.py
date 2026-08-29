@@ -216,6 +216,7 @@ def _iter_segment_points(
     time_ns: np.ndarray,
     *,
     timestep_ns: int | None,
+    resample: bool,
     grid: RegularGrid,
 ) -> list[tuple[float, float, float, float]]:
     if timestep_ns is None:
@@ -223,6 +224,28 @@ def _iter_segment_points(
             (float(lon[i]), float(lat[i]), float(lon[i + 1]), float(lat[i + 1]))
             for i in range(len(lon) - 1)
         ]
+
+    if resample:
+        n_segments = int((int(time_ns[-1]) - int(time_ns[0])) // timestep_ns)
+        segments: list[tuple[float, float, float, float]] = []
+        start_lon = float(lon[0])
+        start_lat = float(lat[0])
+        for segment_idx in range(n_segments):
+            target_time_ns = int(time_ns[0]) + (segment_idx + 1) * timestep_ns
+            endpoint = _interpolate_endpoint(
+                lon,
+                lat,
+                time_ns,
+                start_idx=0,
+                target_time_ns=target_time_ns,
+                grid=grid,
+            )
+            if endpoint is None:
+                break
+            end_lon, end_lat = endpoint
+            segments.append((start_lon, start_lat, end_lon, end_lat))
+            start_lon, start_lat = end_lon, end_lat
+        return segments
 
     segments: list[tuple[float, float, float, float]] = []
     for start_idx in range(len(lon) - 1):
@@ -434,6 +457,46 @@ def _direction_probability_maps(
     return maps
 
 
+def _entropy_map(
+    grid: RegularGrid,
+    table: pd.DataFrame,
+    *,
+    start_counts: np.ndarray,
+    log_base: str | int,
+) -> np.ndarray:
+    entropy = np.full((grid.nlat, grid.nlon), np.nan, dtype=float)
+    entropy[start_counts > 0] = 0.0
+    if table.empty:
+        return entropy
+
+    probability = table["transition_probability"].to_numpy(dtype=float)
+    positive = probability > 0.0
+    if not np.any(positive):
+        return entropy
+
+    log_probability = np.log(probability[positive])
+    if log_base != "e":
+        log_probability = log_probability / np.log(float(log_base))
+    contribution = -probability[positive] * log_probability
+    np.add.at(
+        entropy,
+        (
+            table["start_lat_bin"].to_numpy(dtype=int)[positive],
+            table["start_lon_bin"].to_numpy(dtype=int)[positive],
+        ),
+        contribution,
+    )
+    return entropy
+
+
+def _entropy_units(log_base: str | int) -> str:
+    if log_base == 2:
+        return "bits"
+    if log_base == 10:
+        return "hartleys"
+    return "nats"
+
+
 def _build_dataset(
     grid: RegularGrid,
     table: pd.DataFrame,
@@ -441,10 +504,18 @@ def _build_dataset(
     start_counts: np.ndarray,
     timestep_ns: int | None,
     source_timestep_ns: int | None,
+    resample: bool,
+    entropy_log_base: str | int,
 ) -> xr.Dataset:
     n_transition = len(table)
     transition_coord = np.arange(n_transition, dtype=np.int64)
     direction_maps = _direction_probability_maps(grid, table, start_counts=start_counts)
+    entropy = _entropy_map(
+        grid,
+        table,
+        start_counts=start_counts,
+        log_base=entropy_log_base,
+    )
 
     data_vars = {
         "n_segments_start": (("lat", "lon"), start_counts.astype(np.int64)),
@@ -453,6 +524,7 @@ def _build_dataset(
         "probability_east": (("lat", "lon"), direction_maps["probability_east"]),
         "probability_west": (("lat", "lon"), direction_maps["probability_west"]),
         "probability_stay": (("lat", "lon"), direction_maps["probability_stay"]),
+        "entropy": (("lat", "lon"), entropy),
     }
 
     sparse_columns = [
@@ -478,7 +550,7 @@ def _build_dataset(
         "summary": (
             "Empirical transition probabilities between regular lon/lat grid cells, "
             "stored as occupied sparse transitions plus start-cell cardinal-sector "
-            "summaries."
+            "summaries and Shannon entropy."
         ),
         "grid_type": "regular_lonlat",
         "lon_min": grid.lon_min,
@@ -495,6 +567,10 @@ def _build_dataset(
         "source_timestep_seconds": (
             "unknown" if source_timestep_ns is None else source_timestep_ns / 1.0e9
         ),
+        "segment_start_policy": (
+            "regular_non_overlapping" if resample else "every_observation"
+        ),
+        "trajectory_resampling": "enabled" if resample else "disabled",
         "segment_inclusion": (
             "both start and end points must lie inside the analysis grid"
         ),
@@ -548,6 +624,14 @@ def _build_dataset(
     ds["probability_stay"].attrs.update(
         long_name="probability of remaining in start cell",
         units="1",
+    )
+    ds["entropy"].attrs.update(
+        long_name="Shannon entropy of in-domain destination probabilities",
+        units=_entropy_units(entropy_log_base),
+        log_base=entropy_log_base,
+        formula="-sum_j P_ij log_b(P_ij)",
+        normalization="not normalized by destination count",
+        conditioning="both segment endpoints lie inside the analysis grid",
     )
     ds["transition_count"].attrs.update(long_name="transition count", units="count")
     ds["transition_probability"].attrs.update(long_name="transition probability", units="1")
@@ -611,6 +695,7 @@ def compute_gridded_transition_matrix(
             lat,
             time_ns,
             timestep_ns=timestep_ns,
+            resample=cfg.resample,
             grid=grid,
         )
         for start_lon, start_lat, end_lon, end_lat in segments:
@@ -628,6 +713,8 @@ def compute_gridded_transition_matrix(
             start_counts=start_counts,
             timestep_ns=timestep_ns,
             source_timestep_ns=source_timestep_ns,
+            resample=cfg.resample,
+            entropy_log_base=cfg.plotting.entropy.log_base,
         )
         return GriddedTransitionMatrixResult(transition_table=table, dataset=ds)
 
@@ -661,6 +748,8 @@ def compute_gridded_transition_matrix(
             start_counts=start_counts,
             timestep_ns=timestep_ns,
             source_timestep_ns=source_timestep_ns,
+            resample=cfg.resample,
+            entropy_log_base=cfg.plotting.entropy.log_base,
         )
         return GriddedTransitionMatrixResult(transition_table=table, dataset=ds)
 
@@ -692,5 +781,7 @@ def compute_gridded_transition_matrix(
         start_counts=start_counts,
         timestep_ns=timestep_ns,
         source_timestep_ns=source_timestep_ns,
+        resample=cfg.resample,
+        entropy_log_base=cfg.plotting.entropy.log_base,
     )
     return GriddedTransitionMatrixResult(transition_table=table, dataset=ds)

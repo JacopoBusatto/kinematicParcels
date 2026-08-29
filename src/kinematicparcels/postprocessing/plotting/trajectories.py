@@ -125,7 +125,14 @@ def _resolve_color_lookup(
     raise KeyError(f"color_by='{color_by}' not found in summary_df or trajectory_df.")
 
 
-def _build_colorizer(values: pd.Series, *, cmap_name: str | None = None, cmap_mode: str = "auto") -> dict:
+def _build_colorizer(
+    values: pd.Series,
+    *,
+    cmap_name: str | None = None,
+    cmap_mode: str = "auto",
+    vmin: float | None = None,
+    vmax: float | None = None,
+) -> dict:
     non_null = values.dropna()
     if non_null.empty:
         raise ValueError("No valid values found for requested coloring variable.")
@@ -142,12 +149,16 @@ def _build_colorizer(values: pd.Series, *, cmap_name: str | None = None, cmap_mo
 
     if not categorical:
         full_numeric = pd.to_numeric(values, errors="coerce")
-        vmin = float(full_numeric.min())
-        vmax = float(full_numeric.max())
-        if np.isclose(vmin, vmax):
-            vmax = vmin + 1.0
+        data_vmin = float(full_numeric.min())
+        data_vmax = float(full_numeric.max())
+        resolved_vmin = data_vmin if vmin is None else float(vmin)
+        resolved_vmax = data_vmax if vmax is None else float(vmax)
+        if resolved_vmax < resolved_vmin:
+            raise ValueError("vmax must be greater than or equal to vmin.")
+        if np.isclose(resolved_vmin, resolved_vmax):
+            resolved_vmax = resolved_vmin + 1.0
         cmap = plt.get_cmap(cmap_name if cmap_name is not None else "viridis")
-        norm = mcolors.Normalize(vmin=vmin, vmax=vmax)
+        norm = mcolors.Normalize(vmin=resolved_vmin, vmax=resolved_vmax)
 
         def _to_color_numeric(value):
             if pd.isna(value):
@@ -212,6 +223,8 @@ def plot_trajectories_map(
     colorbar_label: str | None = None,
     cmap_name: str | None = None,
     cmap_mode: str = "auto",
+    vmin: float | None = None,
+    vmax: float | None = None,
     max_group_member: int | None = None,
 ) -> None:
     """
@@ -247,6 +260,11 @@ def plot_trajectories_map(
     color_by
         Optional column from summary_df or df used to color the trajectories.
         Supports both numeric and categorical values.
+    colorbar_label
+        Optional colorbar label. Defaults to color_by when omitted.
+    vmin, vmax
+        Optional color limits for numeric trajectory coloring. Omitted limits
+        are inferred from the plotted values.
     max_group_member
         If set and group_member column exists, plot only members <= max_group_member.
         If None, plot all available members.
@@ -281,7 +299,17 @@ def plot_trajectories_map(
         summary_df=summary_df,
         key_cols=group_cols,
     )
-    colorizer = _build_colorizer(color_lookup, cmap_name=cmap_name, cmap_mode=cmap_mode) if color_lookup is not None else None
+    colorizer = (
+        _build_colorizer(
+            color_lookup,
+            cmap_name=cmap_name,
+            cmap_mode=cmap_mode,
+            vmin=vmin,
+            vmax=vmax,
+        )
+        if color_lookup is not None
+        else None
+    )
 
     fig = plt.figure(figsize=figsize)
     proj = get_projection(projection)
