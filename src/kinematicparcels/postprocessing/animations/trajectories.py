@@ -101,6 +101,10 @@ def animate_trajectories(
     add_gridlines: bool = True,
     summary_df: pd.DataFrame | None = None,
     max_group_member: int | None = None,
+    title_fontsize: int | None = None,
+    colorbar_fontsize: int | None = None,
+    colorbar_tick_fontsize: int | None = None,
+    axis_tick_fontsize: int | None = None,
 ) -> Path:
     """
     Animate trajectories as moving particle positions on a map.
@@ -293,6 +297,9 @@ def animate_trajectories(
                 gl = ax.gridlines(draw_labels=True, linestyle="--", alpha=0.4)
                 gl.top_labels = False
                 gl.right_labels = False
+                if axis_tick_fontsize is not None:
+                    gl.xlabel_style = {"size": axis_tick_fontsize}
+                    gl.ylabel_style = {"size": axis_tick_fontsize}
 
             xs = []
             ys = []
@@ -379,17 +386,20 @@ def animate_trajectories(
                     pad=0.03,
                     extend=colorbar_extend if not categorical_mode else "neither",
                 )
-                cbar.set_label(colorbar_label)
+                cbar.set_label(colorbar_label, fontsize=colorbar_fontsize)
                 if categorical_mode and categories is not None:
                     cbar.set_ticks(np.arange(len(categories)))
                     cbar.set_ticklabels(categories)
+                if colorbar_tick_fontsize is not None:
+                    cbar.ax.tick_params(labelsize=colorbar_tick_fontsize)
 
             ax.set_extent(
                 [lon_min - lon_pad, lon_max + lon_pad, lat_min - lat_pad, lat_max + lat_pad],
                 crs=ccrs.PlateCarree(),
             )
 
-            ax.set_title(title)
+            if title_fontsize != 0:
+                ax.set_title(title, fontsize=title_fontsize)
 
             if show_time_bar:
                 add_time_progress_bar(

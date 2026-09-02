@@ -617,6 +617,10 @@ If the `grid` section is present, all bounds and spacings must be provided, even
 `plotting`
 
 - `projection`: Cartopy projection name used by map products, for example `PlateCarree`
+- `title_fontsize`: map-title font size; `0` omits titles
+- `colorbar_fontsize`: colorbar-label font size
+- `colorbar_tick_fontsize`: colorbar tick-label font size
+- `axis_tick_fontsize`: geographic gridline-label font size
 
 ------------------------------------------------------------
 SUMMARY
@@ -1685,6 +1689,10 @@ trajectories:
 - `trail` and `trail_steps` plot a trail behind trajectories and its length
 - `max_group_member` keeps only grouped members up to the selected index; `null` keeps all members
 - `show_time_bar` draw a time progression bar
+
+The top-level `plotting` font-size settings apply to static trajectory maps,
+connectivity maps, and trajectory/connectivity animations. Connectivity legends
+and animation time-progress-bar text retain their own defaults.
 
 ------------------------------------------------------------
 YAML EXAMPLE (UPDATED)

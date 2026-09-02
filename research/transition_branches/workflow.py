@@ -1,4 +1,4 @@
-"""Transition matrix to Lagrangian transport, current cores, and fronts."""
+"""Parallel transport and distance-free directional structure workflow."""
 
 from __future__ import annotations
 
@@ -7,12 +7,17 @@ from pathlib import Path
 
 import pandas as pd
 
+from .comparison import compare_transport_and_directional_structures
 from .config import CompactConfig, load_config
 from .cores import compute_current_cores
+from .directional_corridors import compute_directional_corridors
+from .directional_fronts import compute_probable_directional_fronts
 from .fronts import compute_probable_fronts
 from .io import (
     create_run_directory,
     write_debug_tables,
+    write_directional_debug_tables,
+    write_directional_tables,
     write_reproducibility_files,
     write_scientific_tables,
     write_validation_table,
@@ -28,8 +33,15 @@ def run(config: CompactConfig) -> Path:
     matrix = pd.read_parquet(input_path)
 
     statistics = compute_transition_statistics(matrix, config)
+    directional_corridors = compute_directional_corridors(statistics.cells, config)
+    directional_fronts = compute_probable_directional_fronts(
+        statistics.cells, directional_corridors, config
+    )
     cores = compute_current_cores(statistics.cells, config)
     fronts = compute_probable_fronts(statistics.cells, cores, config)
+    comparison = compare_transport_and_directional_structures(
+        statistics.cells, cores, directional_corridors, config
+    )
     validation = (
         compute_validation(statistics.cells, fronts, config)
         if config.run_validation
@@ -38,6 +50,13 @@ def run(config: CompactConfig) -> Path:
     cells = compact_cell_table(statistics.cells)
     write_scientific_tables(
         run_dir, cells=cells, cores=cores.cores, fronts=fronts.fronts
+    )
+    write_directional_tables(
+        run_dir,
+        corridors=directional_corridors.corridors,
+        fronts=directional_fronts.fronts,
+        comparison=comparison.cells,
+        component_comparison=comparison.components,
     )
 
     optional_outputs: list[str] = []
@@ -52,6 +71,16 @@ def run(config: CompactConfig) -> Path:
                 segment_fronts=fronts.segment_fronts,
             )
         )
+        optional_outputs.extend(
+            write_directional_debug_tables(
+                run_dir,
+                candidate_drops=directional_fronts.candidate_drops,
+                cross_sections=directional_fronts.cross_sections,
+                section_summaries=directional_fronts.section_summaries,
+                components=directional_corridors.components,
+                graph_edges=directional_corridors.edges,
+            )
+        )
     if validation is not None:
         optional_outputs.append(write_validation_table(run_dir, validation.validation))
 
@@ -61,9 +90,12 @@ def run(config: CompactConfig) -> Path:
         fronts,
         config,
         run_dir / "figures",
+        directional_corridors=directional_corridors,
+        directional_fronts=directional_fronts,
         validation=validation,
     )
     status_counts = fronts.fronts.front_status.value_counts()
+    directional_status_counts = directional_fronts.fronts.front_status.value_counts()
     write_reproducibility_files(
         run_dir,
         config=config,
@@ -80,9 +112,26 @@ def run(config: CompactConfig) -> Path:
                 status_counts.get("observable_no_retained_front", 0)
             ),
             "unobservable_sides": int(status_counts.get("side_not_observable", 0)),
+            "directional_corridor_cells": len(directional_corridors.corridors),
+            "directional_corridor_components": len(directional_corridors.components),
+            "directional_sides": len(directional_fronts.fronts),
+            "probable_directional_fronts": int(
+                directional_status_counts.get("probable_directional_front", 0)
+            ),
+            "observable_sides_without_directional_front": int(
+                directional_status_counts.get(
+                    "observable_no_retained_directional_front", 0
+                )
+            ),
+            "unobservable_directional_sides": int(
+                directional_status_counts.get("side_not_observable", 0)
+            ),
         },
         transition_validation_summary=statistics.validation_summary,
         gradient_validation_summary=(validation.summary if validation else None),
+        directional_corridor_summary=directional_corridors.summary,
+        directional_front_summary=directional_fronts.summary,
+        structure_comparison_summary=comparison.summary,
         figures=figures,
         optional_outputs=optional_outputs,
     )
@@ -91,7 +140,9 @@ def run(config: CompactConfig) -> Path:
 
 def main() -> None:
     parser = argparse.ArgumentParser(
-        description="Detect Lagrangian current cores and probable transport fronts"
+        description=(
+            "Detect transport cores/fronts and independent directional corridors/fronts"
+        )
     )
     parser.add_argument("--config", required=True)
     args = parser.parse_args()

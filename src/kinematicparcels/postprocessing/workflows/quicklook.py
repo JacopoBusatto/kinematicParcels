@@ -22,6 +22,10 @@ def quicklook_trajectories(
     truncate_at_first_invalid: bool = True,
     show_start: bool = True,
     show_end: bool = True,
+    title_fontsize: int | None = None,
+    colorbar_fontsize: int | None = None,
+    colorbar_tick_fontsize: int | None = None,
+    axis_tick_fontsize: int | None = None,
 ) -> tuple[pd.DataFrame, pd.DataFrame]:
     """
     High-level quicklook workflow for Parcels trajectories.
@@ -43,6 +47,10 @@ def quicklook_trajectories(
         title=title,
         show_start=show_start,
         show_end=show_end,
+        title_fontsize=title_fontsize,
+        colorbar_fontsize=colorbar_fontsize,
+        colorbar_tick_fontsize=colorbar_tick_fontsize,
+        axis_tick_fontsize=axis_tick_fontsize,
     )
 
     return df, summary

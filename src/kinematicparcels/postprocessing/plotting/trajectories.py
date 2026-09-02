@@ -226,6 +226,10 @@ def plot_trajectories_map(
     vmin: float | None = None,
     vmax: float | None = None,
     max_group_member: int | None = None,
+    title_fontsize: int | None = None,
+    colorbar_fontsize: int | None = None,
+    colorbar_tick_fontsize: int | None = None,
+    axis_tick_fontsize: int | None = None,
 ) -> None:
     """
     Plot trajectories on a simple geographic map.
@@ -268,6 +272,14 @@ def plot_trajectories_map(
     max_group_member
         If set and group_member column exists, plot only members <= max_group_member.
         If None, plot all available members.
+    title_fontsize
+        Figure-title font size. Set to 0 to omit the title.
+    colorbar_fontsize
+        Colorbar-label font size.
+    colorbar_tick_fontsize
+        Colorbar tick-label font size.
+    axis_tick_fontsize
+        Geographic gridline-label font size.
     """
     required = ["trajectory", "obs", "lon", "lat"]
     missing = [c for c in required if c not in df.columns]
@@ -332,6 +344,9 @@ def plot_trajectories_map(
         gl = ax.gridlines(draw_labels=True, linestyle="--", alpha=0.4)
         gl.top_labels = False
         gl.right_labels = False
+        if axis_tick_fontsize is not None:
+            gl.xlabel_style = {"size": axis_tick_fontsize}
+            gl.ylabel_style = {"size": axis_tick_fontsize}
 
     if colorizer is None and has_group_member:
         group_members = sorted(df["group_member"].unique())
@@ -418,7 +433,10 @@ def plot_trajectories_map(
                 shrink=0.9,
                 pad=0.03,
             )
-            cbar.set_label(colorbar_label or color_by or "value")
+            cbar.set_label(
+                colorbar_label or color_by or "value",
+                fontsize=colorbar_fontsize,
+            )
         else:
             cbar = plt.colorbar(
                 ScalarMappable(norm=colorizer["norm"], cmap=colorizer["cmap"]),
@@ -426,10 +444,15 @@ def plot_trajectories_map(
                 shrink=0.9,
                 pad=0.03,
             )
-            cbar.set_label(colorbar_label or color_by or "category")
+            cbar.set_label(
+                colorbar_label or color_by or "category",
+                fontsize=colorbar_fontsize,
+            )
             categories = list(colorizer["categories"].keys())
             cbar.set_ticks(np.arange(len(categories)))
             cbar.set_ticklabels(categories)
+        if colorbar_tick_fontsize is not None:
+            cbar.ax.tick_params(labelsize=colorbar_tick_fontsize)
 
     lon_min = df["lon"].min()
     lon_max = df["lon"].max()
@@ -444,7 +467,8 @@ def plot_trajectories_map(
         crs=ccrs.PlateCarree(),
     )
 
-    ax.set_title(title)
+    if title_fontsize != 0:
+        ax.set_title(title, fontsize=title_fontsize)
 
     plt.tight_layout()
     plt.savefig(outpath, dpi=150, bbox_inches="tight")
@@ -467,6 +491,10 @@ def plot_connectivity_map(
     add_gridlines: bool = True,
     projection: str = "PlateCarree",
     max_group_member: int | None = None,
+    title_fontsize: int | None = None,
+    colorbar_fontsize: int | None = None,
+    colorbar_tick_fontsize: int | None = None,
+    axis_tick_fontsize: int | None = None,
 ) -> None:
     """
     Plot a dual-coloured connectivity map.
@@ -499,6 +527,14 @@ def plot_connectivity_map(
     max_group_member
         If set and ``group_member`` column exists, plot only members <=
         this value.
+    title_fontsize
+        Figure-title font size. Set to 0 to omit the title.
+    colorbar_fontsize
+        Colorbar-label font size when numeric coloring is used.
+    colorbar_tick_fontsize
+        Colorbar tick-label font size when numeric coloring is used.
+    axis_tick_fontsize
+        Geographic gridline-label font size.
     """
     required_traj = ["trajectory", "obs", "lon", "lat"]
     missing = [c for c in required_traj if c not in traj_df.columns]
@@ -554,6 +590,9 @@ def plot_connectivity_map(
         gl = ax.gridlines(draw_labels=True, linestyle="--", alpha=0.4)
         gl.top_labels = False
         gl.right_labels = False
+        if axis_tick_fontsize is not None:
+            gl.xlabel_style = {"size": axis_tick_fontsize}
+            gl.ylabel_style = {"size": axis_tick_fontsize}
 
     for _, g in traj_df.groupby(group_cols, sort=False):
         traj_id = _normalize_key_value(g["trajectory"].iloc[0])
@@ -633,7 +672,9 @@ def plot_connectivity_map(
             ScalarMappable(norm=colorizer["norm"], cmap=colorizer["cmap"]),
             ax=ax, shrink=0.9, pad=0.03,
         )
-        cbar.set_label(f"{end_color_by}")
+        cbar.set_label(f"{end_color_by}", fontsize=colorbar_fontsize)
+        if colorbar_tick_fontsize is not None:
+            cbar.ax.tick_params(labelsize=colorbar_tick_fontsize)
 
     lon_min = traj_df["lon"].min()
     lon_max = traj_df["lon"].max()
@@ -646,7 +687,8 @@ def plot_connectivity_map(
         crs=ccrs.PlateCarree(),
     )
 
-    ax.set_title(title)
+    if title_fontsize != 0:
+        ax.set_title(title, fontsize=title_fontsize)
     plt.tight_layout()
     plt.savefig(outpath, dpi=150, bbox_inches="tight")
     plt.close(fig)

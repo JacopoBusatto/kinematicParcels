@@ -19,6 +19,12 @@ STANDARD_TABLES = (
     "branch_cores.parquet",
     "fronts.parquet",
 )
+DIRECTIONAL_TABLES = (
+    "directional_corridors.parquet",
+    "directional_fronts.parquet",
+    "structure_comparison.parquet",
+    "structure_component_comparison.parquet",
+)
 
 
 def sha256(path: Path) -> str:
@@ -49,6 +55,19 @@ def write_scientific_tables(
         table.to_parquet(run_dir / name, index=False)
 
 
+def write_directional_tables(
+    run_dir: Path,
+    *,
+    corridors: pd.DataFrame,
+    fronts: pd.DataFrame,
+    comparison: pd.DataFrame,
+    component_comparison: pd.DataFrame,
+) -> None:
+    tables = (corridors, fronts, comparison, component_comparison)
+    for name, table in zip(DIRECTIONAL_TABLES, tables, strict=True):
+        table.to_parquet(run_dir / name, index=False)
+
+
 def write_debug_tables(
     run_dir: Path,
     *,
@@ -70,6 +89,27 @@ def write_debug_tables(
     return list(outputs)
 
 
+def write_directional_debug_tables(
+    run_dir: Path,
+    *,
+    candidate_drops: pd.DataFrame,
+    cross_sections: pd.DataFrame,
+    section_summaries: pd.DataFrame,
+    components: pd.DataFrame,
+    graph_edges: pd.DataFrame,
+) -> list[str]:
+    outputs = {
+        "directional_candidate_drop_zones.parquet": candidate_drops,
+        "directional_raw_cross_sections.parquet": cross_sections,
+        "directional_section_composites.parquet": section_summaries,
+        "directional_corridor_components.parquet": components,
+        "directional_corridor_graph_edges.parquet": graph_edges,
+    }
+    for name, table in outputs.items():
+        table.to_parquet(run_dir / name, index=False)
+    return list(outputs)
+
+
 def write_validation_table(run_dir: Path, validation: pd.DataFrame) -> str:
     name = "gradient_validation.parquet"
     validation.to_parquet(run_dir / name, index=False)
@@ -85,6 +125,9 @@ def write_reproducibility_files(
     counts: dict[str, int],
     transition_validation_summary: dict[str, Any],
     gradient_validation_summary: dict[str, Any] | None,
+    directional_corridor_summary: dict[str, Any],
+    directional_front_summary: dict[str, Any],
+    structure_comparison_summary: dict[str, Any],
     figures: list[Path],
     optional_outputs: list[str],
 ) -> None:
@@ -92,7 +135,12 @@ def write_reproducibility_files(
     (run_dir / config_name).write_text(
         yaml.safe_dump(config.to_dict(), sort_keys=False), encoding="utf-8"
     )
-    inventory = [*STANDARD_TABLES, config_name, "manifest.json"]
+    inventory = [
+        *STANDARD_TABLES,
+        *DIRECTIONAL_TABLES,
+        config_name,
+        "manifest.json",
+    ]
     inventory.extend(path.relative_to(run_dir).as_posix() for path in figures)
     inventory.extend(optional_outputs)
     manifest = {
@@ -114,10 +162,25 @@ def write_reproducibility_files(
             "transport_percentile": config.branches.transport_percentile,
             "ridge_field": config.branches.ridge_field,
             "transport_threshold_km_day": transport_threshold_km_day,
+            "directional": {
+                "minimum_P_move": config.directional.minimum_P_move,
+                "minimum_R1": config.directional.minimum_R1,
+                "minimum_strength": config.directional.minimum_strength,
+                "maximum_neighbor_direction_difference_degrees": (
+                    config.directional.maximum_neighbor_direction_difference_degrees
+                ),
+                "maximum_step_direction_mismatch_degrees": (
+                    config.directional.maximum_step_direction_mismatch_degrees
+                ),
+                "minimum_component_cells": config.directional.minimum_component_cells,
+            },
         },
         "counts": counts,
         "transition_matrix_validation": transition_validation_summary,
         "gradient_validation": gradient_validation_summary,
+        "directional_corridors": directional_corridor_summary,
+        "directional_fronts": directional_front_summary,
+        "transport_directional_comparison": structure_comparison_summary,
         "output_inventory": inventory,
         "options": {
             "write_debug_outputs": config.write_debug_outputs,

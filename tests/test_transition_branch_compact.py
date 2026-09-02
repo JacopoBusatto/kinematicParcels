@@ -1,10 +1,12 @@
 from __future__ import annotations
 
 from dataclasses import replace
+from types import SimpleNamespace
 
 import numpy as np
 import pandas as pd
 import pytest
+from matplotlib.text import Text
 
 from research.transition_branches.config import (
     CompactConfig,
@@ -13,11 +15,12 @@ from research.transition_branches.config import (
     OutputConfig,
 )
 from research.transition_branches.fronts import _canonical_fronts
-from research.transition_branches.io import STANDARD_TABLES
+from research.transition_branches.io import DIRECTIONAL_TABLES, STANDARD_TABLES
 from research.transition_branches.plotting import (
     CORE_MARKER_STYLES,
     FRONT_MARKER_STYLES,
     _finite_percentile_max,
+    _style_quiver_key_label,
 )
 from research.transition_branches.statistics import (
     compact_cell_table,
@@ -63,6 +66,23 @@ def _four_direction_table() -> pd.DataFrame:
     )
 
 
+def _eastward_with_stay_table() -> pd.DataFrame:
+    return pd.DataFrame(
+        {
+            "start_lon_bin": pd.Series([1, 1], dtype="int64"),
+            "start_lat_bin": pd.Series([1, 1], dtype="int64"),
+            "end_lon_bin": pd.Series([1, 2], dtype="int64"),
+            "end_lat_bin": pd.Series([1, 1], dtype="int64"),
+            "start_lon_center": pd.Series([1.5, 1.5], dtype="float64"),
+            "start_lat_center": pd.Series([1.5, 1.5], dtype="float64"),
+            "end_lon_center": pd.Series([1.5, 2.5], dtype="float64"),
+            "end_lat_center": pd.Series([1.5, 1.5], dtype="float64"),
+            "transition_count": pd.Series([5, 15], dtype="int64"),
+            "transition_probability": pd.Series([0.25, 0.75], dtype="float64"),
+        }
+    )
+
+
 def test_compact_workflow_enforces_normalized_source_probability_contract() -> None:
     table = _four_direction_table()
     table.loc[0, "transition_probability"] = 0.20
@@ -81,6 +101,58 @@ def test_compact_output_preserves_normalized_angular_entropy() -> None:
     assert {"start_lon_bin", "start_lat_bin", "R1_in", "R2_in"} <= set(compact)
 
 
+def test_directional_vector_is_distance_free_first_harmonic() -> None:
+    statistics = compute_transition_statistics(_eastward_with_stay_table(), _config())
+    source = statistics.cells.loc[statistics.cells.cell_id.eq(4)].iloc[0]
+
+    assert source.D_out_move_east == pytest.approx(
+        np.sin(np.deg2rad(source.theta1_out))
+    )
+    assert source.D_out_move_north == pytest.approx(
+        np.cos(np.deg2rad(source.theta1_out))
+    )
+    assert source.D_out_move_magnitude == pytest.approx(source.R1_out)
+    assert source.D_out_all_east == pytest.approx(
+        source.P_move * source.D_out_move_east
+    )
+    assert source.D_out_all_north == pytest.approx(
+        source.P_move * source.D_out_move_north
+    )
+    assert source.D_out_all_magnitude == pytest.approx(source.P_move * source.R1_out)
+    assert source.theta1_out == pytest.approx(89.986911, abs=1.0e-6)
+
+    identities = statistics.validation_summary["directional_vector_identities"]
+    assert identities["D_out_all_equals_P_move_D_out_move_max_abs_east"] == 0.0
+    assert identities["D_out_all_equals_P_move_D_out_move_max_abs_north"] == 0.0
+    assert identities["D_out_move_magnitude_equals_R1_max_abs"] < 1.0e-15
+    assert identities["D_out_all_magnitude_equals_P_move_R1_max_abs"] < 1.0e-15
+    assert identities["D_out_move_bearing_equals_theta1_max_abs_degrees"] < 1.0e-12
+    assert identities["D_out_all_bearing_equals_theta1_max_abs_degrees"] < 1.0e-12
+
+
+def test_zero_movement_has_zero_full_directional_vector_but_no_bearing() -> None:
+    table = _eastward_with_stay_table().iloc[[0]].copy()
+    table["transition_probability"] = 1.0
+    moving_source = _eastward_with_stay_table().iloc[[1]].copy()
+    moving_source["start_lon_bin"] = 0
+    moving_source["start_lat_bin"] = 0
+    moving_source["end_lon_bin"] = 1
+    moving_source["end_lat_bin"] = 0
+    moving_source["start_lon_center"] = 0.5
+    moving_source["start_lat_center"] = 0.5
+    moving_source["end_lon_center"] = 1.5
+    moving_source["end_lat_center"] = 0.5
+    moving_source["transition_probability"] = 1.0
+    table = pd.concat([table, moving_source], ignore_index=True)
+    statistics = compute_transition_statistics(table, _config())
+    source = statistics.cells.loc[statistics.cells.cell_id.eq(4)].iloc[0]
+
+    assert source.P_move == 0.0
+    assert source.D_out_all_magnitude == 0.0
+    assert np.isnan(source.D_out_move_magnitude)
+    assert np.isnan(source.theta1_out)
+
+
 def test_compact_defaults_define_only_one_production_realization() -> None:
     config = _config()
 
@@ -96,6 +168,12 @@ def test_standard_outputs_and_overlay_labels_are_scientist_facing() -> None:
         "cell_statistics.parquet",
         "branch_cores.parquet",
         "fronts.parquet",
+    )
+    assert DIRECTIONAL_TABLES == (
+        "directional_corridors.parquet",
+        "directional_fronts.parquet",
+        "structure_comparison.parquet",
+        "structure_component_comparison.parquet",
     )
     labels = {
         style[2]
@@ -120,6 +198,18 @@ def test_structure_map_colormap_percentile_is_configurable_and_validated() -> No
             config,
             plotting=replace(config.plotting, structure_map_max_percentile=0.0),
         )
+
+
+def test_quiver_key_label_has_translucent_white_borderless_background() -> None:
+    key = SimpleNamespace(text=Text())
+
+    _style_quiver_key_label(key)
+
+    patch = key.text.get_bbox_patch()
+    assert patch is not None
+    assert patch.get_facecolor() == pytest.approx((1.0, 1.0, 1.0, 0.8))
+    assert patch.get_edgecolor() == pytest.approx((0.0, 0.0, 0.0, 0.0))
+    assert patch.get_alpha() == pytest.approx(0.8)
 
 
 def test_incoming_statistics_are_always_preserved_for_future_topology() -> None:

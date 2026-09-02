@@ -3,10 +3,12 @@ input:
   # matrix_id: argo_10d_nonoverlapping
   # transition_table: "F:/PLATFORMS/ARGO/postprocessing/SO_no_fallback_depth/z0850_1150/gridded_transition_matrix_dt_10d_table.parquet"
   # matrix_id: argo_10d
-  transition_table: "F:/PLATFORMS/ARGO/postprocessing/SO_no_fallback_depth/z0850_1150/gridded_transition_matrix_dt_60d_table.parquet"
-  matrix_id: argo_60d
-  timestep_days: 60.0
-  # timestep_days: 30.0
+  transition_table: "F:/PLATFORMS/ARGO/postprocessing/SO_no_fallback_depth/z0850_1150/gridded_transition_matrix_dt_30d_table.parquet"
+  matrix_id: argo_30d
+  # transition_table: "F:/PLATFORMS/ARGO/postprocessing/SO_no_fallback_depth/z0850_1150/gridded_transition_matrix_dt_60d_table.parquet"
+  # matrix_id: argo_60d
+  # timestep_days: 60.0
+  timestep_days: 30.0
   # timestep_days: 10.0
 
 output:
@@ -14,8 +16,8 @@ output:
   # run_name: argo_10d_lagrangian_currents
   # root: "F:/PLATFORMS/ARGO/postprocessing/SO_no_fallback_depth/z0850_1150/transition_branches_10d"
   # run_name: argo_10d
-  root: "F:/PLATFORMS/ARGO/postprocessing/SO_no_fallback_depth/z0850_1150/transition_branches_60d"
-  run_name: argo_60d
+  root: "F:/PLATFORMS/ARGO/postprocessing/SO_no_fallback_depth/z0850_1150/transition_branches_30d"
+  run_name: argo_30d
 grid:
   lon_min: -180.0
   lon_max: 180.0
@@ -31,6 +33,15 @@ branches:
   transport_percentile: 0.90
   ridge_field: raw
   transverse_scale_grid: 1.0
+directional:
+  minimum_P_move: 0.5
+  # minimum_R1: 0.8
+  minimum_R1: 0.7
+  minimum_strength: 0.5
+  maximum_neighbor_direction_difference_degrees: 45.0
+  maximum_step_direction_mismatch_degrees: 45.0
+  minimum_component_cells: 3
+  transverse_scale_grid: 1.5
 edges:
   half_width_grid_scales: 5
   sampling_interval_grid_scales: 1.0
@@ -48,6 +59,7 @@ plotting:
   central_longitude: 0.0
   vector_stride_cells: 2
   vector_reference_km_day: 2.0
+  directional_vector_reference: 0.5
   structure_map_max_percentile: 90.0
   debug_plots: true
 write_debug_outputs: false

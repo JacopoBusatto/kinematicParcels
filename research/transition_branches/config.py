@@ -65,6 +65,17 @@ class BranchConfig:
 
 
 @dataclass(frozen=True)
+class DirectionalConfig:
+    minimum_P_move: float = 0.5
+    minimum_R1: float = 0.8
+    minimum_strength: float = 0.5
+    maximum_neighbor_direction_difference_degrees: float = 45.0
+    maximum_step_direction_mismatch_degrees: float = 45.0
+    minimum_component_cells: int = 3
+    transverse_scale_grid: float = 1.0
+
+
+@dataclass(frozen=True)
 class EdgeConfig:
     half_width_grid_scales: int = 5
     sampling_interval_grid_scales: float = 1.0
@@ -108,6 +119,7 @@ class PlotConfig:
     draw_coastlines: bool = True
     vector_stride_cells: int = 5
     vector_reference_km_day: float = 5.0
+    directional_vector_reference: float = 0.5
     structure_map_max_percentile: float = 100.0
     debug_plots: bool = False
 
@@ -119,13 +131,14 @@ class CompactConfig:
     grid: GridConfig = field(default_factory=GridConfig)
     statistics: StatisticsConfig = field(default_factory=StatisticsConfig)
     branches: BranchConfig = field(default_factory=BranchConfig)
+    directional: DirectionalConfig = field(default_factory=DirectionalConfig)
     edges: EdgeConfig = field(default_factory=EdgeConfig)
     validation: ValidationConfig = field(default_factory=ValidationConfig)
     plotting: PlotConfig = field(default_factory=PlotConfig)
     ellipsoid: str = "WGS84"
     write_debug_outputs: bool = False
     run_validation: bool = False
-    analysis_version: str = "2.0.0-production"
+    analysis_version: str = "3.0.0-production"
 
     def __post_init__(self) -> None:
         if not self.input.matrix_id.strip() or self.input.timestep_days <= 0:
@@ -178,6 +191,27 @@ class CompactConfig:
             )
         ):
             raise ValueError("branch angular diagnostics must lie in [0, 180]")
+        if any(
+            not 0 <= value <= 1
+            for value in (
+                self.directional.minimum_P_move,
+                self.directional.minimum_R1,
+                self.directional.minimum_strength,
+            )
+        ):
+            raise ValueError("directional probability/strength thresholds must be in [0, 1]")
+        if any(
+            not 0 <= value <= 90
+            for value in (
+                self.directional.maximum_neighbor_direction_difference_degrees,
+                self.directional.maximum_step_direction_mismatch_degrees,
+            )
+        ):
+            raise ValueError("directional local-angle thresholds must be in [0, 90]")
+        if self.directional.minimum_component_cells < 1:
+            raise ValueError("minimum_component_cells must be positive")
+        if self.directional.transverse_scale_grid <= 0:
+            raise ValueError("directional transverse scale must be positive")
         if self.edges.half_width_grid_scales < 2:
             raise ValueError("cross-section half-width must be at least two cells")
         if self.edges.sampling_interval_grid_scales <= 0:
@@ -218,6 +252,8 @@ class CompactConfig:
             raise ValueError("vector_stride_cells must be positive")
         if self.plotting.vector_reference_km_day <= 0:
             raise ValueError("vector_reference_km_day must be positive")
+        if not 0 < self.plotting.directional_vector_reference <= 1:
+            raise ValueError("directional_vector_reference must lie in (0, 1]")
         if not 0 < self.plotting.structure_map_max_percentile <= 100:
             raise ValueError("structure_map_max_percentile must lie in (0, 100]")
         if self.plotting.debug_plots and not self.run_validation:

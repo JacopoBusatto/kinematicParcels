@@ -361,6 +361,10 @@ def run_start_end_regions(cfg: PostprocessConfig, context: dict) -> None:
                 summary_df=summary_plot_df,
                 color_by=color_by,
                 colorbar_label=cfg.start_end_regions.connectivity_label,
+                title_fontsize=cfg.plotting.title_fontsize,
+                colorbar_fontsize=cfg.plotting.colorbar_fontsize,
+                colorbar_tick_fontsize=cfg.plotting.colorbar_tick_fontsize,
+                axis_tick_fontsize=cfg.plotting.axis_tick_fontsize,
             )
 
             connectivity_plot_path = outdir / "connectivity_end.png"
@@ -373,6 +377,10 @@ def run_start_end_regions(cfg: PostprocessConfig, context: dict) -> None:
                 title="Connectivity map",
                 alpha=traj_alpha,
                 max_group_member=max_group_member,
+                title_fontsize=cfg.plotting.title_fontsize,
+                colorbar_fontsize=cfg.plotting.colorbar_fontsize,
+                colorbar_tick_fontsize=cfg.plotting.colorbar_tick_fontsize,
+                axis_tick_fontsize=cfg.plotting.axis_tick_fontsize,
             )
 
         if cfg.start_end_regions.animate_connectivity:
@@ -426,4 +434,8 @@ def run_start_end_regions(cfg: PostprocessConfig, context: dict) -> None:
                 ),
                 summary_df=summary_plot_df_anim,
                 max_group_member=max_group_member,
+                title_fontsize=cfg.plotting.title_fontsize,
+                colorbar_fontsize=cfg.plotting.colorbar_fontsize,
+                colorbar_tick_fontsize=cfg.plotting.colorbar_tick_fontsize,
+                axis_tick_fontsize=cfg.plotting.axis_tick_fontsize,
             )

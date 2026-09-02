@@ -45,6 +45,10 @@ def run_trajectories(cfg: PostprocessConfig, context: dict) -> None:
             vmin=cfg.trajectories.plot_vmin,
             vmax=cfg.trajectories.plot_vmax,
             max_group_member=cfg.trajectories.max_group_member,
+            title_fontsize=cfg.plotting.title_fontsize,
+            colorbar_fontsize=cfg.plotting.colorbar_fontsize,
+            colorbar_tick_fontsize=cfg.plotting.colorbar_tick_fontsize,
+            axis_tick_fontsize=cfg.plotting.axis_tick_fontsize,
         )
 
     if cfg.trajectories.animate:
@@ -68,4 +72,8 @@ def run_trajectories(cfg: PostprocessConfig, context: dict) -> None:
             trail_steps=cfg.trajectories.trail_steps,
             summary_df=summary,
             max_group_member=cfg.trajectories.max_group_member,
+            title_fontsize=cfg.plotting.title_fontsize,
+            colorbar_fontsize=cfg.plotting.colorbar_fontsize,
+            colorbar_tick_fontsize=cfg.plotting.colorbar_tick_fontsize,
+            axis_tick_fontsize=cfg.plotting.axis_tick_fontsize,
         )

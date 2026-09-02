@@ -1272,8 +1272,8 @@ REGIONS_DATA = [
             [
                 (-180.00, -80.00), 
                 ( 180.00, -80.00), 
-                ( 180.00, -40.00), 
-                (-180.00, -40.00)
+                ( 180.00, -30.00), 
+                (-180.00, -30.00)
             ]
         ],
         priority=1,
@@ -1313,10 +1313,10 @@ REGIONS_DATA = [
         numericLabel=3,
         polygons=[
            [
-                (-180.000000, -40.000000),
+                (-180.000000, -30.000000),
                 # *NB_LINE,
                 *AVISO_SAF_P85_LINES,
-                ( 180.000000, -40.000000)
+                ( 180.000000, -30.000000)
             ]
         ],
         priority=3,
@@ -1485,9 +1485,9 @@ REGIONS_DATA = [
                 # (NB_LINE[93][0], -30.0),
                 # *(NB_LINE[93:124]),
                 # (NB_LINE[123][0], -30.0)
-                (AVISO_SAF_P85_LINES[185][0], -40.0),
+                (AVISO_SAF_P85_LINES[185][0], -30.0),
                 *(AVISO_SAF_P85_LINES[185:246]),
-                (AVISO_SAF_P85_LINES[245][0], -40.0)
+                (AVISO_SAF_P85_LINES[245][0], -30.0)
             ]
         ],
         priority=4,
@@ -1502,9 +1502,9 @@ REGIONS_DATA = [
                 # (NB_LINE[123][0], -30.0),
                 # *(NB_LINE[123:159]),
                 # (NB_LINE[158][0], -30.0)
-                (AVISO_SAF_P85_LINES[245][0], -40.0),
+                (AVISO_SAF_P85_LINES[245][0], -30.0),
                 *(AVISO_SAF_P85_LINES[245:316]),
-                (AVISO_SAF_P85_LINES[315][0], -40.0)
+                (AVISO_SAF_P85_LINES[315][0], -30.0)
             ]
         ],
         priority=4,
@@ -1519,17 +1519,17 @@ REGIONS_DATA = [
                 # (NB_LINE[158][0], -30.0),
                 # *(NB_LINE[158:]),
                 # (NB_LINE[-1][0], -30.0)
-                (AVISO_SAF_P85_LINES[315][0], -40.0),
+                (AVISO_SAF_P85_LINES[315][0], -30.0),
                 *(AVISO_SAF_P85_LINES[315:]),
-                (AVISO_SAF_P85_LINES[-1][0], -40.0)
+                (AVISO_SAF_P85_LINES[-1][0], -30.0)
             ],
             [
                 # (NB_LINE[0][0], -30.0),
                 # *(NB_LINE[:31]),
                 # (NB_LINE[30][0], -30.0)
-                (AVISO_SAF_P85_LINES[0][0], -40.0),
+                (AVISO_SAF_P85_LINES[0][0], -30.0),
                 *(AVISO_SAF_P85_LINES[:60]),
-                (AVISO_SAF_P85_LINES[59][0], -40.0)
+                (AVISO_SAF_P85_LINES[59][0], -30.0)
             ]
         ],
         priority=4,
@@ -1544,9 +1544,9 @@ REGIONS_DATA = [
                 # (NB_LINE[30][0], -30.0),
                 # *(NB_LINE[30:57]),
                 # (NB_LINE[56][0], -30.0)
-                (AVISO_SAF_P85_LINES[59][0], -40.0),
+                (AVISO_SAF_P85_LINES[59][0], -30.0),
                 *(AVISO_SAF_P85_LINES[59:112]),
-                (AVISO_SAF_P85_LINES[111][0], -40.0)
+                (AVISO_SAF_P85_LINES[111][0], -30.0)
             ]
         ],
         priority=4,
@@ -1561,9 +1561,9 @@ REGIONS_DATA = [
                 # (NB_LINE[56][0], -30.0),
                 # *(NB_LINE[56:94]),
                 # (NB_LINE[93][0], -30.0)
-                (AVISO_SAF_P85_LINES[111][0], -40.0),
+                (AVISO_SAF_P85_LINES[111][0], -30.0),
                 *(AVISO_SAF_P85_LINES[111:186]),
-                (AVISO_SAF_P85_LINES[185][0], -40.0)
+                (AVISO_SAF_P85_LINES[185][0], -30.0)
             ]
         ],
         priority=4,

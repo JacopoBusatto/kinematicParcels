@@ -1,4 +1,4 @@
-"""Five publication-ready maps for the production current/front workflow."""
+"""Publication-ready maps for transport and directional structure analyses."""
 
 from __future__ import annotations
 
@@ -13,6 +13,8 @@ from matplotlib.path import Path as MatplotlibPath
 
 from .config import CompactConfig
 from .cores import CoreSolution
+from .directional_corridors import DirectionalCorridorSolution
+from .directional_fronts import DirectionalFrontSolution
 from .fronts import FrontSolution
 from .validation import ValidationSolution
 
@@ -24,6 +26,15 @@ FRONT_MARKER_STYLES = {
     "left": (">", "cyan", "Left transport front"),
     "right": ("<", "magenta", "Right transport front"),
 }
+DIRECTIONAL_CORRIDOR_MARKER_STYLES = {
+    "two_sided": ("o", "tab:green", "Directional corridor (both sides observable)"),
+    "one_sided": ("^", "tab:orange", "Directional corridor (one side observable)"),
+    "not_evaluable": ("x", "tab:gray", "Directional corridor (sides not evaluable)"),
+}
+DIRECTIONAL_FRONT_MARKER_STYLES = {
+    "left": (">", "cyan", "Left directional front"),
+    "right": ("<", "magenta", "Right directional front"),
+}
 
 
 def _finite_percentile_max(values, percentile: float) -> float:
@@ -33,6 +44,13 @@ def _finite_percentile_max(values, percentile: float) -> float:
         return 1.0
     maximum = float(np.percentile(finite, percentile))
     return maximum if maximum > 0 else 1.0
+
+
+def _style_quiver_key_label(key) -> None:
+    """Keep a quiver-key label readable over a mapped field."""
+    key.text.set_bbox(
+        {"facecolor": "white", "edgecolor": "none", "alpha": 0.8, "pad": 1.5}
+    )
 
 
 def _projection(config):
@@ -54,9 +72,11 @@ def create_standard_figures(
     config: CompactConfig,
     output_dir: Path,
     *,
+    directional_corridors: DirectionalCorridorSolution,
+    directional_fronts: DirectionalFrontSolution,
     validation: ValidationSolution | None = None,
 ) -> list[Path]:
-    """Create the five standard maps and an optional labeled validation map."""
+    """Create transport/directional maps and an optional validation map."""
     if not config.plotting.enabled:
         return []
     projection, data_crs = _projection(config.plotting)
@@ -136,7 +156,7 @@ def create_standard_figures(
             headwidth=3.5,
             zorder=3,
         )
-        axis.quiverkey(
+        key = axis.quiverkey(
             quiver,
             0.80,
             0.035,
@@ -145,6 +165,54 @@ def create_standard_figures(
             labelpos="N",
             coordinates="axes",
         )
+        _style_quiver_key_label(key)
+
+    def add_directional_background(axis, *, cmap="viridis"):
+        values = grid_array("D_out_all_magnitude")
+        return axis.pcolormesh(
+            lon_edges,
+            lat_edges,
+            values,
+            transform=data_crs,
+            shading="flat",
+            cmap=cmap,
+            vmin=0,
+            vmax=1,
+        )
+
+    def add_directional_vectors(axis, *, add_key=True):
+        stride = config.plotting.vector_stride_cells
+        arrows = cells.loc[
+            support
+            & cells.lon_bin.mod(stride).eq(0)
+            & cells.lat_bin.mod(stride).eq(0)
+            & cells.D_out_all_east.notna()
+            & cells.D_out_all_north.notna()
+        ]
+        quiver = axis.quiver(
+            arrows.lon,
+            arrows.lat,
+            arrows.D_out_all_east,
+            arrows.D_out_all_north,
+            transform=data_crs,
+            color="black",
+            width=0.0022,
+            headwidth=3.5,
+            zorder=3,
+        )
+        if add_key:
+            reference = config.plotting.directional_vector_reference
+            key = axis.quiverkey(
+                quiver,
+                0.72,
+                0.08,
+                reference,
+                rf"$|D|={reference:g}$ directional vector (dimensionless; not velocity)",
+                labelpos="N",
+                coordinates="axes",
+                fontproperties={"size": 8},
+            )
+            _style_quiver_key_label(key)
 
     def save(figure, filename):
         path = output_dir / filename
@@ -240,6 +308,68 @@ def create_standard_figures(
     figure.colorbar(mesh, ax=axis, shrink=0.7, label="|U_out,all| [km day$^{-1}$]")
     axis.set_title("Lagrangian current cores and probable transport fronts")
     save(figure, "05_cores_and_fronts.png")
+
+    figure, axis = base_axis()
+    mesh = add_directional_background(axis)
+    add_directional_vectors(axis)
+    figure.colorbar(
+        mesh,
+        ax=axis,
+        shrink=0.7,
+        label=r"$|D_{out,all}| = P_{move}R_1$ [dimensionless]",
+    )
+    axis.set_title("Lagrangian directional organization field (distance-free)")
+    save(figure, "06_directional_vectors.png")
+
+    figure, axis = base_axis()
+    mesh = add_directional_background(axis, cmap="Greys")
+    add_directional_vectors(axis, add_key=False)
+    for observability, (marker, color, label) in (
+        DIRECTIONAL_CORRIDOR_MARKER_STYLES.items()
+    ):
+        rows = directional_corridors.corridors.loc[
+            directional_corridors.corridors.corridor_observability.eq(observability)
+        ]
+        if not rows.empty:
+            axis.scatter(
+                rows.lon,
+                rows.lat,
+                transform=data_crs,
+                s=15,
+                marker=marker,
+                color=color,
+                edgecolors="white" if marker != "x" else None,
+                linewidths=0.25,
+                label=label,
+                zorder=5,
+            )
+    detected_directional = directional_fronts.fronts.loc[
+        directional_fronts.fronts.front_detected
+    ]
+    for side, (marker, color, label) in DIRECTIONAL_FRONT_MARKER_STYLES.items():
+        rows = detected_directional.loc[detected_directional.side.eq(side)]
+        if not rows.empty:
+            axis.scatter(
+                rows.front_lon,
+                rows.front_lat,
+                transform=data_crs,
+                s=18,
+                marker=marker,
+                color=color,
+                edgecolors="black",
+                linewidths=0.25,
+                label=label,
+                zorder=6,
+            )
+    axis.legend(loc="lower left", fontsize=7, framealpha=0.9)
+    figure.colorbar(
+        mesh,
+        ax=axis,
+        shrink=0.7,
+        label=r"$|D_{out,all}| = P_{move}R_1$ [dimensionless]",
+    )
+    axis.set_title("Directional corridors and probable directional fronts")
+    save(figure, "07_directional_corridors_and_fronts.png")
 
     if validation is not None and config.plotting.debug_plots:
         values = np.full((config.grid.nlat, config.grid.nlon), np.nan)
