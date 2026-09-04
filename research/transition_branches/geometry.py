@@ -2,11 +2,14 @@
 
 from __future__ import annotations
 
-from typing import Any
+from dataclasses import dataclass, field
+from typing import Any, Protocol
 
 import numpy as np
 import pandas as pd
 from pyproj import Geod
+
+from .config import LENGTH_UNITS_TO_METERS, SpatialGeometryConfig
 
 NEIGHBOR_OFFSETS_8 = (
     (-1, -1),
@@ -18,6 +21,90 @@ NEIGHBOR_OFFSETS_8 = (
     (1, 0),
     (1, 1),
 )
+
+
+class SpatialGeometry(Protocol):
+    """Geometry operations in one configured physical length unit."""
+
+    coordinate_system: str
+    length_unit: str
+
+    def inverse(self, x1, y1, x2, y2):
+        """Return forward bearing, reverse bearing, and physical distance."""
+
+    def forward(self, x, y, bearing, distance):
+        """Advance by a physical distance and return x, y, reverse bearing."""
+
+
+@dataclass(frozen=True)
+class GeographicGeometry:
+    ellipsoid: str
+    length_unit: str
+    coordinate_system: str = "geographic"
+    _backend: Geod = field(init=False, repr=False, compare=False)
+
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "_backend", Geod(ellps=self.ellipsoid))
+
+    @property
+    def _meters_per_unit(self) -> float:
+        return LENGTH_UNITS_TO_METERS[self.length_unit]
+
+    def inverse(self, x1, y1, x2, y2):
+        forward, reverse, distance_m = self._backend.inv(x1, y1, x2, y2)
+        return forward, reverse, np.asarray(distance_m) / self._meters_per_unit
+
+    def forward(self, x, y, bearing, distance):
+        return self._backend.fwd(
+            x,
+            y,
+            bearing,
+            np.asarray(distance) * self._meters_per_unit,
+        )
+
+
+@dataclass(frozen=True)
+class CartesianGeometry:
+    length_unit: str
+    coordinate_system: str = "cartesian"
+
+    @staticmethod
+    def _restore_scalar(value: np.ndarray, scalar: bool):
+        return float(value) if scalar else value
+
+    def inverse(self, x1, y1, x2, y2):
+        scalar = all(np.ndim(value) == 0 for value in (x1, y1, x2, y2))
+        delta_x = np.asarray(x2, dtype=float) - np.asarray(x1, dtype=float)
+        delta_y = np.asarray(y2, dtype=float) - np.asarray(y1, dtype=float)
+        distance = np.hypot(delta_x, delta_y)
+        forward = np.remainder(np.rad2deg(np.arctan2(delta_x, delta_y)), 360.0)
+        reverse = np.remainder(forward + 180.0, 360.0)
+        return tuple(
+            self._restore_scalar(np.asarray(value), scalar)
+            for value in (forward, reverse, distance)
+        )
+
+    def forward(self, x, y, bearing, distance):
+        scalar = all(np.ndim(value) == 0 for value in (x, y, bearing, distance))
+        angle = np.deg2rad(np.asarray(bearing, dtype=float))
+        distance_array = np.asarray(distance, dtype=float)
+        target_x = np.asarray(x, dtype=float) + distance_array * np.sin(angle)
+        target_y = np.asarray(y, dtype=float) + distance_array * np.cos(angle)
+        reverse = np.remainder(np.asarray(bearing, dtype=float) + 180.0, 360.0)
+        return tuple(
+            self._restore_scalar(np.asarray(value), scalar)
+            for value in (target_x, target_y, reverse)
+        )
+
+
+def make_spatial_geometry(config: SpatialGeometryConfig) -> SpatialGeometry:
+    if config.coordinate_system == "geographic":
+        if config.ellipsoid is None:
+            raise ValueError("geographic geometry requires an ellipsoid")
+        return GeographicGeometry(config.ellipsoid, config.length_unit)
+    if config.coordinate_system == "cartesian":
+        return CartesianGeometry(config.length_unit)
+    raise ValueError(f"unsupported coordinate system: {config.coordinate_system}")
 
 
 def signed_angle_difference(first: np.ndarray, second: np.ndarray) -> np.ndarray:
@@ -33,12 +120,12 @@ def signed_angle_difference(first: np.ndarray, second: np.ndarray) -> np.ndarray
 
 def grid_array(cells: pd.DataFrame, grid: Any, field: str) -> np.ndarray:
     """Place a cell-table field on its configured two-dimensional grid."""
-    values = np.full((grid.nlat, grid.nlon), np.nan, dtype=float)
-    valid = cells.lon_bin.between(0, grid.nlon - 1) & cells.lat_bin.between(
-        0, grid.nlat - 1
+    values = np.full((grid.ny, grid.nx), np.nan, dtype=float)
+    valid = cells.x_bin.between(0, grid.nx - 1) & cells.y_bin.between(
+        0, grid.ny - 1
     )
     rows = cells.loc[valid]
-    values[rows.lat_bin.to_numpy(np.int64), rows.lon_bin.to_numpy(np.int64)] = rows[
+    values[rows.y_bin.to_numpy(np.int64), rows.x_bin.to_numpy(np.int64)] = rows[
         field
     ].to_numpy(float)
     return values
@@ -48,7 +135,7 @@ def support_aware_uniform_3x3(
     values: np.ndarray,
     support: np.ndarray,
     *,
-    periodic_longitude: bool,
+    periodic_x: bool,
 ) -> np.ndarray:
     """Mild uniform smoothing that never fills an unsupported focal cell."""
     values = np.asarray(values, dtype=float)
@@ -64,7 +151,7 @@ def support_aware_uniform_3x3(
         source_values = values[source_lat_start:source_lat_stop]
         source_support = support[source_lat_start:source_lat_stop]
         for delta_lon in (-1, 0, 1):
-            if periodic_longitude:
+            if periodic_x:
                 shifted_values = np.roll(source_values, delta_lon, axis=1)
                 shifted_support = np.roll(source_support, delta_lon, axis=1)
                 numerator[target_lat_start:target_lat_stop] += np.where(
@@ -95,38 +182,38 @@ def support_aware_uniform_3x3(
 def bilinear_supported_sample(
     values: np.ndarray,
     support: np.ndarray,
-    target_lon: np.ndarray,
-    target_lat: np.ndarray,
+    target_x: np.ndarray,
+    target_y: np.ndarray,
     grid: Any,
     *,
     weight_tolerance: float,
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
     """Interpolate only when every nonzero-weight corner is supported."""
-    target_lon = np.asarray(target_lon, dtype=float)
-    target_lat = np.asarray(target_lat, dtype=float)
-    sampled = np.full(target_lon.shape, np.nan, dtype=float)
-    boundary = np.zeros(target_lon.shape, dtype=bool)
-    missing = np.zeros(target_lon.shape, dtype=bool)
-    span = grid.lon_max - grid.lon_min
-    for index, (lon, lat) in enumerate(zip(target_lon, target_lat)):
-        if not np.isfinite(lon) or not np.isfinite(lat):
+    target_x = np.asarray(target_x, dtype=float)
+    target_y = np.asarray(target_y, dtype=float)
+    sampled = np.full(target_x.shape, np.nan, dtype=float)
+    boundary = np.zeros(target_x.shape, dtype=bool)
+    missing = np.zeros(target_x.shape, dtype=bool)
+    span = grid.x_max - grid.x_min
+    for index, (x_coordinate, y_coordinate) in enumerate(zip(target_x, target_y)):
+        if not np.isfinite(x_coordinate) or not np.isfinite(y_coordinate):
             missing[index] = True
             continue
-        if grid.periodic_longitude:
-            lon = ((lon - grid.lon_min) % span) + grid.lon_min
-        x = (lon - grid.lon_min) / grid.dlon - 0.5
-        y = (lat - grid.lat_min) / grid.dlat - 0.5
-        if y < -weight_tolerance or y > grid.nlat - 1 + weight_tolerance:
+        if grid.periodic_x:
+            x_coordinate = ((x_coordinate - grid.x_min) % span) + grid.x_min
+        x = (x_coordinate - grid.x_min) / grid.dx - 0.5
+        y = (y_coordinate - grid.y_min) / grid.dy - 0.5
+        if y < -weight_tolerance or y > grid.ny - 1 + weight_tolerance:
             boundary[index] = True
             continue
-        if not grid.periodic_longitude and (
-            x < -weight_tolerance or x > grid.nlon - 1 + weight_tolerance
+        if not grid.periodic_x and (
+            x < -weight_tolerance or x > grid.nx - 1 + weight_tolerance
         ):
             boundary[index] = True
             continue
-        if not grid.periodic_longitude:
-            x = min(max(x, 0.0), grid.nlon - 1.0)
-        y = min(max(y, 0.0), grid.nlat - 1.0)
+        if not grid.periodic_x:
+            x = min(max(x, 0.0), grid.nx - 1.0)
+        y = min(max(y, 0.0), grid.ny - 1.0)
         x0, y0 = int(np.floor(x)), int(np.floor(y))
         fx, fy = x - x0, y - y0
         candidates = (
@@ -140,13 +227,13 @@ def bilinear_supported_sample(
         for lat_index, lon_index, weight in candidates:
             if weight <= weight_tolerance:
                 continue
-            if lat_index < 0 or lat_index >= grid.nlat:
+            if lat_index < 0 or lat_index >= grid.ny:
                 boundary[index] = True
                 defensible = False
                 break
-            if grid.periodic_longitude:
-                lon_index %= grid.nlon
-            elif lon_index < 0 or lon_index >= grid.nlon:
+            if grid.periodic_x:
+                lon_index %= grid.nx
+            elif lon_index < 0 or lon_index >= grid.nx:
                 boundary[index] = True
                 defensible = False
                 break
@@ -165,17 +252,19 @@ def bilinear_supported_sample(
 def physical_cell_scales(
     cells: pd.DataFrame,
     grid: Any,
-    geod: Geod,
+    geometry: SpatialGeometry,
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
-    """Return zonal, meridional, and geometric-mean cell scales in metres."""
-    lon = cells.lon.to_numpy(float)
-    lat = cells.lat.to_numpy(float)
-    _, _, zonal_m = geod.inv(lon - grid.dlon / 2.0, lat, lon + grid.dlon / 2.0, lat)
-    _, _, meridional_m = geod.inv(
-        lon, lat - grid.dlat / 2.0, lon, lat + grid.dlat / 2.0
+    """Return x, y, and geometric-mean cell scales in configured length units."""
+    x = cells.x.to_numpy(float)
+    y = cells.y.to_numpy(float)
+    _, _, x_scale = geometry.inverse(
+        x - grid.dx / 2.0, y, x + grid.dx / 2.0, y
     )
-    effective_m = np.sqrt(np.asarray(zonal_m) * np.asarray(meridional_m))
-    return np.asarray(zonal_m), np.asarray(meridional_m), effective_m
+    _, _, y_scale = geometry.inverse(
+        x, y - grid.dy / 2.0, x, y + grid.dy / 2.0
+    )
+    effective = np.sqrt(np.asarray(x_scale) * np.asarray(y_scale))
+    return np.asarray(x_scale), np.asarray(y_scale), effective
 
 
 # Private aliases keep the verified Stage-5/6/7 implementations numerically intact.

@@ -8,9 +8,14 @@ from typing import Any
 import numpy as np
 import pandas as pd
 import xarray as xr
-from pyproj import Geod
 
-from .geometry import _bilinear_supported_sample, _grid_array, _physical_cell_scales
+from .geometry import (
+    GeographicGeometry,
+    SpatialGeometry,
+    _bilinear_supported_sample,
+    _grid_array,
+    _physical_cell_scales,
+)
 
 
 @dataclass(frozen=True)
@@ -62,73 +67,78 @@ def compute_global_gradient_fields(
     cells: pd.DataFrame,
     grid: Any,
     *,
-    ellipsoid: str = "WGS84",
+    geometry: SpatialGeometry | None = None,
+    time_unit: str = "day",
     zero_tolerance: float = 1.0e-12,
 ) -> tuple[pd.DataFrame, xr.Dataset]:
     """Calculate raw, missing-aware physical gradients before Stage-6 use."""
     required = {
         "cell_id",
-        "lon_bin",
-        "lat_bin",
-        "lon",
-        "lat",
+        "x_bin",
+        "y_bin",
+        "x",
+        "y",
         "N_out_move",
-        "U_out_all_magnitude_km_day",
+        "U_out_all_magnitude_rate",
         "theta_mu_out",
     }
     missing = sorted(required - set(cells.columns))
     if missing:
         raise ValueError(f"Stage-7 global field input lacks columns: {missing}")
-    geod = Geod(ellps=ellipsoid)
-    scalar = _grid_array(cells, grid, "U_out_all_magnitude_km_day")
+    geometry = geometry or GeographicGeometry("WGS84", "km")
+    scalar = _grid_array(cells, grid, "U_out_all_magnitude_rate")
     finite_center = np.isfinite(scalar)
-    east = _neighbor(scalar, 1, 1, grid.periodic_longitude)
-    west = _neighbor(scalar, 1, -1, grid.periodic_longitude)
+    east = _neighbor(scalar, 1, 1, grid.periodic_x)
+    west = _neighbor(scalar, 1, -1, grid.periodic_x)
     north = _neighbor(scalar, 0, 1, False)
     south = _neighbor(scalar, 0, -1, False)
     east_ok, west_ok = np.isfinite(east), np.isfinite(west)
     north_ok, south_ok = np.isfinite(north), np.isfinite(south)
 
-    lon2d = np.broadcast_to(
-        grid.lon_min + (np.arange(grid.nlon) + 0.5) * grid.dlon,
+    x2d = np.broadcast_to(
+        grid.x_min + (np.arange(grid.nx) + 0.5) * grid.dx,
         scalar.shape,
     )
-    lat2d = np.broadcast_to(
-        (grid.lat_min + (np.arange(grid.nlat) + 0.5) * grid.dlat)[:, None],
+    y2d = np.broadcast_to(
+        (grid.y_min + (np.arange(grid.ny) + 0.5) * grid.dy)[:, None],
         scalar.shape,
     )
-    _, _, dx_centered_m = geod.inv(lon2d - grid.dlon, lat2d, lon2d + grid.dlon, lat2d)
-    _, _, dx_east_m = geod.inv(lon2d, lat2d, lon2d + grid.dlon, lat2d)
-    _, _, dx_west_m = geod.inv(lon2d - grid.dlon, lat2d, lon2d, lat2d)
-    _, _, dy_centered_m = geod.inv(lon2d, lat2d - grid.dlat, lon2d, lat2d + grid.dlat)
-    _, _, dy_north_m = geod.inv(lon2d, lat2d, lon2d, lat2d + grid.dlat)
-    _, _, dy_south_m = geod.inv(lon2d, lat2d - grid.dlat, lon2d, lat2d)
-    dx_centered_km = np.asarray(dx_centered_m) / 1000.0
-    dx_east_km = np.asarray(dx_east_m) / 1000.0
-    dx_west_km = np.asarray(dx_west_m) / 1000.0
-    dy_centered_km = np.asarray(dy_centered_m) / 1000.0
-    dy_north_km = np.asarray(dy_north_m) / 1000.0
-    dy_south_km = np.asarray(dy_south_m) / 1000.0
+    _, _, dx_centered_length = geometry.inverse(
+        x2d - grid.dx, y2d, x2d + grid.dx, y2d
+    )
+    _, _, dx_east_length = geometry.inverse(x2d, y2d, x2d + grid.dx, y2d)
+    _, _, dx_west_length = geometry.inverse(x2d - grid.dx, y2d, x2d, y2d)
+    _, _, dy_centered_length = geometry.inverse(
+        x2d, y2d - grid.dy, x2d, y2d + grid.dy
+    )
+    _, _, dy_north_length = geometry.inverse(x2d, y2d, x2d, y2d + grid.dy)
+    _, _, dy_south_length = geometry.inverse(x2d, y2d - grid.dy, x2d, y2d)
+    dx_centered_length = np.asarray(dx_centered_length)
+    dx_east_length = np.asarray(dx_east_length)
+    dx_west_length = np.asarray(dx_west_length)
+    dy_centered_length = np.asarray(dy_centered_length)
+    dy_north_length = np.asarray(dy_north_length)
+    dy_south_length = np.asarray(dy_south_length)
 
     dS_dx = np.full_like(scalar, np.nan)
     dx_centered = finite_center & east_ok & west_ok
     dx_east = finite_center & east_ok & ~west_ok
     dx_west = finite_center & west_ok & ~east_ok
-    dS_dx[dx_centered] = (east[dx_centered] - west[dx_centered]) / dx_centered_km[
+    dS_dx[dx_centered] = (east[dx_centered] - west[dx_centered]) / dx_centered_length[
         dx_centered
     ]
-    dS_dx[dx_east] = (east[dx_east] - scalar[dx_east]) / dx_east_km[dx_east]
-    dS_dx[dx_west] = (scalar[dx_west] - west[dx_west]) / dx_west_km[dx_west]
+    dS_dx[dx_east] = (east[dx_east] - scalar[dx_east]) / dx_east_length[dx_east]
+    dS_dx[dx_west] = (scalar[dx_west] - west[dx_west]) / dx_west_length[dx_west]
 
     dS_dy = np.full_like(scalar, np.nan)
     dy_centered = finite_center & north_ok & south_ok
     dy_north = finite_center & north_ok & ~south_ok
     dy_south = finite_center & south_ok & ~north_ok
-    dS_dy[dy_centered] = (north[dy_centered] - south[dy_centered]) / dy_centered_km[
+    dS_dy[dy_centered] = (north[dy_centered] - south[dy_centered]) / dy_centered_length[
         dy_centered
     ]
-    dS_dy[dy_north] = (north[dy_north] - scalar[dy_north]) / dy_north_km[dy_north]
-    dS_dy[dy_south] = (scalar[dy_south] - south[dy_south]) / dy_south_km[dy_south]
+    dS_dy[dy_north] = (north[dy_north] - scalar[dy_north]) / dy_north_length[dy_north]
+    dS_dy[dy_south] = (scalar[dy_south] - south[dy_south]) / dy_south_length[dy_south]
 
     theta = _grid_array(cells, grid, "theta_mu_out")
     angle = np.deg2rad(theta)
@@ -153,7 +163,7 @@ def compute_global_gradient_fields(
     dy_method = _method_labels(dy_centered, dy_north | dy_south, "dy")
 
     output = cells.copy()
-    output["S_transport"] = output.U_out_all_magnitude_km_day
+    output["S_transport"] = output.U_out_all_magnitude_rate
     flat_fields = {
         "dS_dx": dS_dx,
         "dS_dy": dS_dy,
@@ -176,7 +186,7 @@ def compute_global_gradient_fields(
             + south_ok.astype(int)
         ),
     }
-    indexes = (output.lat_bin.to_numpy(np.int64), output.lon_bin.to_numpy(np.int64))
+    indexes = (output.y_bin.to_numpy(np.int64), output.x_bin.to_numpy(np.int64))
     for name, values in flat_fields.items():
         output[name] = values[indexes]
     flags: list[str] = []
@@ -203,8 +213,8 @@ def compute_global_gradient_fields(
     output["gradient_quality_flags"] = flags
 
     coords = {
-        "lat": grid.lat_min + (np.arange(grid.nlat) + 0.5) * grid.dlat,
-        "lon": grid.lon_min + (np.arange(grid.nlon) + 0.5) * grid.dlon,
+        "y": grid.y_min + (np.arange(grid.ny) + 0.5) * grid.dy,
+        "x": grid.x_min + (np.arange(grid.nx) + 0.5) * grid.dx,
     }
     dataset = xr.Dataset(coords=coords)
     numeric_names = (
@@ -222,11 +232,11 @@ def compute_global_gradient_fields(
         "n_available_cardinal_neighbors",
     )
     for name in numeric_names:
-        dataset[name] = (("lat", "lon"), _grid_array(output, grid, name))
+        dataset[name] = (("y", "x"), _grid_array(output, grid, name))
     for name in ("dx_method", "dy_method", "gradient_quality_flags"):
-        values = np.full((grid.nlat, grid.nlon), "", dtype=object)
+        values = np.full((grid.ny, grid.nx), "", dtype=object)
         values[indexes] = output[name].astype(str).to_numpy()
-        dataset[name] = (("lat", "lon"), values.astype(str))
+        dataset[name] = (("y", "x"), values.astype(str))
     for name in (
         "dS_dx",
         "dS_dy",
@@ -236,11 +246,15 @@ def compute_global_gradient_fields(
         "abs_G_parallel",
         "gradient_magnitude",
     ):
-        dataset[name].attrs["units"] = "day-1"
-    dataset["S_transport"].attrs["units"] = "km day-1"
+        dataset[name].attrs["units"] = f"{time_unit}-1"
+    dataset["S_transport"].attrs["units"] = (
+        f"{geometry.length_unit} {time_unit}-1"
+    )
     dataset.attrs.update(
         scalar_field="raw |U_out_all|",
-        differentiation="missing-aware WGS84 physical finite differences",
+        differentiation=(
+            f"missing-aware {geometry.coordinate_system} physical finite differences"
+        ),
         unsupported_values="NaN; never zero-filled",
         stage6_used_in_field_construction="false",
     )
@@ -250,37 +264,38 @@ def compute_global_gradient_fields(
 def _sample_gradient(
     global_cells: pd.DataFrame,
     grid: Any,
-    lon: np.ndarray,
-    lat: np.ndarray,
+    x: np.ndarray,
+    y: np.ndarray,
     *,
     interpolation_weight_tolerance: float,
     direct_sample_atol_grid_cells: float,
 ) -> tuple[dict[str, np.ndarray], np.ndarray, np.ndarray, np.ndarray]:
     support_grid = np.isfinite(_grid_array(global_cells, grid, "abs_G_perp"))
     sampled: dict[str, np.ndarray] = {}
-    boundary_any = np.zeros(len(lon), dtype=bool)
-    missing_any = np.zeros(len(lon), dtype=bool)
+    boundary_any = np.zeros(len(x), dtype=bool)
+    missing_any = np.zeros(len(x), dtype=bool)
     for name in GRADIENT_SAMPLE_FIELDS:
         values, boundary, missing = _bilinear_supported_sample(
             _grid_array(global_cells, grid, name),
             support_grid,
-            lon,
-            lat,
+            x,
+            y,
             grid,
             weight_tolerance=interpolation_weight_tolerance,
         )
         sampled[name] = values
         boundary_any |= boundary
         missing_any |= missing
-    x = ((lon - grid.lon_min) % (grid.lon_max - grid.lon_min)) / grid.dlon - 0.5
-    if not grid.periodic_longitude:
-        x = (lon - grid.lon_min) / grid.dlon - 0.5
-    y = (lat - grid.lat_min) / grid.dlat - 0.5
+    if grid.periodic_x:
+        x = ((x - grid.x_min) % (grid.x_max - grid.x_min)) / grid.dx - 0.5
+    else:
+        x = (x - grid.x_min) / grid.dx - 0.5
+    y = (y - grid.y_min) / grid.dy - 0.5
     direct = np.isclose(
         x, np.round(x), atol=direct_sample_atol_grid_cells
     ) & np.isclose(y, np.round(y), atol=direct_sample_atol_grid_cells)
     available = np.isfinite(sampled["abs_G_perp"])
-    sample_class = np.full(len(lon), "gradient_sample_unavailable", dtype=object)
+    sample_class = np.full(len(x), "gradient_sample_unavailable", dtype=object)
     sample_class[available & ~direct] = "gradient_sample_interpolated"
     sample_class[available & direct] = "gradient_sample_direct"
     return sampled, sample_class, boundary_any, missing_any
@@ -289,33 +304,33 @@ def _sample_gradient(
 def _local_gradient_context(
     points: pd.DataFrame,
     global_cells: pd.DataFrame,
-    geod: Geod,
+    geometry: SpatialGeometry,
     *,
     search_radius_grid_scales: float,
     background_radius_grid_scales: float,
 ) -> pd.DataFrame:
     supported = global_cells.loc[
-        global_cells.abs_G_perp.notna(), ["cell_id", "lon", "lat", "abs_G_perp"]
+        global_cells.abs_G_perp.notna(), ["cell_id", "x", "y", "abs_G_perp"]
     ]
     records: list[dict[str, Any]] = []
     for point in points.itertuples(index=False):
-        _, _, flank_distance_m = geod.inv(
-            np.full(len(supported), point.flank_lon),
-            np.full(len(supported), point.flank_lat),
-            supported.lon.to_numpy(float),
-            supported.lat.to_numpy(float),
+        _, _, flank_distance = geometry.inverse(
+            np.full(len(supported), point.flank_x),
+            np.full(len(supported), point.flank_y),
+            supported.x.to_numpy(float),
+            supported.y.to_numpy(float),
         )
-        flank_distance_km = np.asarray(flank_distance_m) / 1000.0
+        flank_distance_length = np.asarray(flank_distance)
         local = supported.loc[
-            flank_distance_km
-            <= search_radius_grid_scales * point.grid_effective_scale_km
+            flank_distance_length
+            <= search_radius_grid_scales * point.grid_effective_scale_length
         ].copy()
-        local_distances = flank_distance_km[
-            flank_distance_km
-            <= search_radius_grid_scales * point.grid_effective_scale_km
+        local_distances = flank_distance_length[
+            flank_distance_length
+            <= search_radius_grid_scales * point.grid_effective_scale_length
         ]
         if local.empty:
-            local_max = max_distance = max_lon = max_lat = np.nan
+            local_max = max_distance = max_x = max_y = np.nan
         else:
             maximum = float(local.abs_G_perp.max())
             choices = np.flatnonzero(
@@ -325,17 +340,17 @@ def _local_gradient_context(
             row = local.iloc[selected]
             local_max = maximum
             max_distance = float(local_distances[selected])
-            max_lon, max_lat = float(row.lon), float(row.lat)
+            max_x, max_y = float(row.x), float(row.y)
 
-        _, _, core_distance_m = geod.inv(
-            np.full(len(supported), point.refined_core_lon),
-            np.full(len(supported), point.refined_core_lat),
-            supported.lon.to_numpy(float),
-            supported.lat.to_numpy(float),
+        _, _, core_distance = geometry.inverse(
+            np.full(len(supported), point.refined_core_x),
+            np.full(len(supported), point.refined_core_y),
+            supported.x.to_numpy(float),
+            supported.y.to_numpy(float),
         )
         background = supported.loc[
-            np.asarray(core_distance_m) / 1000.0
-            <= background_radius_grid_scales * point.grid_effective_scale_km,
+            np.asarray(core_distance)
+            <= background_radius_grid_scales * point.grid_effective_scale_length,
             "abs_G_perp",
         ]
         percentile = (
@@ -347,12 +362,12 @@ def _local_gradient_context(
             {
                 "comparison_record_id": point.comparison_record_id,
                 "local_max_abs_G_perp": local_max,
-                "local_gradient_max_lon": max_lon,
-                "local_gradient_max_lat": max_lat,
-                "distance_to_local_gradient_max_km": max_distance,
+                "local_gradient_max_x": max_x,
+                "local_gradient_max_y": max_y,
+                "distance_to_local_gradient_max_length": max_distance,
                 "distance_to_local_gradient_max_L_eff": (
-                    max_distance / point.grid_effective_scale_km
-                    if np.isfinite(max_distance) and point.grid_effective_scale_km > 0
+                    max_distance / point.grid_effective_scale_length
+                    if np.isfinite(max_distance) and point.grid_effective_scale_length > 0
                     else np.nan
                 ),
                 "local_abs_G_perp_percentile": percentile,
@@ -368,17 +383,17 @@ def _segment_comparison(
     sections: pd.DataFrame,
     grid: Any,
     config: Any,
-    geod: Geod,
+    geometry: SpatialGeometry,
 ) -> pd.DataFrame:
     context_columns = [
         "section_id",
         "ridge_type",
         "stage5_missing_side",
-        "ridge_lon",
-        "ridge_lat",
-        "refined_core_lon",
-        "refined_core_lat",
-        "grid_effective_scale_km",
+        "ridge_x",
+        "ridge_y",
+        "refined_core_x",
+        "refined_core_y",
+        "grid_effective_scale_length",
         "high_local_curvature_turning",
         "R1_out_center",
         "n_observable_flanks",
@@ -387,9 +402,9 @@ def _segment_comparison(
     output = output.rename(
         columns={
             "cell_id": "ridge_cell_id",
-            "candidate_lon": "flank_lon",
-            "candidate_lat": "flank_lat",
-            "candidate_distance_km": "flank_distance_km",
+            "candidate_x": "flank_x",
+            "candidate_y": "flank_y",
+            "candidate_distance_length": "flank_distance_length",
             "absolute_drop": "absolute_transport_loss",
             "relative_drop": "relative_transport_loss",
             "along_branch_persistence": "stage6_persistence",
@@ -403,16 +418,16 @@ def _segment_comparison(
     flank_sample, sample_class, boundary, missing = _sample_gradient(
         global_cells,
         grid,
-        output.flank_lon.to_numpy(float),
-        output.flank_lat.to_numpy(float),
+        output.flank_x.to_numpy(float),
+        output.flank_y.to_numpy(float),
         interpolation_weight_tolerance=config.interpolation_weight_tolerance,
         direct_sample_atol_grid_cells=config.direct_sample_atol_grid_cells,
     )
     core_sample, core_class, _, _ = _sample_gradient(
         global_cells,
         grid,
-        output.refined_core_lon.to_numpy(float),
-        output.refined_core_lat.to_numpy(float),
+        output.refined_core_x.to_numpy(float),
+        output.refined_core_y.to_numpy(float),
         interpolation_weight_tolerance=config.interpolation_weight_tolerance,
         direct_sample_atol_grid_cells=config.direct_sample_atol_grid_cells,
     )
@@ -445,7 +460,7 @@ def _segment_comparison(
     local = _local_gradient_context(
         output,
         global_cells,
-        geod,
+        geometry,
         search_radius_grid_scales=config.gradient_search_radius_grid_scales,
         background_radius_grid_scales=config.local_background_radius_grid_scales,
     )
@@ -483,9 +498,9 @@ def _segment_comparison(
 def _unique_comparison(segment: pd.DataFrame, config: Any) -> pd.DataFrame:
     records: list[dict[str, Any]] = []
     median_fields = [
-        "flank_lon",
-        "flank_lat",
-        "flank_distance_km",
+        "flank_x",
+        "flank_y",
+        "flank_distance_length",
         "absolute_transport_loss",
         "relative_transport_loss",
         "G_perp_at_flank",
@@ -497,18 +512,18 @@ def _unique_comparison(segment: pd.DataFrame, config: Any) -> pd.DataFrame:
         "abs_G_perp_at_core",
         "flank_to_core_abs_G_perp_ratio",
         "local_max_abs_G_perp",
-        "distance_to_local_gradient_max_km",
+        "distance_to_local_gradient_max_length",
         "distance_to_local_gradient_max_L_eff",
         "local_abs_G_perp_percentile",
-        "grid_effective_scale_km",
+        "grid_effective_scale_length",
         "R1_out_center",
     ]
     for (cell_id, side), group in segment.groupby(["ridge_cell_id", "side"], sort=True):
         first = group.iloc[0]
         distance_spread = float(
-            group.flank_distance_km.max() - group.flank_distance_km.min()
+            group.flank_distance_length.max() - group.flank_distance_length.min()
         )
-        scale = float(group.grid_effective_scale_km.median())
+        scale = float(group.grid_effective_scale_length.median())
         record: dict[str, Any] = {
             "unique_comparison_id": f"cell{int(cell_id):05d}_{side}",
             "ridge_cell_id": int(cell_id),
@@ -520,7 +535,7 @@ def _unique_comparison(segment: pd.DataFrame, config: Any) -> pd.DataFrame:
             "component_ids": ";".join(sorted(set(group.component_id.astype(str)))),
             "segment_ids": ";".join(sorted(set(group.segment_id.astype(str)))),
             "section_ids": ";".join(sorted(set(group.section_id.astype(str)))),
-            "candidate_distance_spread_km": distance_spread,
+            "candidate_distance_spread_length": distance_spread,
             "candidate_distance_spread_L_eff": distance_spread / scale
             if scale > 0
             else np.nan,
@@ -569,16 +584,19 @@ def compute_stage7_fields(
     grid: Any,
     *,
     config: Any,
-    ellipsoid: str = "WGS84",
+    geometry: SpatialGeometry | None = None,
+    time_unit: str = "day",
     precomputed_global: tuple[pd.DataFrame, xr.Dataset] | None = None,
     primary_experiment_id: str,
 ) -> Stage7Fields:
     """Construct the independent field, then compare boundary-aware q90 flanks."""
+    geometry = geometry or GeographicGeometry("WGS84", "km")
     if precomputed_global is None:
         global_cells, dataset = compute_global_gradient_fields(
             stage4_cells,
             grid,
-            ellipsoid=ellipsoid,
+            geometry=geometry,
+            time_unit=time_unit,
             zero_tolerance=config.gradient_zero_tolerance,
         )
     else:
@@ -586,8 +604,9 @@ def compute_stage7_fields(
     primary_id = primary_experiment_id
     flanks = stage6_flanks.loc[stage6_flanks.experiment_id.eq(primary_id)].copy()
     sections = stage6_sections.loc[stage6_sections.experiment_id.eq(primary_id)].copy()
-    geod = Geod(ellps=ellipsoid)
-    segment = _segment_comparison(global_cells, flanks, sections, grid, config, geod)
+    segment = _segment_comparison(
+        global_cells, flanks, sections, grid, config, geometry
+    )
     unique = _unique_comparison(segment, config)
     evaluable = unique.loc[unique.abs_G_perp_at_flank.notna()]
     paired = evaluable.loc[evaluable.abs_G_perp_at_core.notna()]
@@ -609,9 +628,11 @@ def compute_stage7_fields(
         f"q{int(q * 100)}": float(global_supported.abs_G_perp.quantile(q))
         for q in (0.5, 0.75, 0.9, 0.95)
     }
-    _, _, global_effective_m = _physical_cell_scales(global_supported, grid, geod)
+    _, _, global_effective_scale = _physical_cell_scales(
+        global_supported, grid, geometry
+    )
     global_supported = global_supported.copy()
-    global_supported["grid_effective_scale_km"] = global_effective_m / 1000.0
+    global_supported["grid_effective_scale_length"] = global_effective_scale
     strong_representation: dict[str, Any] = {}
     for label in ("q90", "q95"):
         strong = global_supported.loc[
@@ -621,15 +642,15 @@ def compute_stage7_fields(
         for row in strong.itertuples(index=False):
             if unique.empty:
                 continue
-            _, _, distances_m = geod.inv(
-                np.full(len(unique), row.lon),
-                np.full(len(unique), row.lat),
-                unique.flank_lon.to_numpy(float),
-                unique.flank_lat.to_numpy(float),
+            _, _, distances = geometry.inverse(
+                np.full(len(unique), row.x),
+                np.full(len(unique), row.y),
+                unique.flank_x.to_numpy(float),
+                unique.flank_y.to_numpy(float),
             )
             represented += int(
-                np.nanmin(np.asarray(distances_m) / 1000.0)
-                <= row.grid_effective_scale_km
+                np.nanmin(np.asarray(distances))
+                <= row.grid_effective_scale_length
             )
         strong_representation[label] = {
             "n_global_cells": len(strong),
@@ -640,7 +661,7 @@ def compute_stage7_fields(
         }
     summary: dict[str, Any] = {
         "baseline_stage6_experiment": primary_id,
-        "scalar_field": "raw U_out_all_magnitude_km_day",
+        "scalar_field": "raw U_out_all_magnitude_rate",
         "stage6_used_in_global_gradient_construction": False,
         "zero_filled_cells": 0,
         "global_cells": len(global_cells),
@@ -674,8 +695,8 @@ def compute_stage7_fields(
         "fraction_within_1_0_L_eff_of_local_max": float(
             evaluable.distance_to_local_gradient_max_L_eff.le(1.0).mean()
         ),
-        "median_distance_to_local_max_km": float(
-            evaluable.distance_to_local_gradient_max_km.median()
+        "median_distance_to_local_max_length": float(
+            evaluable.distance_to_local_gradient_max_length.median()
         ),
         "median_distance_to_local_max_L_eff": float(
             evaluable.distance_to_local_gradient_max_L_eff.median()

@@ -8,7 +8,6 @@ import numpy as np
 import pandas as pd
 
 from ._statistics_kernel import (
-    GeometryConfig,
     Stage1Config,
     Stage2Config,
     Stage3Config,
@@ -19,6 +18,32 @@ from ._statistics_kernel import (
     validate_transition_table,
 )
 from .config import CompactConfig
+from .geometry import make_spatial_geometry
+
+GEOGRAPHIC_INPUT_COLUMNS = {
+    "start_lon_bin": "start_x_bin",
+    "start_lat_bin": "start_y_bin",
+    "end_lon_bin": "end_x_bin",
+    "end_lat_bin": "end_y_bin",
+    "start_lon_center": "start_x_center",
+    "start_lat_center": "start_y_center",
+    "end_lon_center": "end_x_center",
+    "end_lat_center": "end_y_center",
+    "transition_count": "transition_count",
+    "transition_probability": "transition_probability",
+}
+CARTESIAN_INPUT_COLUMNS = {
+    "start_x_bin": "start_x_bin",
+    "start_y_bin": "start_y_bin",
+    "end_x_bin": "end_x_bin",
+    "end_y_bin": "end_y_bin",
+    "start_x_center": "start_x_center",
+    "start_y_center": "start_y_center",
+    "end_x_center": "end_x_center",
+    "end_y_center": "end_y_center",
+    "transition_count": "transition_count",
+    "transition_probability": "transition_probability",
+}
 
 
 @dataclass(frozen=True)
@@ -26,6 +51,24 @@ class TransitionStatistics:
     links: pd.DataFrame
     cells: pd.DataFrame
     validation_summary: dict
+
+
+def normalize_transition_table(
+    table: pd.DataFrame, coordinate_system: str
+) -> pd.DataFrame:
+    """Validate the mode-specific schema and return canonical internal x/y fields."""
+    columns = (
+        GEOGRAPHIC_INPUT_COLUMNS
+        if coordinate_system == "geographic"
+        else CARTESIAN_INPUT_COLUMNS
+    )
+    missing = sorted(set(columns) - set(table.columns))
+    if missing:
+        raise ValueError(
+            "Transition-matrix validation failed: "
+            f"['missing_columns:{','.join(missing)}']"
+        )
+    return table.loc[:, list(columns)].rename(columns=columns).copy()
 
 
 def _directional_vector_fields(
@@ -44,17 +87,17 @@ def _directional_vector_fields(
         raise ValueError(f"Directional first-harmonic fields missing columns: {missing}")
 
     output = cells.copy()
-    # Bearings are clockwise from north, so the harmonic's imaginary component
-    # is eastward and its real component is northward.
-    output["D_out_move_east"] = output.M1_out_imag
-    output["D_out_move_north"] = output.M1_out_real
+    # Bearings are clockwise from positive y, so the harmonic's imaginary
+    # component is x-directed and its real component is y-directed.
+    output["D_out_move_x"] = output.M1_out_imag
+    output["D_out_move_y"] = output.M1_out_real
     output["D_out_move_magnitude"] = np.hypot(
-        output.D_out_move_east, output.D_out_move_north
+        output.D_out_move_x, output.D_out_move_y
     )
-    output["D_out_all_east"] = output.P_move * output.D_out_move_east
-    output["D_out_all_north"] = output.P_move * output.D_out_move_north
+    output["D_out_all_x"] = output.P_move * output.D_out_move_x
+    output["D_out_all_y"] = output.P_move * output.D_out_move_y
     output["D_out_all_magnitude"] = np.hypot(
-        output.D_out_all_east, output.D_out_all_north
+        output.D_out_all_x, output.D_out_all_y
     )
 
     # A source population containing only stay transitions has a zero
@@ -63,14 +106,14 @@ def _directional_vector_fields(
     no_movement = output.P_move.eq(0.0) & output.P_move.notna()
     output.loc[
         no_movement,
-        ["D_out_all_east", "D_out_all_north", "D_out_all_magnitude"],
+        ["D_out_all_x", "D_out_all_y", "D_out_all_magnitude"],
     ] = 0.0
 
-    output["directional_identity_east_residual"] = (
-        output.D_out_all_east - output.P_move * output.D_out_move_east
+    output["directional_identity_x_residual"] = (
+        output.D_out_all_x - output.P_move * output.D_out_move_x
     )
-    output["directional_identity_north_residual"] = (
-        output.D_out_all_north - output.P_move * output.D_out_move_north
+    output["directional_identity_y_residual"] = (
+        output.D_out_all_y - output.P_move * output.D_out_move_y
     )
     output["directional_move_magnitude_minus_R1"] = (
         output.D_out_move_magnitude - output.R1_out
@@ -84,8 +127,8 @@ def _directional_vector_fields(
     move_bearing[move_defined] = np.remainder(
         np.rad2deg(
             np.arctan2(
-                output.loc[move_defined, "D_out_move_east"],
-                output.loc[move_defined, "D_out_move_north"],
+                output.loc[move_defined, "D_out_move_x"],
+                output.loc[move_defined, "D_out_move_y"],
             )
         ),
         360.0,
@@ -95,8 +138,8 @@ def _directional_vector_fields(
     all_bearing[all_defined] = np.remainder(
         np.rad2deg(
             np.arctan2(
-                output.loc[all_defined, "D_out_all_east"],
-                output.loc[all_defined, "D_out_all_north"],
+                output.loc[all_defined, "D_out_all_x"],
+                output.loc[all_defined, "D_out_all_y"],
             )
         ),
         360.0,
@@ -123,11 +166,11 @@ def _directional_vector_fields(
         "cells_with_D_out_move": int(output.D_out_move_magnitude.notna().sum()),
         "cells_with_D_out_all": int(output.D_out_all_magnitude.notna().sum()),
         "cells_with_defined_directional_bearing": int(theta_defined.sum()),
-        "D_out_all_equals_P_move_D_out_move_max_abs_east": maximum_absolute(
-            "directional_identity_east_residual"
+        "D_out_all_equals_P_move_D_out_move_max_abs_x": maximum_absolute(
+            "directional_identity_x_residual"
         ),
-        "D_out_all_equals_P_move_D_out_move_max_abs_north": maximum_absolute(
-            "directional_identity_north_residual"
+        "D_out_all_equals_P_move_D_out_move_max_abs_y": maximum_absolute(
+            "directional_identity_y_residual"
         ),
         "D_out_move_magnitude_equals_R1_max_abs": maximum_absolute(
             "directional_move_magnitude_minus_R1"
@@ -149,8 +192,9 @@ def compute_transition_statistics(
     table: pd.DataFrame, config: CompactConfig
 ) -> TransitionStatistics:
     """Validate the normalized matrix and calculate each retained statistic once."""
+    normalized = normalize_transition_table(table, config.geometry.coordinate_system)
     validation = validate_transition_table(
-        table,
+        normalized,
         config.grid,
         config.validation,
     )
@@ -162,19 +206,19 @@ def compute_transition_statistics(
     stage1_config = Stage1Config(
         primary_visualization_min_moving_count=config.statistics.min_moving_support,
         sensitivity_visualization_min_moving_count=config.statistics.min_moving_support,
-        direction_zero_tolerance_km=config.statistics.direction_zero_tolerance_km,
+        direction_zero_tolerance=config.statistics.direction_zero_tolerance,
     )
     outward = compute_stage1_fields(
         validation.links,
         support.cells,
         config.grid,
-        timestep_days=config.input.timestep_days,
-        geometry=GeometryConfig(ellipsoid=config.ellipsoid),
+        timestep=config.input.timestep,
+        geometry=make_spatial_geometry(config.geometry),
         config=stage1_config,
     )
     stage2_config = Stage2Config(
         angular_bins=config.statistics.angular_bins,
-        harmonic_zero_tolerance=config.statistics.direction_zero_tolerance_km,
+        harmonic_zero_tolerance=config.statistics.direction_zero_tolerance,
         high_R1=config.statistics.high_R1,
         low_R1=config.statistics.low_R1,
     )
@@ -193,15 +237,15 @@ def compute_transition_statistics(
         stage2=stage2_config,
         config=Stage3Config(
             angular_bins=config.statistics.angular_bins,
-            harmonic_zero_tolerance=config.statistics.direction_zero_tolerance_km,
+            harmonic_zero_tolerance=config.statistics.direction_zero_tolerance,
         ),
     )
     cells, links = incoming.cells, incoming.links
     cells, directional_summary = _directional_vector_fields(
         cells,
-        zero_tolerance=config.statistics.direction_zero_tolerance_km,
+        zero_tolerance=config.statistics.direction_zero_tolerance,
     )
-    cells["S_transport_km_day"] = cells.U_out_all_magnitude_km_day
+    cells["S_transport_rate"] = cells.U_out_all_magnitude_rate
     if {"theta1_out", "theta1_in_motion_destination"} <= set(cells):
         cells["delta_theta_io"] = (
             np.remainder(
@@ -231,27 +275,27 @@ def compute_transition_statistics(
 
 COMPACT_CELL_FIELDS = (
     "cell_id",
-    "lon_bin",
-    "lat_bin",
-    "lon",
-    "lat",
+    "x_bin",
+    "y_bin",
+    "x",
+    "y",
     "N_out_move",
     "N_in_move",
     "P_stay",
     "P_move",
-    "U_out_all_east_km_day",
-    "U_out_all_north_km_day",
-    "U_out_all_magnitude_km_day",
+    "U_out_all_x_rate",
+    "U_out_all_y_rate",
+    "U_out_all_magnitude_rate",
     "theta_mu_out",
     "theta1_out",
     "R1_out",
     "R2_out",
     "angular_entropy_out",
-    "D_out_move_east",
-    "D_out_move_north",
+    "D_out_move_x",
+    "D_out_move_y",
     "D_out_move_magnitude",
-    "D_out_all_east",
-    "D_out_all_north",
+    "D_out_all_x",
+    "D_out_all_y",
     "D_out_all_magnitude",
     "R1_in",
     "R2_in",
@@ -266,5 +310,5 @@ def compact_cell_table(cells: pd.DataFrame) -> pd.DataFrame:
     """Return the canonical scientist-facing cell table."""
     selected = [name for name in COMPACT_CELL_FIELDS if name in cells]
     return cells[selected].rename(
-        columns={"lon_bin": "start_lon_bin", "lat_bin": "start_lat_bin"}
+        columns={"x_bin": "start_x_bin", "y_bin": "start_y_bin"}
     )

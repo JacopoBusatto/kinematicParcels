@@ -22,20 +22,20 @@ def _gradient_cells(*, missing_cell: tuple[int, int] | None = None):
         dlat=1.0,
         periodic_longitude=False,
     )
-    lat_bin, lon_bin = np.indices((grid.nlat, grid.nlon))
-    scalar = 1.0 + lon_bin + 2.0 * lat_bin
+    y_bin, x_bin = np.indices((grid.ny, grid.nx))
+    scalar = 1.0 + x_bin + 2.0 * y_bin
     scalar = scalar.astype(float)
     if missing_cell is not None:
         scalar[missing_cell] = np.nan
     cells = pd.DataFrame(
         {
-            "cell_id": (lat_bin * grid.nlon + lon_bin).ravel(),
-            "lon_bin": lon_bin.ravel(),
-            "lat_bin": lat_bin.ravel(),
-            "lon": (grid.lon_min + lon_bin + 0.5).ravel(),
-            "lat": (grid.lat_min + lat_bin + 0.5).ravel(),
+            "cell_id": (y_bin * grid.nx + x_bin).ravel(),
+            "x_bin": x_bin.ravel(),
+            "y_bin": y_bin.ravel(),
+            "x": (grid.x_min + x_bin + 0.5).ravel(),
+            "y": (grid.y_min + y_bin + 0.5).ravel(),
             "N_out_move": np.full(scalar.size, 30),
-            "U_out_all_magnitude_km_day": scalar.ravel(),
+            "U_out_all_magnitude_rate": scalar.ravel(),
             "theta_mu_out": np.full(scalar.size, 90.0),
         }
     )
@@ -45,7 +45,7 @@ def _gradient_cells(*, missing_cell: tuple[int, int] | None = None):
 def test_stage7_global_gradient_uses_physical_centered_differences() -> None:
     cells, grid = _gradient_cells()
     result, dataset = compute_global_gradient_fields(cells, grid)
-    center = result.loc[(result.lon_bin == 2) & (result.lat_bin == 2)].iloc[0]
+    center = result.loc[(result.x_bin == 2) & (result.y_bin == 2)].iloc[0]
 
     assert center.dx_method == "dx_centered"
     assert center.dy_method == "dy_centered"
@@ -59,8 +59,8 @@ def test_stage7_global_gradient_uses_physical_centered_differences() -> None:
 def test_stage7_missing_neighbor_uses_one_sided_difference_without_zero_fill() -> None:
     cells, grid = _gradient_cells(missing_cell=(2, 1))
     result, _ = compute_global_gradient_fields(cells, grid)
-    center = result.loc[(result.lon_bin == 2) & (result.lat_bin == 2)].iloc[0]
-    missing = result.loc[(result.lon_bin == 1) & (result.lat_bin == 2)].iloc[0]
+    center = result.loc[(result.x_bin == 2) & (result.y_bin == 2)].iloc[0]
+    missing = result.loc[(result.x_bin == 1) & (result.y_bin == 2)].iloc[0]
 
     assert center.dx_method == "dx_one_sided"
     assert np.isfinite(center.dS_dx)
@@ -86,9 +86,9 @@ def test_stage7_unique_consensus_retains_duplicate_linkage_and_flags_spread() ->
             "gradient_observability": ["gradient_observable"] * 2,
             "gradient_sample_class": ["gradient_sample_direct"] * 2,
             "quality_flags": ["", ""],
-            "flank_lon": [1.0, 1.2],
-            "flank_lat": [0.0, 0.0],
-            "flank_distance_km": [50.0, 170.0],
+            "flank_x": [1.0, 1.2],
+            "flank_y": [0.0, 0.0],
+            "flank_distance_length": [50.0, 170.0],
             "absolute_transport_loss": [2.0, 4.0],
             "relative_transport_loss": [0.2, 0.4],
             "G_perp_at_flank": [0.1, 0.2],
@@ -100,10 +100,10 @@ def test_stage7_unique_consensus_retains_duplicate_linkage_and_flags_spread() ->
             "abs_G_perp_at_core": [0.05, 0.05],
             "flank_to_core_abs_G_perp_ratio": [2.0, 4.0],
             "local_max_abs_G_perp": [0.2, 0.3],
-            "distance_to_local_gradient_max_km": [10.0, 20.0],
+            "distance_to_local_gradient_max_length": [10.0, 20.0],
             "distance_to_local_gradient_max_L_eff": [0.1, 0.2],
             "local_abs_G_perp_percentile": [0.8, 0.9],
-            "grid_effective_scale_km": [100.0, 100.0],
+            "grid_effective_scale_length": [100.0, 100.0],
             "R1_out_center": [0.9, 0.9],
         }
     )
@@ -113,5 +113,5 @@ def test_stage7_unique_consensus_retains_duplicate_linkage_and_flags_spread() ->
 
     assert len(result) == 1
     assert result.iloc[0].comparison_record_ids == "a;b"
-    assert result.iloc[0].flank_distance_km == 110.0
+    assert result.iloc[0].flank_distance_length == 110.0
     assert result.iloc[0].duplicate_flank_disagreement

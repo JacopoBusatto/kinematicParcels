@@ -13,10 +13,11 @@ from typing import Any
 import numpy as np
 import pandas as pd
 import xarray as xr
-from pyproj import Geod
 
 from .geometry import (
     NEIGHBOR_OFFSETS_8,
+    GeographicGeometry,
+    SpatialGeometry,
     _bilinear_supported_sample,
     _grid_array,
     _physical_cell_scales,
@@ -46,20 +47,21 @@ def transverse_ridge_diagnostics(
     support_threshold: int,
     field_variant: str,
     config: Any,
-    ellipsoid: str = "WGS84",
+    geometry: SpatialGeometry | None = None,
     ridge_policy: str = "two_sided_only",
 ) -> tuple[pd.DataFrame, dict[float, float]]:
     """Calculate physical, support-aware transverse samples for one experiment."""
     if ridge_policy not in {"two_sided_only", "boundary_aware"}:
         raise ValueError(f"Unsupported Stage 5 ridge policy: {ridge_policy}")
+    geometry = geometry or GeographicGeometry("WGS84", "km")
     required = {
         "cell_id",
-        "lon_bin",
-        "lat_bin",
-        "lon",
-        "lat",
+        "x_bin",
+        "y_bin",
+        "x",
+        "y",
         "N_out_move",
-        "U_out_all_magnitude_km_day",
+        "U_out_all_magnitude_rate",
         "theta_mu_out",
         "R1_out",
         "R2_out",
@@ -68,8 +70,7 @@ def transverse_ridge_diagnostics(
     missing_columns = sorted(required - set(cells.columns))
     if missing_columns:
         raise ValueError(f"Stage 5 cells missing columns: {missing_columns}")
-    geod = Geod(ellps=ellipsoid)
-    raw_grid = _grid_array(cells, grid, "U_out_all_magnitude_km_day")
+    raw_grid = _grid_array(cells, grid, "U_out_all_magnitude_rate")
     support_grid = (
         _grid_array(cells, grid, "N_out_move") >= support_threshold
     ) & np.isfinite(raw_grid)
@@ -79,7 +80,7 @@ def transverse_ridge_diagnostics(
         source_grid = support_aware_uniform_3x3(
             raw_grid,
             support_grid,
-            periodic_longitude=grid.periodic_longitude,
+            periodic_x=grid.periodic_x,
         )
     else:
         raise ValueError(f"Unsupported Stage 5 field variant: {field_variant}")
@@ -87,47 +88,49 @@ def transverse_ridge_diagnostics(
     output = cells.copy()
     output.insert(0, "support_threshold", support_threshold)
     output.insert(1, "field_variant", field_variant)
-    zonal_m, meridional_m, effective_m = _physical_cell_scales(output, grid, geod)
-    output["grid_zonal_scale_km"] = zonal_m / 1000.0
-    output["grid_meridional_scale_km"] = meridional_m / 1000.0
-    output["grid_effective_scale_km"] = effective_m / 1000.0
-    output["transverse_sampling_distance_km"] = (
-        config.transverse_scale_grid * effective_m / 1000.0
+    x_scale, y_scale, effective_scale = _physical_cell_scales(
+        output, grid, geometry
+    )
+    output["grid_x_scale_length"] = x_scale
+    output["grid_y_scale_length"] = y_scale
+    output["grid_effective_scale_length"] = effective_scale
+    output["transverse_sampling_distance_length"] = (
+        config.transverse_scale_grid * effective_scale
     )
     supported = output.N_out_move.ge(support_threshold)
     orientation_defined = output.theta_mu_out.notna()
     source_value = source_grid[
-        output.lat_bin.to_numpy(np.int64), output.lon_bin.to_numpy(np.int64)
+        output.y_bin.to_numpy(np.int64), output.x_bin.to_numpy(np.int64)
     ]
-    output["S0_field_km_day"] = source_value
-    distance_m = config.transverse_scale_grid * effective_m
+    output["S0_field_rate"] = source_value
+    distance = config.transverse_scale_grid * effective_scale
     theta = output.theta_mu_out.to_numpy(float)
-    lon = output.lon.to_numpy(float)
-    lat = output.lat.to_numpy(float)
-    minus_lon, minus_lat, _ = geod.fwd(lon, lat, theta - 90.0, distance_m)
-    plus_lon, plus_lat, _ = geod.fwd(lon, lat, theta + 90.0, distance_m)
-    output["transverse_minus_lon"] = minus_lon
-    output["transverse_minus_lat"] = minus_lat
-    output["transverse_plus_lon"] = plus_lon
-    output["transverse_plus_lat"] = plus_lat
+    x = output.x.to_numpy(float)
+    y = output.y.to_numpy(float)
+    minus_x, minus_y, _ = geometry.forward(x, y, theta - 90.0, distance)
+    plus_x, plus_y, _ = geometry.forward(x, y, theta + 90.0, distance)
+    output["transverse_minus_x"] = minus_x
+    output["transverse_minus_y"] = minus_y
+    output["transverse_plus_x"] = plus_x
+    output["transverse_plus_y"] = plus_y
     sample_minus, boundary_minus, missing_minus = _bilinear_supported_sample(
         source_grid,
         support_grid,
-        minus_lon,
-        minus_lat,
+        minus_x,
+        minus_y,
         grid,
         weight_tolerance=config.interpolation_weight_tolerance,
     )
     sample_plus, boundary_plus, missing_plus = _bilinear_supported_sample(
         source_grid,
         support_grid,
-        plus_lon,
-        plus_lat,
+        plus_x,
+        plus_y,
         grid,
         weight_tolerance=config.interpolation_weight_tolerance,
     )
-    output["S_minus_km_day"] = sample_minus
-    output["S_plus_km_day"] = sample_plus
+    output["S_minus_rate"] = sample_minus
+    output["S_plus_rate"] = sample_plus
     output["transverse_left_evaluable"] = np.isfinite(sample_minus)
     output["transverse_right_evaluable"] = np.isfinite(sample_plus)
     output["transverse_left_domain_boundary"] = boundary_minus
@@ -142,12 +145,12 @@ def transverse_ridge_diagnostics(
     right_reason[boundary_plus] = "domain_boundary"
     output["transverse_left_status"] = left_reason
     output["transverse_right_status"] = right_reason
-    output["D_minus_km_day"] = source_value - sample_minus
-    output["D_plus_km_day"] = source_value - sample_plus
-    output["C_perp_km_day"] = source_value - (sample_minus + sample_plus) / 2.0
+    output["D_minus_rate"] = source_value - sample_minus
+    output["D_plus_rate"] = source_value - sample_plus
+    output["C_perp_rate"] = source_value - (sample_minus + sample_plus) / 2.0
     output["C_perp_normalized"] = np.where(
         source_value != 0,
-        output.C_perp_km_day / source_value,
+        output.C_perp_rate / source_value,
         np.nan,
     )
     center_evaluable = supported & orientation_defined & np.isfinite(source_value)
@@ -178,25 +181,25 @@ def transverse_ridge_diagnostics(
     )
     two_sided_candidate = (
         two_sided_evaluable
-        & output.D_minus_km_day.ge(-config.ridge_comparison_tolerance_km_day)
-        & output.D_plus_km_day.ge(-config.ridge_comparison_tolerance_km_day)
+        & output.D_minus_rate.ge(-config.ridge_comparison_tolerance)
+        & output.D_plus_rate.ge(-config.ridge_comparison_tolerance)
     )
     available_difference = np.where(
         left_evaluable & ~right_evaluable,
-        output.D_minus_km_day,
-        np.where(~left_evaluable & right_evaluable, output.D_plus_km_day, np.nan),
+        output.D_minus_rate,
+        np.where(~left_evaluable & right_evaluable, output.D_plus_rate, np.nan),
     )
-    output["D_available_km_day"] = available_difference
-    output["C_perp_one_sided_km_day"] = np.where(
+    output["D_available_rate"] = available_difference
+    output["C_perp_one_sided_rate"] = np.where(
         one_sided_evaluable, available_difference, np.nan
     )
     output["C_perp_one_sided_normalized"] = np.where(
         one_sided_evaluable & (source_value != 0),
-        output.C_perp_one_sided_km_day / source_value,
+        output.C_perp_one_sided_rate / source_value,
         np.nan,
     )
-    one_sided_candidate = one_sided_evaluable & output.C_perp_one_sided_km_day.ge(
-        -config.ridge_comparison_tolerance_km_day
+    one_sided_candidate = one_sided_evaluable & output.C_perp_one_sided_rate.ge(
+        -config.ridge_comparison_tolerance
     )
     output["ridge_candidate_two_sided"] = two_sided_candidate
     output["ridge_candidate_one_sided"] = one_sided_candidate
@@ -286,37 +289,37 @@ def transverse_ridge_diagnostics(
     )
     output["low_support_for_experiment"] = ~supported
 
-    population = output.loc[supported & np.isfinite(source_value), "S0_field_km_day"]
+    population = output.loc[supported & np.isfinite(source_value), "S0_field_rate"]
     thresholds: dict[float, float] = {}
     for quantile in (config.transport_percentile,):
         label = round(100 * quantile)
         threshold_value = float(population.quantile(quantile))
         thresholds[quantile] = threshold_value
         output[f"ridge_candidate_q{label}_two_sided"] = (
-            two_sided_candidate & output.S0_field_km_day.ge(threshold_value)
+            two_sided_candidate & output.S0_field_rate.ge(threshold_value)
         )
         output[f"ridge_candidate_q{label}_one_sided"] = (
-            one_sided_candidate & output.S0_field_km_day.ge(threshold_value)
+            one_sided_candidate & output.S0_field_rate.ge(threshold_value)
         )
         output[f"ridge_candidate_q{label}"] = (
-            output.ridge_candidate & output.S0_field_km_day.ge(threshold_value)
+            output.ridge_candidate & output.S0_field_rate.ge(threshold_value)
         )
     return output, thresholds
 
 
 def _neighbor_ids(cell_id: int, grid: Any) -> list[int]:
-    lat_bin, lon_bin = divmod(int(cell_id), grid.nlon)
+    y_bin, x_bin = divmod(int(cell_id), grid.nx)
     neighbors: list[int] = []
     for delta_lat, delta_lon in NEIGHBOR_OFFSETS_8:
-        neighbor_lat = lat_bin + delta_lat
-        neighbor_lon = lon_bin + delta_lon
-        if neighbor_lat < 0 or neighbor_lat >= grid.nlat:
+        neighbor_lat = y_bin + delta_lat
+        neighbor_lon = x_bin + delta_lon
+        if neighbor_lat < 0 or neighbor_lat >= grid.ny:
             continue
-        if grid.periodic_longitude:
-            neighbor_lon %= grid.nlon
-        elif neighbor_lon < 0 or neighbor_lon >= grid.nlon:
+        if grid.periodic_x:
+            neighbor_lon %= grid.nx
+        elif neighbor_lon < 0 or neighbor_lon >= grid.nx:
             continue
-        neighbors.append(neighbor_lat * grid.nlon + neighbor_lon)
+        neighbors.append(neighbor_lat * grid.nx + neighbor_lon)
     return neighbors
 
 
@@ -423,12 +426,12 @@ def _path_geometry(
     *,
     closed: bool,
     rows_by_id: pd.DataFrame,
-    geod: Geod,
+    geometry: SpatialGeometry,
 ) -> tuple[list[int], np.ndarray, np.ndarray, float, float]:
     def calculate(selected_path: list[int]):
         rows = rows_by_id.loc[selected_path]
-        lon = rows.lon.to_numpy(float)
-        lat = rows.lat.to_numpy(float)
+        x = rows.x.to_numpy(float)
+        y = rows.y.to_numpy(float)
         n_cells = len(selected_path)
         tangent = np.full(n_cells, np.nan, dtype=float)
         edge_lengths: list[float] = []
@@ -436,10 +439,10 @@ def _path_geometry(
         if closed and n_cells > 2:
             edge_pairs.append((n_cells - 1, 0))
         for first, second in edge_pairs:
-            bearing, _, distance = geod.inv(
-                lon[first], lat[first], lon[second], lat[second]
+            bearing, _, distance = geometry.inverse(
+                x[first], y[first], x[second], y[second]
             )
-            edge_lengths.append(float(distance) / 1000.0)
+            edge_lengths.append(float(distance))
         if n_cells == 1:
             return tangent, np.asarray(edge_lengths), 0.0
         for index in range(n_cells):
@@ -452,8 +455,8 @@ def _path_geometry(
                 previous, following = n_cells - 2, n_cells - 1
             else:
                 previous, following = index - 1, index + 1
-            bearing, _, _ = geod.inv(
-                lon[previous], lat[previous], lon[following], lat[following]
+            bearing, _, _ = geometry.inverse(
+                x[previous], y[previous], x[following], y[following]
             )
             tangent[index] = bearing % 360.0
         theta = rows.theta_mu_out.to_numpy(float)
@@ -466,17 +469,17 @@ def _path_geometry(
         tangent, edge_lengths, agreement = calculate(path)
     rows = rows_by_id.loc[path]
     mismatch = _signed_difference(rows.theta_mu_out.to_numpy(float), tangent)
-    length_km = float(edge_lengths.sum())
+    length_length = float(edge_lengths.sum())
     if len(path) <= 1 or not len(edge_lengths):
         integrated_transport = 0.0
     else:
-        intensity = rows.S0_field_km_day.to_numpy(float)
+        intensity = rows.S0_field_rate.to_numpy(float)
         if closed:
             paired = (intensity + np.roll(intensity, -1)) / 2.0
         else:
             paired = (intensity[:-1] + intensity[1:]) / 2.0
         integrated_transport = float(np.sum(paired * edge_lengths))
-    return path, tangent, mismatch, length_km, integrated_transport
+    return path, tangent, mismatch, length_length, integrated_transport
 
 
 def _tangent_turn_metrics(tangent: np.ndarray, *, closed: bool) -> tuple[float, float]:
@@ -493,16 +496,22 @@ def _tangent_turn_metrics(tangent: np.ndarray, *, closed: bool) -> tuple[float, 
     return float(turns.sum()), float(turns.max(initial=0.0))
 
 
-def _summary_statistics(rows: pd.DataFrame) -> dict[str, Any]:
+def _summary_statistics(
+    rows: pd.DataFrame, *, periodic_x: bool
+) -> dict[str, Any]:
     statistics = {
         "n_cells": int(rows.cell_id.nunique()),
-        "longitude_span_degrees": _minimal_longitude_span(rows.lon.to_numpy(float)),
-        "latitude_span_degrees": float(rows.lat.max() - rows.lat.min()),
-        "mean_U_out_all_km_day": float(rows.U_out_all_magnitude_km_day.mean()),
-        "median_U_out_all_km_day": float(rows.U_out_all_magnitude_km_day.median()),
-        "maximum_U_out_all_km_day": float(rows.U_out_all_magnitude_km_day.max()),
-        "mean_C_perp_km_day": float(rows.C_perp_km_day.mean()),
-        "median_C_perp_km_day": float(rows.C_perp_km_day.median()),
+        "x_span": (
+            _minimal_longitude_span(rows.x.to_numpy(float))
+            if periodic_x
+            else float(rows.x.max() - rows.x.min())
+        ),
+        "y_span": float(rows.y.max() - rows.y.min()),
+        "mean_U_out_all_rate": float(rows.U_out_all_magnitude_rate.mean()),
+        "median_U_out_all_rate": float(rows.U_out_all_magnitude_rate.median()),
+        "maximum_U_out_all_rate": float(rows.U_out_all_magnitude_rate.max()),
+        "mean_C_perp_rate": float(rows.C_perp_rate.mean()),
+        "median_C_perp_rate": float(rows.C_perp_rate.median()),
         "mean_C_perp_normalized": float(rows.C_perp_normalized.mean()),
         "mean_R1_out": float(rows.R1_out.mean()),
         "median_R1_out": float(rows.R1_out.median()),
@@ -527,11 +536,11 @@ def _summary_statistics(rows: pd.DataFrame) -> dict[str, Any]:
             {
                 "n_two_sided_ridge_cells": int(rows.ridge_candidate_two_sided.sum()),
                 "n_one_sided_ridge_cells": int(rows.ridge_candidate_one_sided.sum()),
-                "mean_C_perp_one_sided_km_day": float(
-                    rows.C_perp_one_sided_km_day.mean()
+                "mean_C_perp_one_sided_rate": float(
+                    rows.C_perp_one_sided_rate.mean()
                 ),
-                "median_C_perp_one_sided_km_day": float(
-                    rows.C_perp_one_sided_km_day.median()
+                "median_C_perp_one_sided_rate": float(
+                    rows.C_perp_one_sided_rate.median()
                 ),
             }
         )
@@ -546,7 +555,7 @@ def extract_ridge_components(
     field_variant: str,
     intensity_level: str,
     config: Any,
-    ellipsoid: str = "WGS84",
+    geometry: SpatialGeometry | None = None,
     component_id_namespace: str = "",
 ) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame, pd.DataFrame]:
     """Extract neutral components and junction-preserving graph segments."""
@@ -556,6 +565,7 @@ def extract_ridge_components(
         else f"ridge_candidate_{intensity_level}"
     )
     candidates = diagnostics.loc[diagnostics[candidate_field]].copy()
+    geometry = geometry or GeographicGeometry("WGS84", "km")
     candidate_ids = set(candidates.cell_id.astype(int))
     components = _connected_components(candidate_ids, grid)
     rows_by_id = diagnostics.set_index("cell_id", drop=False)
@@ -564,7 +574,6 @@ def extract_ridge_components(
             int
         )
     )
-    geod = Geod(ellps=ellipsoid)
     component_member_outputs: list[pd.DataFrame] = []
     component_records: list[dict[str, Any]] = []
     segment_member_outputs: list[pd.DataFrame] = []
@@ -598,11 +607,11 @@ def extract_ridge_components(
         component_segment_members: list[pd.DataFrame] = []
         for segment_index, (path, closed) in enumerate(graph_segments, start=1):
             segment_id = f"{component_id}_s{segment_index:04d}"
-            path, tangent, mismatch, length_km, integrated = _path_geometry(
+            path, tangent, mismatch, length_length, integrated = _path_geometry(
                 path,
                 closed=closed,
                 rows_by_id=rows_by_id,
-                geod=geod,
+                geometry=geometry,
             )
             segment_rows = rows_by_id.loc[path].copy()
             segment_rows.insert(0, "component_id", component_id)
@@ -628,7 +637,9 @@ def extract_ridge_components(
             cumulative_turn, maximum_turn = _tangent_turn_metrics(
                 tangent, closed=closed
             )
-            segment_stats = _summary_statistics(segment_rows)
+            segment_stats = _summary_statistics(
+                segment_rows, periodic_x=grid.periodic_x
+            )
             segment_records.append(
                 {
                     "component_id": component_id,
@@ -637,8 +648,8 @@ def extract_ridge_components(
                     "field_variant": field_variant,
                     "intensity_level": intensity_level,
                     "segment_is_closed_loop": closed,
-                    "physical_length_km": length_km,
-                    "integrated_transport_km2_day": integrated,
+                    "physical_length_length": length_length,
+                    "integrated_transport_area_rate": integrated,
                     "number_endpoints": 0 if closed else min(2, len(path)),
                     "number_junction_endpoints": int(
                         (path[0] in junctions)
@@ -661,7 +672,7 @@ def extract_ridge_components(
                     **segment_stats,
                 }
             )
-            component_length += length_km
+            component_length += length_length
             component_integrated += integrated
         endpoint_interruptions = sum(
             any(
@@ -675,7 +686,9 @@ def extract_ridge_components(
             if component_segment_members
             else pd.DataFrame()
         )
-        component_stats = _summary_statistics(member_rows)
+        component_stats = _summary_statistics(
+            member_rows, periodic_x=grid.periodic_x
+        )
         component_records.append(
             {
                 "component_id": component_id,
@@ -683,8 +696,8 @@ def extract_ridge_components(
                 "field_variant": field_variant,
                 "intensity_level": intensity_level,
                 "component_geometry": component_class,
-                "physical_length_km": component_length,
-                "integrated_transport_km2_day": component_integrated,
+                "physical_length_length": component_length,
+                "integrated_transport_area_rate": component_integrated,
                 "number_segments": len(graph_segments),
                 "number_endpoints": len(endpoints),
                 "number_junctions": len(junctions),
@@ -730,14 +743,18 @@ def extract_ridge_components(
                         default=0.0,
                     )
                 ),
-                "centroid_lat": float(member_rows.lat.mean()),
-                "centroid_lon_circular": float(
-                    np.rad2deg(
-                        np.arctan2(
-                            np.sin(np.deg2rad(member_rows.lon)).mean(),
-                            np.cos(np.deg2rad(member_rows.lon)).mean(),
+                "centroid_y": float(member_rows.y.mean()),
+                "centroid_x": (
+                    float(
+                        np.rad2deg(
+                            np.arctan2(
+                                np.sin(np.deg2rad(member_rows.x)).mean(),
+                                np.cos(np.deg2rad(member_rows.x)).mean(),
+                            )
                         )
                     )
+                    if geometry.coordinate_system == "geographic"
+                    else float(member_rows.x.mean())
                 ),
                 **component_stats,
             }
@@ -779,10 +796,10 @@ def extract_ridge_components(
     segment_table = pd.DataFrame.from_records(segment_records)
     if not component_table.empty:
         rank_specs = {
-            "rank_physical_length": ("physical_length_km", False),
-            "rank_median_transport": ("median_U_out_all_km_day", False),
-            "rank_integrated_transport": ("integrated_transport_km2_day", False),
-            "rank_median_ridge_contrast": ("median_C_perp_km_day", False),
+            "rank_physical_length": ("physical_length_length", False),
+            "rank_median_transport": ("median_U_out_all_rate", False),
+            "rank_integrated_transport": ("integrated_transport_area_rate", False),
+            "rank_median_ridge_contrast": ("median_C_perp_rate", False),
             "rank_minimum_support": ("minimum_N_out_move", False),
         }
         for rank_name, (field_name, ascending) in rank_specs.items():

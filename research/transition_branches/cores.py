@@ -8,6 +8,7 @@ import pandas as pd
 
 from ._ridge_kernel import extract_ridge_components, transverse_ridge_diagnostics
 from .config import CompactConfig
+from .geometry import make_spatial_geometry
 
 
 @dataclass(frozen=True)
@@ -16,7 +17,7 @@ class CoreSolution:
     components: pd.DataFrame
     segment_members: pd.DataFrame
     segments: pd.DataFrame
-    threshold_km_day: float
+    threshold_rate: float
     selection_label: str
 
 
@@ -24,13 +25,14 @@ def compute_current_cores(cells: pd.DataFrame, config: CompactConfig) -> CoreSol
     percentile = config.branches.transport_percentile
     label = f"q{round(100 * percentile)}"
     branch_config = config.branches
+    geometry = make_spatial_geometry(config.geometry)
     diagnostics, levels = transverse_ridge_diagnostics(
         cells,
         config.grid,
         support_threshold=config.statistics.min_moving_support,
         field_variant=config.branches.ridge_field,
         config=branch_config,
-        ellipsoid=config.ellipsoid,
+        geometry=geometry,
         ridge_policy="boundary_aware",
     )
     neighborhood_field = f"C_neigh_out_1_ge_{config.statistics.min_moving_support}"
@@ -46,7 +48,7 @@ def compute_current_cores(cells: pd.DataFrame, config: CompactConfig) -> CoreSol
         field_variant=config.branches.ridge_field,
         intensity_level=label,
         config=branch_config,
-        ellipsoid=config.ellipsoid,
+        geometry=geometry,
     )
     old_components = list(components.component_id)
     component_map = {
@@ -64,12 +66,12 @@ def compute_current_cores(cells: pd.DataFrame, config: CompactConfig) -> CoreSol
     cores = members[
         [
             "cell_id",
-            "lon_bin",
-            "lat_bin",
-            "lon",
-            "lat",
+            "x_bin",
+            "y_bin",
+            "x",
+            "y",
             "N_out_move",
-            "U_out_all_magnitude_km_day",
+            "U_out_all_magnitude_rate",
             "theta_mu_out",
             "R1_out",
             "R2_out",
@@ -79,7 +81,7 @@ def compute_current_cores(cells: pd.DataFrame, config: CompactConfig) -> CoreSol
         ]
     ].copy()
     cores = cores.rename(
-        columns={"lon_bin": "start_lon_bin", "lat_bin": "start_lat_bin"}
+        columns={"x_bin": "start_x_bin", "y_bin": "start_y_bin"}
     )
     cores["left_side_observable"] = ~cores.missing_side.isin(["left", "left_and_right"])
     cores["right_side_observable"] = ~cores.missing_side.isin(

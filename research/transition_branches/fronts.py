@@ -10,6 +10,7 @@ import pandas as pd
 from ._edge_kernel import compute_stage6_fields
 from .config import CompactConfig
 from .cores import CoreSolution
+from .geometry import make_spatial_geometry
 
 
 @dataclass(frozen=True)
@@ -30,12 +31,12 @@ def _canonical_fronts(
         [
             "cell_id",
             "component_id",
-            "lon",
-            "lat",
+            "x",
+            "y",
             "ridge_type",
             "missing_side",
         ]
-    ].rename(columns={"cell_id": "core_cell_id", "lon": "core_lon", "lat": "core_lat"})
+    ].rename(columns={"cell_id": "core_cell_id", "x": "core_x", "y": "core_y"})
     sides = pd.DataFrame({"side": ["left", "right"]})
     base = base.merge(sides, how="cross")
     base["observable"] = ~(
@@ -45,18 +46,18 @@ def _canonical_fronts(
     selected = segment_fronts.rename(
         columns={
             "cell_id": "core_cell_id",
-            "candidate_lon": "front_lon",
-            "candidate_lat": "front_lat",
-            "candidate_distance_km": "distance_from_core_km",
-            "absolute_drop": "transport_loss_km_day",
+            "candidate_x": "front_x",
+            "candidate_y": "front_y",
+            "candidate_distance_length": "distance_from_core_length",
+            "absolute_drop": "transport_loss_rate",
             "relative_drop": "relative_transport_loss",
         }
     )
     median_fields = [
-        "front_lon",
-        "front_lat",
-        "distance_from_core_km",
-        "transport_loss_km_day",
+        "front_x",
+        "front_y",
+        "distance_from_core_length",
+        "transport_loss_rate",
         "relative_transport_loss",
     ]
     selected = (
@@ -65,7 +66,7 @@ def _canonical_fronts(
         .reset_index()
     )
     fronts = base.merge(selected, on=["core_cell_id", "side"], how="left")
-    fronts["front_detected"] = fronts.front_lon.notna() & fronts.observable
+    fronts["front_detected"] = fronts.front_x.notna() & fronts.observable
     fronts["front_status"] = np.select(
         [~fronts.observable, fronts.front_detected],
         ["side_not_observable", "probable_transport_front"],
@@ -91,7 +92,7 @@ def compute_probable_fronts(
         config.grid,
         stage5_config=config.branches,
         config=config.edges,
-        ellipsoid=config.ellipsoid,
+        geometry=make_spatial_geometry(config.geometry),
         boundary_aware_branch_cores=True,
         experiments=((support, level),),
         field_variant=config.branches.ridge_field,

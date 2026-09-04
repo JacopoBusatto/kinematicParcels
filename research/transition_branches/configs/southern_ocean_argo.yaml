@@ -7,9 +7,10 @@ input:
   matrix_id: argo_30d
   # transition_table: "F:/PLATFORMS/ARGO/postprocessing/SO_no_fallback_depth/z0850_1150/gridded_transition_matrix_dt_60d_table.parquet"
   # matrix_id: argo_60d
-  # timestep_days: 60.0
-  timestep_days: 30.0
-  # timestep_days: 10.0
+  # timestep: 60.0
+  timestep: 30.0
+  # timestep: 10.0
+  time_unit: day
 
 output:
   # root: 'C:/Users/Jacopo/Documents/SIMULATIONS/kinematicParcels/southern_ocean/ARGO_850-1150/postprocessing/transition_branches_10d'
@@ -18,6 +19,10 @@ output:
   # run_name: argo_10d
   root: "F:/PLATFORMS/ARGO/postprocessing/SO_no_fallback_depth/z0850_1150/transition_branches_30d"
   run_name: argo_30d
+geometry:
+  coordinate_system: geographic
+  length_unit: km
+  ellipsoid: WGS84
 grid:
   lon_min: -180.0
   lon_max: 180.0
@@ -58,7 +63,7 @@ plotting:
   projection: SouthPolarStereo
   central_longitude: 0.0
   vector_stride_cells: 2
-  vector_reference_km_day: 2.0
+  vector_reference: 2.0
   directional_vector_reference: 0.5
   structure_map_max_percentile: 90.0
   debug_plots: true

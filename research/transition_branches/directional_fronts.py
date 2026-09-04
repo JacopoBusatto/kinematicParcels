@@ -7,12 +7,16 @@ from typing import Any
 
 import numpy as np
 import pandas as pd
-from pyproj import Geod
 
 from ._edge_kernel import robust_contiguous_median
 from .config import CompactConfig
 from .directional_corridors import DirectionalCorridorSolution
-from .geometry import bilinear_supported_sample, grid_array
+from .geometry import (
+    SpatialGeometry,
+    bilinear_supported_sample,
+    grid_array,
+    make_spatial_geometry,
+)
 
 
 @dataclass(frozen=True)
@@ -25,8 +29,8 @@ class DirectionalFrontSolution:
 
 
 SAMPLED_FIELDS = (
-    "D_out_all_east",
-    "D_out_all_north",
+    "D_out_all_x",
+    "D_out_all_y",
     "D_out_all_magnitude",
     "P_move",
     "R1_out",
@@ -37,24 +41,24 @@ SAMPLED_FIELDS = (
 def _sample_fields(
     prepared: dict[str, np.ndarray],
     support: np.ndarray,
-    target_lon: np.ndarray,
-    target_lat: np.ndarray,
+    target_x: np.ndarray,
+    target_y: np.ndarray,
     config: CompactConfig,
 ) -> tuple[dict[str, np.ndarray], np.ndarray, np.ndarray]:
     sampled: dict[str, np.ndarray] = {}
-    boundary_any = np.zeros(len(target_lon), dtype=bool)
-    missing_any = np.zeros(len(target_lon), dtype=bool)
+    boundary_any = np.zeros(len(target_x), dtype=bool)
+    missing_any = np.zeros(len(target_x), dtype=bool)
     for field, values in prepared.items():
         field_values, boundary, missing = bilinear_supported_sample(
             values,
             support,
-            target_lon,
-            target_lat,
+            target_x,
+            target_y,
             config.grid,
             weight_tolerance=config.branches.interpolation_weight_tolerance,
         )
         sampled[field] = field_values
-        if field in {"D_out_all_east", "D_out_all_north"}:
+        if field in {"D_out_all_x", "D_out_all_y"}:
             boundary_any |= boundary
             missing_any |= missing
     return sampled, boundary_any, missing_any
@@ -65,34 +69,34 @@ def _section_rows(
     prepared: dict[str, np.ndarray],
     support: np.ndarray,
     config: CompactConfig,
-    geod: Geod,
+    geometry: SpatialGeometry,
 ) -> tuple[pd.DataFrame, dict[str, Any]]:
     half_width = config.edges.half_width_grid_scales
     interval = config.edges.sampling_interval_grid_scales
     offsets = np.arange(-half_width, half_width + interval / 2.0, interval)
-    distance_km = offsets * float(center.grid_effective_scale_km)
+    distance_length = offsets * float(center.grid_effective_scale_length)
     bearings = np.where(
-        distance_km < 0.0,
+        distance_length < 0.0,
         float(center.theta1_out) - 90.0,
         float(center.theta1_out) + 90.0,
     )
-    target_lon, target_lat, _ = geod.fwd(
-        np.full(len(offsets), float(center.lon)),
-        np.full(len(offsets), float(center.lat)),
+    target_x, target_y, _ = geometry.forward(
+        np.full(len(offsets), float(center.x)),
+        np.full(len(offsets), float(center.y)),
         bearings,
-        np.abs(distance_km) * 1000.0,
+        np.abs(distance_length),
     )
     zero = np.isclose(offsets, 0.0)
-    target_lon[zero] = float(center.lon)
-    target_lat[zero] = float(center.lat)
+    target_x[zero] = float(center.x)
+    target_y[zero] = float(center.y)
     sampled, boundary, missing = _sample_fields(
-        prepared, support, target_lon, target_lat, config
+        prepared, support, target_x, target_y, config
     )
     tangent_east = np.sin(np.deg2rad(float(center.theta1_out)))
     tangent_north = np.cos(np.deg2rad(float(center.theta1_out)))
     d_parallel = (
-        sampled["D_out_all_east"] * tangent_east
-        + sampled["D_out_all_north"] * tangent_north
+        sampled["D_out_all_x"] * tangent_east
+        + sampled["D_out_all_y"] * tangent_north
     )
 
     left_observable = bool(center.left_side_observable)
@@ -117,14 +121,14 @@ def _section_rows(
         axis_index = indexes[np.nanargmax(d_parallel[allowed_axis])]
         axis_offset = float(offsets[axis_index])
         axis_value = float(d_parallel[axis_index])
-        refined_lon = float(target_lon[axis_index])
-        refined_lat = float(target_lat[axis_index])
+        refined_x = float(target_x[axis_index])
+        refined_y = float(target_y[axis_index])
         axis_uncertain = bool(np.isclose(abs(axis_offset), refinement))
     else:
         axis_offset = np.nan
         axis_value = np.nan
-        refined_lon = np.nan
-        refined_lat = np.nan
+        refined_x = np.nan
+        refined_y = np.nan
         axis_uncertain = True
 
     refined_offset = (
@@ -132,7 +136,7 @@ def _section_rows(
         if np.isfinite(axis_offset)
         else np.full_like(offsets, np.nan)
     )
-    refined_distance_km = refined_offset * float(center.grid_effective_scale_km)
+    refined_distance_length = refined_offset * float(center.grid_effective_scale_length)
     side = np.where(
         refined_offset < 0.0,
         "left",
@@ -180,16 +184,16 @@ def _section_rows(
             "component_id": center.component_id,
             "section_id": section_id,
             "corridor_cell_id": int(center.cell_id),
-            "corridor_lon": float(center.lon),
-            "corridor_lat": float(center.lat),
-            "refined_axis_lon": refined_lon,
-            "refined_axis_lat": refined_lat,
+            "corridor_x": float(center.x),
+            "corridor_y": float(center.y),
+            "refined_axis_x": refined_x,
+            "refined_axis_y": refined_y,
             "offset_index_from_corridor_cell": offsets,
             "offset_index_from_refined_axis": refined_offset,
-            "distance_from_corridor_cell_km": distance_km,
-            "distance_from_refined_axis_km": refined_distance_km,
-            "sample_lon": target_lon,
-            "sample_lat": target_lat,
+            "distance_from_corridor_cell_length": distance_length,
+            "distance_from_refined_axis_length": refined_distance_length,
+            "sample_x": target_x,
+            "sample_y": target_y,
             "side": side,
             "theta1_out_center": float(center.theta1_out),
             "D_parallel_raw": d_parallel,
@@ -208,18 +212,18 @@ def _section_rows(
         "component_id": center.component_id,
         "section_id": section_id,
         "corridor_cell_id": int(center.cell_id),
-        "corridor_lon": float(center.lon),
-        "corridor_lat": float(center.lat),
+        "corridor_x": float(center.x),
+        "corridor_y": float(center.y),
         "theta1_out_center": float(center.theta1_out),
-        "grid_effective_scale_km": float(center.grid_effective_scale_km),
+        "grid_effective_scale_length": float(center.grid_effective_scale_length),
         "axis_refinement_grid_scales": axis_offset,
-        "axis_refinement_distance_km": (
-            axis_offset * float(center.grid_effective_scale_km)
+        "axis_refinement_distance_length": (
+            axis_offset * float(center.grid_effective_scale_length)
             if np.isfinite(axis_offset)
             else np.nan
         ),
-        "refined_axis_lon": refined_lon,
-        "refined_axis_lat": refined_lat,
+        "refined_axis_x": refined_x,
+        "refined_axis_y": refined_y,
         "D_parallel_axis": axis_value,
         "axis_location_uncertain": axis_uncertain,
         "directional_graph_degree": int(center.directional_graph_degree),
@@ -397,7 +401,7 @@ def _first_distance(side_rows: pd.DataFrame, threshold: float) -> float:
         & side_rows.D_parallel_relative.le(threshold)
     ]
     return (
-        float(selected.outward_distance_km.iloc[0]) if not selected.empty else np.nan
+        float(selected.outward_distance_length.iloc[0]) if not selected.empty else np.nan
     )
 
 
@@ -421,7 +425,7 @@ def _detect_drops(
                     {
                         f"{side}_front_detected": False,
                         f"{side}_candidate_count": 0,
-                        f"{side}_front_distance_km": np.nan,
+                        f"{side}_front_distance_length": np.nan,
                         f"{side}_directional_drop": np.nan,
                         f"{side}_relative_directional_drop": np.nan,
                         f"{side}_status": "side_not_observable",
@@ -430,7 +434,7 @@ def _detect_drops(
                 continue
             selected = profile.loc[profile.side.isin(("axis", side))].copy()
             selected["outward_offset"] = selected.offset_index_from_refined_axis.abs()
-            selected["outward_distance_km"] = selected.distance_from_refined_axis_km.abs()
+            selected["outward_distance_length"] = selected.distance_from_refined_axis_length.abs()
             selected = selected.sort_values("outward_offset").reset_index(drop=True)
             zones: list[dict[str, Any]] = []
             for position in range(len(selected) - 1):
@@ -472,7 +476,7 @@ def _detect_drops(
                     else np.nan
                 )
                 width = float(
-                    outer.outward_distance_km - inner.outward_distance_km
+                    outer.outward_distance_length - inner.outward_distance_length
                 )
                 persistence_available = bool(outer.n_composite_sections >= 2)
                 persistent = bool(
@@ -492,16 +496,16 @@ def _detect_drops(
                         "section_id": summary.section_id,
                         "corridor_cell_id": summary.corridor_cell_id,
                         "side": side,
-                        "candidate_distance_km": float(outer.outward_distance_km),
-                        "candidate_lon": float(outer.sample_lon),
-                        "candidate_lat": float(outer.sample_lat),
+                        "candidate_distance_length": float(outer.outward_distance_length),
+                        "candidate_x": float(outer.sample_x),
+                        "candidate_y": float(outer.sample_y),
                         "D_parallel_axis": summary.D_parallel_axis,
                         "D_parallel_inner": inner_value,
                         "D_parallel_outer": outer_value,
                         "absolute_directional_drop": absolute_drop,
                         "relative_directional_drop": relative_drop,
-                        "directional_drop_per_km": absolute_drop / width,
-                        "drop_width_km": width,
+                        "directional_drop_per_length": absolute_drop / width,
+                        "drop_width_length": width,
                         "along_corridor_persistence": persistent,
                         "n_sections_with_outward_decline": int(
                             outer.n_sections_with_outward_decline
@@ -531,7 +535,7 @@ def _detect_drops(
                     [
                         "along_corridor_persistence",
                         "absolute_directional_drop",
-                        "directional_drop_per_km",
+                        "directional_drop_per_length",
                     ],
                     ascending=[False, False, False],
                     kind="stable",
@@ -542,7 +546,7 @@ def _detect_drops(
                 best = zones_frame.loc[best_index]
                 detected = True
                 candidate_count = len(eligible)
-                distance = float(best.candidate_distance_km)
+                distance = float(best.candidate_distance_length)
                 drop = float(best.absolute_directional_drop)
                 relative_drop = float(best.relative_directional_drop)
             else:
@@ -557,7 +561,7 @@ def _detect_drops(
                 {
                     f"{side}_front_detected": detected,
                     f"{side}_candidate_count": candidate_count,
-                    f"{side}_front_distance_km": distance,
+                    f"{side}_front_distance_length": distance,
                     f"{side}_directional_drop": drop,
                     f"{side}_relative_directional_drop": relative_drop,
                     f"{side}_status": (
@@ -565,9 +569,9 @@ def _detect_drops(
                         if detected
                         else "observable_no_retained_directional_front"
                     ),
-                    f"{side}_distance_50pct_km": _first_distance(selected, 0.5),
-                    f"{side}_distance_1e_km": _first_distance(selected, 1.0 / np.e),
-                    f"{side}_zero_crossing_km": _first_distance(selected, 0.0),
+                    f"{side}_distance_50pct_length": _first_distance(selected, 0.5),
+                    f"{side}_distance_1e_length": _first_distance(selected, 1.0 / np.e),
+                    f"{side}_zero_crossing_length": _first_distance(selected, 0.0),
                 }
             )
         summary_updates.append({"section_id": summary.section_id, **side_results})
@@ -581,12 +585,12 @@ def _canonical_fronts(
     candidates: pd.DataFrame,
 ) -> pd.DataFrame:
     base = corridors[
-        ["cell_id", "component_id", "lon", "lat", "corridor_observability"]
+        ["cell_id", "component_id", "x", "y", "corridor_observability"]
     ].rename(
         columns={
             "cell_id": "corridor_cell_id",
-            "lon": "corridor_lon",
-            "lat": "corridor_lat",
+            "x": "corridor_x",
+            "y": "corridor_y",
         }
     )
     base = base.merge(pd.DataFrame({"side": ["left", "right"]}), how="cross")
@@ -603,18 +607,18 @@ def _canonical_fronts(
         else pd.DataFrame()
     )
     fields = [
-        "front_lon",
-        "front_lat",
-        "distance_from_corridor_axis_km",
+        "front_x",
+        "front_y",
+        "distance_from_corridor_axis_length",
         "absolute_directional_drop",
         "relative_directional_drop",
     ]
     if not selected.empty:
         selected = selected.rename(
             columns={
-                "candidate_lon": "front_lon",
-                "candidate_lat": "front_lat",
-                "candidate_distance_km": "distance_from_corridor_axis_km",
+                "candidate_x": "front_x",
+                "candidate_y": "front_y",
+                "candidate_distance_length": "distance_from_corridor_axis_length",
             }
         )
         selected = selected[["corridor_cell_id", "side", *fields]]
@@ -623,7 +627,7 @@ def _canonical_fronts(
         fronts = base.copy()
         for field in fields:
             fronts[field] = np.nan
-    fronts["front_detected"] = fronts.observable & fronts.front_lon.notna()
+    fronts["front_detected"] = fronts.observable & fronts.front_x.notna()
     fronts["front_status"] = np.select(
         [~fronts.observable, fronts.front_detected],
         ["side_not_observable", "probable_directional_front"],
@@ -673,15 +677,15 @@ def compute_probable_directional_fronts(
     prepared = {field: grid_array(cells, config.grid, field) for field in SAMPLED_FIELDS}
     support = (
         prepared["N_out_move"] >= config.statistics.min_moving_support
-    ) & np.isfinite(prepared["D_out_all_east"]) & np.isfinite(
-        prepared["D_out_all_north"]
+    ) & np.isfinite(prepared["D_out_all_x"]) & np.isfinite(
+        prepared["D_out_all_y"]
     )
-    geod = Geod(ellps=config.ellipsoid)
+    geometry = make_spatial_geometry(config.geometry)
     cross_outputs: list[pd.DataFrame] = []
     summary_records: list[dict[str, Any]] = []
     for center in corridors.corridors.itertuples(index=False):
         rows, summary = _section_rows(
-            pd.Series(center._asdict()), prepared, support, config, geod
+            pd.Series(center._asdict()), prepared, support, config, geometry
         )
         cross_outputs.append(rows)
         summary_records.append(summary)
@@ -727,8 +731,8 @@ def compute_probable_directional_fronts(
             "missing samples break contiguous profiles and cannot form drops"
         ),
         **_quantiles(
-            detected.distance_from_corridor_axis_km,
-            "front_distance_from_corridor_axis_km",
+            detected.distance_from_corridor_axis_length,
+            "front_distance_from_corridor_axis_length",
         ),
         **_quantiles(
             detected.absolute_directional_drop, "absolute_directional_drop"

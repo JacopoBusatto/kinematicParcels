@@ -13,6 +13,7 @@ from research.transition_branches.config import (
     GridConfig,
     InputConfig,
     OutputConfig,
+    SpatialGeometryConfig,
 )
 from research.transition_branches.fronts import _canonical_fronts
 from research.transition_branches.io import DIRECTIONAL_TABLES, STANDARD_TABLES
@@ -30,8 +31,9 @@ from research.transition_branches.statistics import (
 
 def _config() -> CompactConfig:
     return CompactConfig(
-        input=InputConfig("unused.parquet", "synthetic", 30.0),
+        input=InputConfig("unused.parquet", "synthetic", 30.0, "day"),
         output=OutputConfig("unused"),
+        geometry=SpatialGeometryConfig("geographic", "km", "WGS84"),
         grid=GridConfig(
             lon_min=0.0,
             lon_max=3.0,
@@ -98,32 +100,32 @@ def test_compact_output_preserves_normalized_angular_entropy() -> None:
 
     assert source.angular_entropy_out == pytest.approx(np.log(4) / np.log(36))
     assert "H_out" not in compact
-    assert {"start_lon_bin", "start_lat_bin", "R1_in", "R2_in"} <= set(compact)
+    assert {"start_x_bin", "start_y_bin", "R1_in", "R2_in"} <= set(compact)
 
 
 def test_directional_vector_is_distance_free_first_harmonic() -> None:
     statistics = compute_transition_statistics(_eastward_with_stay_table(), _config())
     source = statistics.cells.loc[statistics.cells.cell_id.eq(4)].iloc[0]
 
-    assert source.D_out_move_east == pytest.approx(
+    assert source.D_out_move_x == pytest.approx(
         np.sin(np.deg2rad(source.theta1_out))
     )
-    assert source.D_out_move_north == pytest.approx(
+    assert source.D_out_move_y == pytest.approx(
         np.cos(np.deg2rad(source.theta1_out))
     )
     assert source.D_out_move_magnitude == pytest.approx(source.R1_out)
-    assert source.D_out_all_east == pytest.approx(
-        source.P_move * source.D_out_move_east
+    assert source.D_out_all_x == pytest.approx(
+        source.P_move * source.D_out_move_x
     )
-    assert source.D_out_all_north == pytest.approx(
-        source.P_move * source.D_out_move_north
+    assert source.D_out_all_y == pytest.approx(
+        source.P_move * source.D_out_move_y
     )
     assert source.D_out_all_magnitude == pytest.approx(source.P_move * source.R1_out)
     assert source.theta1_out == pytest.approx(89.986911, abs=1.0e-6)
 
     identities = statistics.validation_summary["directional_vector_identities"]
-    assert identities["D_out_all_equals_P_move_D_out_move_max_abs_east"] == 0.0
-    assert identities["D_out_all_equals_P_move_D_out_move_max_abs_north"] == 0.0
+    assert identities["D_out_all_equals_P_move_D_out_move_max_abs_x"] == 0.0
+    assert identities["D_out_all_equals_P_move_D_out_move_max_abs_y"] == 0.0
     assert identities["D_out_move_magnitude_equals_R1_max_abs"] < 1.0e-15
     assert identities["D_out_all_magnitude_equals_P_move_R1_max_abs"] < 1.0e-15
     assert identities["D_out_move_bearing_equals_theta1_max_abs_degrees"] < 1.0e-12
@@ -231,8 +233,8 @@ def test_front_product_preserves_observability_and_physical_quantities() -> None
         {
             "cell_id": [10, 11],
             "component_id": ["component_0001", "component_0001"],
-            "lon": [1.5, 2.5],
-            "lat": [-40.5, -40.5],
+            "x": [1.5, 2.5],
+            "y": [-40.5, -40.5],
             "ridge_type": ["two_sided", "one_sided"],
             "missing_side": ["none", "right"],
         }
@@ -241,9 +243,9 @@ def test_front_product_preserves_observability_and_physical_quantities() -> None
         {
             "cell_id": [10, 10, 11, 11],
             "side": ["left", "left", "left", "right"],
-            "candidate_lon": [1.0, 1.2, 2.0, 3.0],
-            "candidate_lat": [-40.0, -40.2, -40.0, -40.0],
-            "candidate_distance_km": [50.0, 60.0, 70.0, 80.0],
+            "candidate_x": [1.0, 1.2, 2.0, 3.0],
+            "candidate_y": [-40.0, -40.2, -40.0, -40.0],
+            "candidate_distance_length": [50.0, 60.0, 70.0, 80.0],
             "absolute_drop": [2.0, 4.0, 5.0, 9.0],
             "relative_drop": [0.2, 0.4, 0.5, 0.9],
         }
@@ -254,11 +256,11 @@ def test_front_product_preserves_observability_and_physical_quantities() -> None
     missing = fronts.loc[fronts.core_cell_id.eq(11) & fronts.side.eq("right")].iloc[0]
     no_front = fronts.loc[fronts.core_cell_id.eq(10) & fronts.side.eq("right")].iloc[0]
 
-    assert left.front_lon == pytest.approx(1.1)
-    assert left.distance_from_core_km == pytest.approx(55.0)
-    assert left.transport_loss_km_day == pytest.approx(3.0)
+    assert left.front_x == pytest.approx(1.1)
+    assert left.distance_from_core_length == pytest.approx(55.0)
+    assert left.transport_loss_rate == pytest.approx(3.0)
     assert left.front_status == "probable_transport_front"
     assert missing.front_status == "side_not_observable"
     assert no_front.front_status == "observable_no_retained_front"
     assert not missing.observable
-    assert np.isnan(missing.front_lon)
+    assert np.isnan(missing.front_x)

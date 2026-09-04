@@ -20,20 +20,20 @@ def _cells(
     support: np.ndarray | int = 30,
     r1: np.ndarray | float = 0.9,
 ) -> pd.DataFrame:
-    lat_bin, lon_bin = np.indices(intensity.shape)
+    y_bin, x_bin = np.indices(intensity.shape)
     theta_values = np.broadcast_to(theta, intensity.shape).astype(float)
     support_values = np.broadcast_to(support, intensity.shape).astype(int)
     r1_values = np.broadcast_to(r1, intensity.shape).astype(float)
     frame = pd.DataFrame(
         {
-            "cell_id": (lat_bin * grid.nlon + lon_bin).ravel(),
-            "lon_bin": lon_bin.ravel(),
-            "lat_bin": lat_bin.ravel(),
-            "lon": (grid.lon_min + (lon_bin + 0.5) * grid.dlon).ravel(),
-            "lat": (grid.lat_min + (lat_bin + 0.5) * grid.dlat).ravel(),
+            "cell_id": (y_bin * grid.nx + x_bin).ravel(),
+            "x_bin": x_bin.ravel(),
+            "y_bin": y_bin.ravel(),
+            "x": (grid.x_min + (x_bin + 0.5) * grid.dlon).ravel(),
+            "y": (grid.y_min + (y_bin + 0.5) * grid.dlat).ravel(),
             "N_out_move": support_values.ravel(),
             "N_in_move": support_values.ravel(),
-            "U_out_all_magnitude_km_day": intensity.ravel(),
+            "U_out_all_magnitude_rate": intensity.ravel(),
             "theta_mu_out": theta_values.ravel(),
             "R1_out": r1_values.ravel(),
             "R2_out": np.full(intensity.size, 0.8),
@@ -47,12 +47,12 @@ def _cells(
     return frame
 
 
-def _regular_grid(nlon: int = 7, nlat: int = 7) -> GridConfig:
+def _regular_grid(nx: int = 7, ny: int = 7) -> GridConfig:
     return GridConfig(
         lon_min=0.0,
-        lon_max=float(nlon),
+        lon_max=float(nx),
         lat_min=-3.5,
-        lat_max=-3.5 + nlat,
+        lat_max=-3.5 + ny,
         dlon=1.0,
         dlat=1.0,
         periodic_longitude=False,
@@ -75,8 +75,8 @@ def _extract(
     grid: GridConfig,
 ) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame, pd.DataFrame]:
     cells = cells.copy()
-    cells["S0_field_km_day"] = cells.U_out_all_magnitude_km_day
-    cells["C_perp_km_day"] = 1.0
+    cells["S0_field_rate"] = cells.U_out_all_magnitude_rate
+    cells["C_perp_rate"] = 1.0
     cells["C_perp_normalized"] = 0.1
     cells["orientation_reliable_diagnostic"] = cells.R1_out.ge(0.8)
     cells["orientation_ambiguous_diagnostic"] = cells.R1_out.lt(0.5)
@@ -94,13 +94,13 @@ def _extract(
 
 def test_stage5_straight_high_intensity_jet_is_a_transverse_ridge() -> None:
     grid = _regular_grid()
-    intensity = np.ones((grid.nlat, grid.nlon))
+    intensity = np.ones((grid.ny, grid.nx))
     intensity[3, :] = 10.0
     result = _ridge(_cells(grid, intensity), grid)
 
-    core = result.loc[result.lat_bin.eq(3) & result.lon_bin.between(1, 5)]
+    core = result.loc[result.y_bin.eq(3) & result.x_bin.between(1, 5)]
     assert core.ridge_candidate.all()
-    assert core.C_perp_km_day.min() > 8.0
+    assert core.C_perp_rate.min() > 8.0
 
 
 def test_stage5_smoothly_curved_jet_retains_curved_core_cells() -> None:
@@ -108,8 +108,8 @@ def test_stage5_smoothly_curved_jet_retains_curved_core_cells() -> None:
     intensity = np.ones((7, 7))
     theta = np.full((7, 7), 90.0)
     path = [(1, 2), (2, 2), (3, 2), (4, 3), (5, 4)]
-    for lon_bin, lat_bin in path:
-        intensity[lat_bin, lon_bin] = 10.0
+    for x_bin, y_bin in path:
+        intensity[y_bin, x_bin] = 10.0
     theta[2, 3] = 45.0
     theta[3, 4] = 45.0
     theta[4, 5] = 30.0
@@ -123,8 +123,8 @@ def test_stage5_relatively_sharp_coherent_bend_is_not_rejected() -> None:
     intensity = np.ones((7, 7))
     theta = np.full((7, 7), 90.0)
     path = [(1, 3), (2, 3), (3, 3), (3, 4), (3, 5)]
-    for lon_bin, lat_bin in path:
-        intensity[lat_bin, lon_bin] = 10.0
+    for x_bin, y_bin in path:
+        intensity[y_bin, x_bin] = 10.0
     theta[3, 3] = 45.0
     theta[4:, 3] = 0.0
     result = _ridge(_cells(grid, intensity, theta), grid).set_index("cell_id")
@@ -140,7 +140,7 @@ def test_stage5_two_parallel_jets_remain_two_components() -> None:
     intensity[4, :] = 9.0
     diagnostics = _ridge(_cells(grid, intensity), grid)
     diagnostics["ridge_candidate_q90"] = (
-        diagnostics.ridge_candidate & diagnostics.U_out_all_magnitude_km_day.gt(5)
+        diagnostics.ridge_candidate & diagnostics.U_out_all_magnitude_rate.gt(5)
     )
     _, components, _, _ = extract_ridge_components(
         diagnostics,
@@ -161,7 +161,7 @@ def test_stage5_split_preserves_junction_without_selecting_continuation() -> Non
     cells = _cells(grid, intensity)
     selected = {(3, 1), (3, 2), (3, 3), (2, 4), (1, 5), (4, 4), (5, 5)}
     cells["ridge_candidate"] = [
-        (lon, lat) in selected for lon, lat in zip(cells.lon_bin, cells.lat_bin)
+        (lon, lat) in selected for lon, lat in zip(cells.x_bin, cells.y_bin)
     ]
     _, components, _, segments = _extract(cells, grid)
 
@@ -177,7 +177,7 @@ def test_stage5_merge_preserves_junction_without_upstream_assumption() -> None:
     cells = _cells(grid, intensity, theta)
     selected = {(1, 1), (2, 2), (3, 3), (5, 1), (4, 2), (3, 4), (3, 5)}
     cells["ridge_candidate"] = [
-        (lon, lat) in selected for lon, lat in zip(cells.lon_bin, cells.lat_bin)
+        (lon, lat) in selected for lon, lat in zip(cells.x_bin, cells.y_bin)
     ]
     _, components, _, segments = _extract(cells, grid)
 
@@ -191,7 +191,7 @@ def test_stage5_unsupported_gap_is_not_bridged() -> None:
     cells = _cells(grid, intensity)
     selected = {(1, 3), (2, 3), (4, 3), (5, 3)}
     cells["ridge_candidate"] = [
-        (lon, lat) in selected for lon, lat in zip(cells.lon_bin, cells.lat_bin)
+        (lon, lat) in selected for lon, lat in zip(cells.x_bin, cells.y_bin)
     ]
     cells.loc[cells.cell_id.eq(3 * 7 + 3), "N_out_move"] = 0
     _, components, _, _ = _extract(cells, grid)
@@ -210,8 +210,8 @@ def test_stage5_isolated_one_cell_spike_is_retained_but_smoothing_is_explicit() 
     spike = 3 * 7 + 3
 
     assert raw.loc[spike, "ridge_candidate"]
-    assert smoothed.loc[spike, "S0_field_km_day"] < raw.loc[spike, "S0_field_km_day"]
-    assert smoothed.loc[spike, "C_perp_km_day"] < raw.loc[spike, "C_perp_km_day"]
+    assert smoothed.loc[spike, "S0_field_rate"] < raw.loc[spike, "S0_field_rate"]
+    assert smoothed.loc[spike, "C_perp_rate"] < raw.loc[spike, "C_perp_rate"]
 
 
 def test_stage5_weak_background_ridge_remains_in_unthresholded_candidates() -> None:
@@ -221,7 +221,7 @@ def test_stage5_weak_background_ridge_remains_in_unthresholded_candidates() -> N
     result = _ridge(_cells(grid, intensity), grid)
 
     assert result.loc[
-        result.lat_bin.eq(3) & result.lon_bin.eq(3), "ridge_candidate"
+        result.y_bin.eq(3) & result.x_bin.eq(3), "ridge_candidate"
     ].item()
 
 
@@ -252,13 +252,13 @@ def test_stage5_dateline_crossing_branch_uses_periodic_connectivity() -> None:
     cells = _cells(grid, intensity)
     selected = {(5, 0), (0, 0), (1, 0)}
     cells["ridge_candidate"] = [
-        (lon, lat) in selected for lon, lat in zip(cells.lon_bin, cells.lat_bin)
+        (lon, lat) in selected for lon, lat in zip(cells.x_bin, cells.y_bin)
     ]
     _, components, _, _ = _extract(cells, grid)
 
     assert len(components) == 1
     assert components.iloc[0].n_cells == 3
-    assert components.iloc[0].longitude_span_degrees == pytest.approx(120.0)
+    assert components.iloc[0].x_span == pytest.approx(120.0)
 
 
 def test_stage5_physical_sampling_scale_changes_with_zonal_spacing_at_latitude() -> (
@@ -275,11 +275,11 @@ def test_stage5_physical_sampling_scale_changes_with_zonal_spacing_at_latitude()
     )
     intensity = np.ones((3, 3))
     result = _ridge(_cells(grid, intensity), grid)
-    low_lat = result.loc[result.lat_bin.eq(2), "grid_zonal_scale_km"].median()
-    high_lat = result.loc[result.lat_bin.eq(0), "grid_zonal_scale_km"].median()
+    low_lat = result.loc[result.y_bin.eq(2), "grid_x_scale_length"].median()
+    high_lat = result.loc[result.y_bin.eq(0), "grid_x_scale_length"].median()
 
     assert high_lat < low_lat
-    assert result.grid_effective_scale_km.nunique() > 1
+    assert result.grid_effective_scale_length.nunique() > 1
 
 
 def test_stage5_smoothing_never_fills_an_unsupported_gap() -> None:
@@ -287,7 +287,7 @@ def test_stage5_smoothing_never_fills_an_unsupported_gap() -> None:
     support = np.ones((3, 3), dtype=bool)
     support[1, 1] = False
 
-    smoothed = support_aware_uniform_3x3(values, support, periodic_longitude=False)
+    smoothed = support_aware_uniform_3x3(values, support, periodic_x=False)
 
     assert np.isnan(smoothed[1, 1])
 
@@ -343,10 +343,10 @@ def test_stage5_one_sided_candidate_never_fabricates_missing_contrast() -> None:
     )
     center = result.set_index("cell_id").loc[3 * 7 + 3]
 
-    assert np.isnan(center.S_minus_km_day)
-    assert np.isnan(center.C_perp_km_day)
-    assert center.C_perp_one_sided_km_day == pytest.approx(
-        center.S0_field_km_day - center.S_plus_km_day
+    assert np.isnan(center.S_minus_rate)
+    assert np.isnan(center.C_perp_rate)
+    assert center.C_perp_one_sided_rate == pytest.approx(
+        center.S0_field_rate - center.S_plus_rate
     )
 
 
@@ -367,8 +367,8 @@ def test_stage5_supported_observed_zero_remains_a_valid_zero() -> None:
     )
     center = result.set_index("cell_id").loc[3 * 7 + 3]
 
-    assert np.isfinite(center.S_plus_km_day)
-    assert center.S_plus_km_day < 0.01
+    assert np.isfinite(center.S_plus_rate)
+    assert center.S_plus_rate < 0.01
     assert center.ridge_candidate_one_sided
 
 
@@ -391,7 +391,7 @@ def test_stage5_no_transverse_side_evaluable_is_not_a_ridge() -> None:
 
     assert center.ridge_evaluability_class == "no_transverse_side_evaluable"
     assert not center.ridge_candidate
-    assert np.isnan(center.C_perp_one_sided_km_day)
+    assert np.isnan(center.C_perp_one_sided_rate)
 
 
 def test_stage5_boundary_policy_leaves_two_sided_candidates_unchanged() -> None:

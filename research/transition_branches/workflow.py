@@ -49,7 +49,7 @@ def run(config: CompactConfig) -> Path:
     )
     cells = compact_cell_table(statistics.cells)
     write_scientific_tables(
-        run_dir, cells=cells, cores=cores.cores, fronts=fronts.fronts
+        run_dir, cells=cells, cores=cores.cores, fronts=fronts.fronts, config=config
     )
     write_directional_tables(
         run_dir,
@@ -57,6 +57,7 @@ def run(config: CompactConfig) -> Path:
         fronts=directional_fronts.fronts,
         comparison=comparison.cells,
         component_comparison=comparison.components,
+        config=config,
     )
 
     optional_outputs: list[str] = []
@@ -69,6 +70,7 @@ def run(config: CompactConfig) -> Path:
                 section_summaries=fronts.section_summaries,
                 components=cores.components,
                 segment_fronts=fronts.segment_fronts,
+                config=config,
             )
         )
         optional_outputs.extend(
@@ -79,10 +81,13 @@ def run(config: CompactConfig) -> Path:
                 section_summaries=directional_fronts.section_summaries,
                 components=directional_corridors.components,
                 graph_edges=directional_corridors.edges,
+                config=config,
             )
         )
     if validation is not None:
-        optional_outputs.append(write_validation_table(run_dir, validation.validation))
+        optional_outputs.append(
+            write_validation_table(run_dir, validation.validation, config)
+        )
 
     figures = create_standard_figures(
         statistics.cells,
@@ -100,7 +105,7 @@ def run(config: CompactConfig) -> Path:
         run_dir,
         config=config,
         input_path=input_path,
-        transport_threshold_km_day=cores.threshold_km_day,
+        transport_threshold_rate=cores.threshold_rate,
         counts={
             "cells": len(cells),
             "current_core_cells": len(cores.cores),

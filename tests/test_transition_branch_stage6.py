@@ -15,6 +15,7 @@ from research.transition_branches.config import (
     GridConfig,
     InputConfig,
     OutputConfig,
+    SpatialGeometryConfig,
 )
 from research.transition_branches.cores import compute_current_cores
 
@@ -29,23 +30,23 @@ def _synthetic_stage4() -> tuple[pd.DataFrame, GridConfig]:
         dlat=1.0,
         periodic_longitude=False,
     )
-    lat_bin, lon_bin = np.indices((grid.nlat, grid.nlon))
+    y_bin, x_bin = np.indices((grid.ny, grid.nx))
     transverse = np.asarray([0.2, 0.5, 1.5, 4.0, 7.0, 10.0, 7.0, 4.0, 1.5, 0.5, 0.2])
-    magnitude = np.broadcast_to(transverse[:, None], lat_bin.shape).copy()
-    support = np.full(lat_bin.shape, 30)
+    magnitude = np.broadcast_to(transverse[:, None], y_bin.shape).copy()
+    support = np.full(y_bin.shape, 30)
     frame = pd.DataFrame(
         {
-            "cell_id": (lat_bin * grid.nlon + lon_bin).ravel(),
-            "lon_bin": lon_bin.ravel(),
-            "lat_bin": lat_bin.ravel(),
-            "lon": (grid.lon_min + (lon_bin + 0.5) * grid.dlon).ravel(),
-            "lat": (grid.lat_min + (lat_bin + 0.5) * grid.dlat).ravel(),
+            "cell_id": (y_bin * grid.nx + x_bin).ravel(),
+            "x_bin": x_bin.ravel(),
+            "y_bin": y_bin.ravel(),
+            "x": (grid.x_min + (x_bin + 0.5) * grid.dlon).ravel(),
+            "y": (grid.y_min + (y_bin + 0.5) * grid.dlat).ravel(),
             "N_out_move": support.ravel(),
             "N_in_move": support.ravel(),
-            "U_out_all_east_km_day": magnitude.ravel(),
-            "U_out_all_north_km_day": np.zeros(magnitude.size),
-            "U_out_all_magnitude_km_day": magnitude.ravel(),
-            "U_out_move_magnitude_km_day": (magnitude / 0.8).ravel(),
+            "U_out_all_x_rate": magnitude.ravel(),
+            "U_out_all_y_rate": np.zeros(magnitude.size),
+            "U_out_all_magnitude_rate": magnitude.ravel(),
+            "U_out_move_magnitude_rate": (magnitude / 0.8).ravel(),
             "P_move": np.full(magnitude.size, 0.8),
             "theta_mu_out": np.full(magnitude.size, 90.0),
             "R1_out": np.full(magnitude.size, 0.9),
@@ -71,8 +72,9 @@ def _synthetic_stage6(*, boundary_aware: bool = False):
     cells, grid = _synthetic_stage4()
     stage5_config = BranchConfig()
     compact_config = CompactConfig(
-        input=InputConfig("unused.parquet", "synthetic", 30.0),
+        input=InputConfig("unused.parquet", "synthetic", 30.0, "day"),
         output=OutputConfig("unused"),
+        geometry=SpatialGeometryConfig("geographic", "km", "WGS84"),
         grid=grid,
     )
     branches = compute_current_cores(cells, compact_config)
@@ -119,7 +121,7 @@ def test_stage6_uses_compass_bearing_for_signed_tangent_projection() -> None:
     ]
 
     assert np.allclose(
-        baseline.U_parallel_raw.dropna(), baseline.U_out_all_east_km_day.dropna()
+        baseline.U_parallel_raw.dropna(), baseline.U_out_all_x_rate.dropna()
     )
     assert (baseline.U_parallel_raw.dropna() > 0).all()
 
@@ -195,7 +197,7 @@ def test_stage6_boundary_aware_core_never_turns_unobservable_flank_into_no_drop(
     assert baseline.left_flank_observable.all()
     assert (~baseline.right_flank_observable).all()
     assert baseline.right_flank_status.eq("flank_not_observable").all()
-    assert baseline.right_drop_distance_km.isna().all()
+    assert baseline.right_drop_distance_length.isna().all()
     assert baseline.left_drop_detected.all()
     assert (~baseline.no_candidate_drop).all()
     assert baseline.all_observable_flanks_have_candidate_drop.all()
@@ -228,7 +230,7 @@ def test_stage6_composites_do_not_exceed_five_same_segment_sections() -> None:
 def test_stage6_candidate_outputs_are_points_not_connected_lines() -> None:
     fields = _synthetic_stage6()
 
-    assert {"candidate_lon", "candidate_lat", "side", "drop_slope"} <= set(
+    assert {"candidate_x", "candidate_y", "side", "drop_slope"} <= set(
         fields.candidate_flank_points
     )
     assert {"geometry", "front_line_id", "next_flank_point_id"}.isdisjoint(

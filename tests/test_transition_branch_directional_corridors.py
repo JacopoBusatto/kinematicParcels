@@ -15,6 +15,7 @@ from research.transition_branches.config import (
     GridConfig,
     InputConfig,
     OutputConfig,
+    SpatialGeometryConfig,
 )
 from research.transition_branches.cores import CoreSolution
 from research.transition_branches.directional_corridors import (
@@ -27,8 +28,9 @@ from research.transition_branches.directional_fronts import (
 
 def _config(nlon: int = 7, nlat: int = 7) -> CompactConfig:
     return CompactConfig(
-        input=InputConfig("unused.parquet", "synthetic", 10.0),
+        input=InputConfig("unused.parquet", "synthetic", 10.0, "day"),
         output=OutputConfig("unused"),
+        geometry=SpatialGeometryConfig("geographic", "km", "WGS84"),
         grid=GridConfig(
             lon_min=0.0,
             lon_max=float(nlon),
@@ -60,21 +62,21 @@ def _cells(config: CompactConfig) -> pd.DataFrame:
     return pd.DataFrame(
         {
             "cell_id": (lat_bin * config.grid.nlon + lon_bin).ravel(),
-            "lon_bin": lon_bin.ravel(),
-            "lat_bin": lat_bin.ravel(),
-            "lon": (
+            "x_bin": lon_bin.ravel(),
+            "y_bin": lat_bin.ravel(),
+            "x": (
                 config.grid.lon_min + (lon_bin + 0.5) * config.grid.dlon
             ).ravel(),
-            "lat": (
+            "y": (
                 config.grid.lat_min + (lat_bin + 0.5) * config.grid.dlat
             ).ravel(),
             "N_out_move": np.full(size, 20),
-            "U_out_all_magnitude_km_day": strength,
+            "U_out_all_magnitude_rate": strength,
             "P_move": p_move,
             "R1_out": r1,
             "theta1_out": theta,
-            "D_out_all_east": strength * np.sin(np.deg2rad(theta)),
-            "D_out_all_north": strength * np.cos(np.deg2rad(theta)),
+            "D_out_all_x": strength * np.sin(np.deg2rad(theta)),
+            "D_out_all_y": strength * np.cos(np.deg2rad(theta)),
             "D_out_all_magnitude": strength,
         }
     )
@@ -93,8 +95,8 @@ def _set_directional_cells(
         mask = output.cell_id.eq(cell_id)
         output.loc[mask, "R1_out"] = strength
         output.loc[mask, "theta1_out"] = theta
-        output.loc[mask, "D_out_all_east"] = strength * np.sin(np.deg2rad(theta))
-        output.loc[mask, "D_out_all_north"] = strength * np.cos(np.deg2rad(theta))
+        output.loc[mask, "D_out_all_x"] = strength * np.sin(np.deg2rad(theta))
+        output.loc[mask, "D_out_all_y"] = strength * np.cos(np.deg2rad(theta))
         output.loc[mask, "D_out_all_magnitude"] = strength
     return output
 
@@ -131,7 +133,7 @@ def test_smoothly_turning_local_directions_form_one_curved_corridor() -> None:
         lat * config.grid.nlon + lon for lon, lat in prescribed
     }
     assert result.components.iloc[0].maximum_neighbor_direction_difference_degrees <= 30
-    assert result.components.iloc[0].latitude_span_degrees == 3.0
+    assert result.components.iloc[0].y_span == 3.0
 
 
 def test_opposite_directions_do_not_connect_despite_spatial_adjacency() -> None:
@@ -158,7 +160,7 @@ def test_configured_support_threshold_controls_directional_eligibility() -> None
     )
     prescribed = {(lon, 3): 90.0 for lon in range(1, 6)}
     cells = _set_directional_cells(_cells(config), config, prescribed)
-    cells.loc[cells.lon_bin.eq(3) & cells.lat_bin.eq(3), "N_out_move"] = 9
+    cells.loc[cells.x_bin.eq(3) & cells.y_bin.eq(3), "N_out_move"] = 9
     result = compute_directional_corridors(cells, config)
 
     assert result.summary["support_threshold"] == 10
@@ -197,12 +199,12 @@ def test_cross_section_projects_onto_each_central_local_direction() -> None:
     config = _config()
     prescribed = {(lon, 3): 90.0 for lon in range(1, 6)}
     cells = _set_directional_cells(_cells(config), config, prescribed)
-    north = cells.lat_bin.eq(4)
+    north = cells.y_bin.eq(4)
     cells.loc[north, "theta1_out"] = 270.0
-    cells.loc[north, "D_out_all_east"] = -cells.loc[
+    cells.loc[north, "D_out_all_x"] = -cells.loc[
         north, "D_out_all_magnitude"
     ]
-    cells.loc[north, "D_out_all_north"] = 0.0
+    cells.loc[north, "D_out_all_y"] = 0.0
     corridors = compute_directional_corridors(cells, config)
     result = compute_probable_directional_fronts(cells, corridors, config)
     center_id = 3 * config.grid.nlon + 3
@@ -221,11 +223,11 @@ def test_missing_support_is_unobservable_and_never_a_directional_drop() -> None:
     config = _config()
     prescribed = {(lon, 3): 90.0 for lon in range(1, 6)}
     cells = _set_directional_cells(_cells(config), config, prescribed)
-    north = cells.lat_bin.eq(4)
+    north = cells.y_bin.eq(4)
     cells.loc[north, "N_out_move"] = 0
     cells.loc[
         north,
-        ["D_out_all_east", "D_out_all_north", "D_out_all_magnitude"],
+        ["D_out_all_x", "D_out_all_y", "D_out_all_magnitude"],
     ] = np.nan
     corridors = compute_directional_corridors(cells, config)
     result = compute_probable_directional_fronts(cells, corridors, config)
@@ -252,7 +254,7 @@ def test_transport_directional_comparison_does_not_match_component_geometry() ->
         components=pd.DataFrame(),
         segment_members=pd.DataFrame(),
         segments=pd.DataFrame(),
-        threshold_km_day=1.0,
+        threshold_rate=1.0,
         selection_label="q90",
     )
     result = compare_transport_and_directional_structures(

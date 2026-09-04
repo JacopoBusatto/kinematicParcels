@@ -8,39 +8,48 @@ import pandas as pd
 import xarray as xr
 
 from .config import GridConfig, ValidationConfig
-from .geometry import NEIGHBOR_OFFSETS_8, signed_angle_difference
+from .geometry import (
+    NEIGHBOR_OFFSETS_8,
+    GeographicGeometry,
+    SpatialGeometry,
+    signed_angle_difference,
+)
+
+
+@dataclass(frozen=True)
+class GeometryConfig(GeographicGeometry):
+    """Legacy internal test convenience; production uses configured backends."""
+
+    ellipsoid: str = "WGS84"
+    length_unit: str = "km"
+    coordinate_system: str = "geographic"
 
 REQUIRED_COLUMNS = (
-    "start_lon_bin",
-    "start_lat_bin",
-    "end_lon_bin",
-    "end_lat_bin",
-    "start_lon_center",
-    "start_lat_center",
-    "end_lon_center",
-    "end_lat_center",
+    "start_x_bin",
+    "start_y_bin",
+    "end_x_bin",
+    "end_y_bin",
+    "start_x_center",
+    "start_y_center",
+    "end_x_center",
+    "end_y_center",
     "transition_count",
     "transition_probability",
 )
 KEY_COLUMNS = (
-    "start_lon_bin",
-    "start_lat_bin",
-    "end_lon_bin",
-    "end_lat_bin",
+    "start_x_bin",
+    "start_y_bin",
+    "end_x_bin",
+    "end_y_bin",
 )
 COUNT_FIELDS = ("N_out_total", "N_out_move", "N_in_total", "N_in_move")
-
-
-@dataclass(frozen=True)
-class GeometryConfig:
-    ellipsoid: str = "WGS84"
 
 
 @dataclass(frozen=True)
 class Stage1Config:
     primary_visualization_min_moving_count: int = 10
     sensitivity_visualization_min_moving_count: int = 20
-    direction_zero_tolerance_km: float = 1.0e-12
+    direction_zero_tolerance: float = 1.0e-12
     distance_quantiles: tuple[float, ...] = (0.25, 0.5, 0.75, 0.95)
     diagnostic_strong_transport_quantile: float = 0.95
     diagnostic_reduction_quantile: float = 0.99
@@ -149,7 +158,7 @@ def _append_flag(flags: np.ndarray, mask: np.ndarray, name: str) -> None:
 
 def validate_transition_table(
     table: pd.DataFrame,
-    grid: GridConfig,
+    grid: Any,
     config: ValidationConfig,
 ) -> ValidationResult:
     """Validate a supplied sparse table without changing its probabilities."""
@@ -210,22 +219,22 @@ def validate_transition_table(
 
     bins_numeric = links.loc[:, KEY_COLUMNS].apply(pd.to_numeric, errors="coerce")
     bin_valid = (
-        bins_numeric.start_lon_bin.between(0, grid.nlon - 1)
-        & bins_numeric.end_lon_bin.between(0, grid.nlon - 1)
-        & bins_numeric.start_lat_bin.between(0, grid.nlat - 1)
-        & bins_numeric.end_lat_bin.between(0, grid.nlat - 1)
+        bins_numeric.start_x_bin.between(0, grid.nx - 1)
+        & bins_numeric.end_x_bin.between(0, grid.nx - 1)
+        & bins_numeric.start_y_bin.between(0, grid.ny - 1)
+        & bins_numeric.end_y_bin.between(0, grid.ny - 1)
     )
     _append_flag(flags, ~bin_valid.fillna(False).to_numpy(), "bin_bounds")
     if not bin_valid.fillna(False).all():
         errors.append("bin_out_of_bounds")
 
     expected_centers = {
-        "start_lon_center": grid.lon_min
-        + (bins_numeric.start_lon_bin + 0.5) * grid.dlon,
-        "start_lat_center": grid.lat_min
-        + (bins_numeric.start_lat_bin + 0.5) * grid.dlat,
-        "end_lon_center": grid.lon_min + (bins_numeric.end_lon_bin + 0.5) * grid.dlon,
-        "end_lat_center": grid.lat_min + (bins_numeric.end_lat_bin + 0.5) * grid.dlat,
+        "start_x_center": grid.x_min
+        + (bins_numeric.start_x_bin + 0.5) * grid.dx,
+        "start_y_center": grid.y_min
+        + (bins_numeric.start_y_bin + 0.5) * grid.dy,
+        "end_x_center": grid.x_min + (bins_numeric.end_x_bin + 0.5) * grid.dx,
+        "end_y_center": grid.y_min + (bins_numeric.end_y_bin + 0.5) * grid.dy,
     }
     center_valid = np.ones(len(links), dtype=bool)
     for column, expected in expected_centers.items():
@@ -233,7 +242,7 @@ def validate_transition_table(
             pd.to_numeric(links[column], errors="coerce").to_numpy(float),
             expected.to_numpy(float),
             rtol=0.0,
-            atol=config.center_atol_degrees,
+            atol=config.center_atol,
         )
     _append_flag(flags, ~center_valid, "grid_center")
     if not center_valid.all():
@@ -249,15 +258,15 @@ def validate_transition_table(
     rows = pd.DataFrame()
     probability_identity_valid = np.zeros(len(links), dtype=bool)
     if can_aggregate and len(links):
-        links["start_cell_id"] = links.start_lat_bin.astype(
+        links["start_cell_id"] = links.start_y_bin.astype(
             np.int64
-        ) * grid.nlon + links.start_lon_bin.astype(np.int64)
-        links["end_cell_id"] = links.end_lat_bin.astype(
+        ) * grid.nx + links.start_x_bin.astype(np.int64)
+        links["end_cell_id"] = links.end_y_bin.astype(
             np.int64
-        ) * grid.nlon + links.end_lon_bin.astype(np.int64)
+        ) * grid.nx + links.end_x_bin.astype(np.int64)
         links["is_stay"] = links.start_cell_id.eq(links.end_cell_id)
         grouped = links.groupby(
-            ["start_cell_id", "start_lon_bin", "start_lat_bin"], sort=True
+            ["start_cell_id", "start_x_bin", "start_y_bin"], sort=True
         )
         n_out = grouped.transition_count.transform("sum")
         links["N_out_total"] = n_out.astype(np.int64)
@@ -336,13 +345,13 @@ def validate_transition_table(
     return ValidationResult(links, rows, invalid_links, summary, tuple(errors))
 
 
-def _support_dataset(cells: pd.DataFrame, grid: GridConfig) -> xr.Dataset:
+def _support_dataset(cells: pd.DataFrame, grid: Any) -> xr.Dataset:
     coords = {
-        "lat": grid.lat_min + (np.arange(grid.nlat) + 0.5) * grid.dlat,
-        "lon": grid.lon_min + (np.arange(grid.nlon) + 0.5) * grid.dlon,
+        "y": grid.y_min + (np.arange(grid.ny) + 0.5) * grid.dy,
+        "x": grid.x_min + (np.arange(grid.nx) + 0.5) * grid.dx,
     }
     variables: dict[str, tuple[tuple[str, str], np.ndarray]] = {}
-    excluded = {"cell_id", "lon_bin", "lat_bin", "lon", "lat"}
+    excluded = {"cell_id", "x_bin", "y_bin", "x", "y"}
     for column in cells.columns:
         if column in excluded:
             continue
@@ -352,22 +361,22 @@ def _support_dataset(cells: pd.DataFrame, grid: GridConfig) -> xr.Dataset:
         ):
             continue
         if pd.api.types.is_bool_dtype(series):
-            array = np.zeros((grid.nlat, grid.nlon), dtype=np.int8)
+            array = np.zeros((grid.ny, grid.nx), dtype=np.int8)
             values = series.astype(np.int8).to_numpy()
         elif pd.api.types.is_integer_dtype(series):
-            array = np.zeros((grid.nlat, grid.nlon), dtype=np.int64)
+            array = np.zeros((grid.ny, grid.nx), dtype=np.int64)
             values = series.to_numpy(dtype=np.int64)
         else:
-            array = np.full((grid.nlat, grid.nlon), np.nan, dtype=float)
+            array = np.full((grid.ny, grid.nx), np.nan, dtype=float)
             values = series.to_numpy(dtype=float)
-        array[cells.lat_bin.to_numpy(dtype=int), cells.lon_bin.to_numpy(dtype=int)] = (
+        array[cells.y_bin.to_numpy(dtype=int), cells.x_bin.to_numpy(dtype=int)] = (
             values
         )
-        variables[column] = (("lat", "lon"), array)
+        variables[column] = (("y", "x"), array)
     dataset = xr.Dataset(variables, coords=coords)
     dataset.attrs.update(
-        representation="regular 1-degree Stage 0 support fields",
-        longitude_periodic=str(grid.periodic_longitude).lower(),
+        representation="regular-grid Stage 0 support fields",
+        x_periodic=str(grid.periodic_x).lower(),
         unpopulated_count_value=0,
         undefined_fraction_value="NaN",
     )
@@ -376,7 +385,7 @@ def _support_dataset(cells: pd.DataFrame, grid: GridConfig) -> xr.Dataset:
 
 def compute_support_fields(
     links: pd.DataFrame,
-    grid: GridConfig,
+    grid: Any,
     thresholds: tuple[int, ...],
 ) -> SupportResult:
     required = {"start_cell_id", "end_cell_id", "is_stay", "transition_count"}
@@ -386,10 +395,10 @@ def compute_support_fields(
 
     cell_ids = np.union1d(links.start_cell_id.unique(), links.end_cell_id.unique())
     cells = pd.DataFrame({"cell_id": cell_ids.astype(np.int64)})
-    cells["lon_bin"] = (cells.cell_id % grid.nlon).astype(np.int64)
-    cells["lat_bin"] = (cells.cell_id // grid.nlon).astype(np.int64)
-    cells["lon"] = grid.lon_min + (cells.lon_bin + 0.5) * grid.dlon
-    cells["lat"] = grid.lat_min + (cells.lat_bin + 0.5) * grid.dlat
+    cells["x_bin"] = (cells.cell_id % grid.nx).astype(np.int64)
+    cells["y_bin"] = (cells.cell_id // grid.nx).astype(np.int64)
+    cells["x"] = grid.x_min + (cells.x_bin + 0.5) * grid.dx
+    cells["y"] = grid.y_min + (cells.y_bin + 0.5) * grid.dy
 
     moving = links.loc[~links.is_stay]
     aggregations = {
@@ -416,7 +425,7 @@ def compute_support_fields(
     cells["P_move"] = np.where(cells.N_out_total > 0, 1.0 - cells.P_stay, np.nan)
 
     coverage_records: list[dict[str, Any]] = []
-    domain_cells = grid.nlon * grid.nlat
+    domain_cells = grid.nx * grid.ny
     union_cells = len(cells)
     for count_field in COUNT_FIELDS:
         positive = int((cells[count_field] > 0).sum())
@@ -488,28 +497,26 @@ def _wrap_bearing_degrees(values: np.ndarray) -> np.ndarray:
     return wrapped
 
 
-def _stage1_dataset(cells: pd.DataFrame, grid: GridConfig) -> xr.Dataset:
+def _stage1_dataset(cells: pd.DataFrame, grid: Any) -> xr.Dataset:
     return _support_dataset(cells, grid).assign_attrs(
-        representation="regular 1-degree Stage 0 support and Stage 1 outward fields",
-        velocity_time_basis="configured timestep in days",
-        direction_convention="degrees clockwise from geographic north in [0, 360)",
+        representation="regular-grid Stage 0 support and Stage 1 outward fields",
+        velocity_time_basis="configured timestep and time unit",
+        direction_convention="degrees clockwise from positive y in [0, 360)",
     )
 
 
 def compute_stage1_fields(
     links: pd.DataFrame,
     support_cells: pd.DataFrame,
-    grid: GridConfig,
+    grid: Any,
     *,
-    timestep_days: float,
-    geometry: GeometryConfig,
+    timestep: float,
+    geometry: SpatialGeometry,
     config: Stage1Config,
 ) -> Stage1Fields:
     """Compute unmasked outward first moments from the supplied sparse links."""
-    from pyproj import Geod
-
-    if timestep_days <= 0:
-        raise ValueError("timestep_days must be positive")
+    if timestep <= 0:
+        raise ValueError("timestep must be positive")
     required = {
         *REQUIRED_COLUMNS,
         "start_cell_id",
@@ -521,27 +528,28 @@ def compute_stage1_fields(
     if missing:
         raise ValueError(f"Validated links missing Stage 1 columns: {missing}")
 
-    geod = Geod(ellps=geometry.ellipsoid)
     stage_links = links.copy()
-    start_lon = stage_links.start_lon_center.to_numpy(float)
-    start_lat = stage_links.start_lat_center.to_numpy(float)
-    end_lon = stage_links.end_lon_center.to_numpy(float)
-    end_lat = stage_links.end_lat_center.to_numpy(float)
+    start_x = stage_links.start_x_center.to_numpy(float)
+    start_y = stage_links.start_y_center.to_numpy(float)
+    end_x = stage_links.end_x_center.to_numpy(float)
+    end_y = stage_links.end_y_center.to_numpy(float)
     if len(stage_links) == 1:
-        scalar_geometry = geod.inv(
-            float(start_lon[0]),
-            float(start_lat[0]),
-            float(end_lon[0]),
-            float(end_lat[0]),
+        scalar_geometry = geometry.inverse(
+            float(start_x[0]),
+            float(start_y[0]),
+            float(end_x[0]),
+            float(end_y[0]),
         )
-        forward, back, distance_m = (
+        forward, back, distance_length = (
             np.asarray([value], dtype=float) for value in scalar_geometry
         )
     else:
-        forward, back, distance_m = geod.inv(start_lon, start_lat, end_lon, end_lat)
-    distance_km = np.asarray(distance_m, dtype=float) / 1000.0
+        forward, back, distance_length = geometry.inverse(
+            start_x, start_y, end_x, end_y
+        )
+    distance_length = np.asarray(distance_length, dtype=float)
     moving_mask = ~stage_links.is_stay.to_numpy(bool)
-    distance_km[~moving_mask] = 0.0
+    distance_length[~moving_mask] = 0.0
     source_bearing = _wrap_bearing_degrees(np.asarray(forward, dtype=float))
     source_side_bearing = _wrap_bearing_degrees(np.asarray(back, dtype=float))
     arrival_bearing = _wrap_bearing_degrees(source_side_bearing + 180.0)
@@ -550,12 +558,12 @@ def compute_stage1_fields(
     arrival_bearing[~moving_mask] = np.nan
     radians = np.deg2rad(np.nan_to_num(source_bearing, nan=0.0))
 
-    stage_links["distance_km"] = distance_km
+    stage_links["distance_length"] = distance_length
     stage_links["source_forward_bearing"] = source_bearing
     stage_links["theta_in_source"] = source_side_bearing
     stage_links["theta_in_motion_destination"] = arrival_bearing
-    stage_links["dx_source_km"] = distance_km * np.sin(radians)
-    stage_links["dy_source_km"] = distance_km * np.cos(radians)
+    stage_links["dx_source_length"] = distance_length * np.sin(radians)
+    stage_links["dy_source_length"] = distance_length * np.cos(radians)
     stage_links["conditional_moving_probability"] = np.nan
     n_move_by_source = (
         stage_links.loc[moving_mask].groupby("start_cell_id").transition_count.sum()
@@ -569,41 +577,41 @@ def compute_stage1_fields(
     )
 
     counts = stage_links.transition_count.to_numpy(float)
-    stage_links["count_dx_km"] = counts * stage_links.dx_source_km
-    stage_links["count_dy_km"] = counts * stage_links.dy_source_km
-    stage_links["count_distance_km"] = counts * stage_links.distance_km
+    stage_links["count_dx_length"] = counts * stage_links.dx_source_length
+    stage_links["count_dy_length"] = counts * stage_links.dy_source_length
+    stage_links["count_distance_length"] = counts * stage_links.distance_length
     all_moments = stage_links.groupby("start_cell_id", sort=True).agg(
         N_out_total_stage1=("transition_count", "sum"),
-        sum_count_dx_all=("count_dx_km", "sum"),
-        sum_count_dy_all=("count_dy_km", "sum"),
+        sum_count_dx_all=("count_dx_length", "sum"),
+        sum_count_dy_all=("count_dy_length", "sum"),
     )
     moving_links = stage_links.loc[moving_mask].copy()
     moving_moments = moving_links.groupby("start_cell_id", sort=True).agg(
         N_out_move_stage1=("transition_count", "sum"),
-        sum_count_dx_move=("count_dx_km", "sum"),
-        sum_count_dy_move=("count_dy_km", "sum"),
-        sum_count_distance_move=("count_distance_km", "sum"),
+        sum_count_dx_move=("count_dx_length", "sum"),
+        sum_count_dy_move=("count_dy_length", "sum"),
+        sum_count_distance_move=("count_distance_length", "sum"),
     )
     moments = all_moments.join(moving_moments, how="left").reset_index()
     moments["N_out_move_stage1"] = moments.N_out_move_stage1.fillna(0).astype(np.int64)
-    moments["mu_out_all_east_km"] = (
+    moments["mu_out_all_x_length"] = (
         moments.sum_count_dx_all / moments.N_out_total_stage1
     )
-    moments["mu_out_all_north_km"] = (
+    moments["mu_out_all_y_length"] = (
         moments.sum_count_dy_all / moments.N_out_total_stage1
     )
     has_move = moments.N_out_move_stage1.gt(0)
-    moments["mu_out_move_east_km"] = np.where(
+    moments["mu_out_move_x_length"] = np.where(
         has_move,
         moments.sum_count_dx_move / moments.N_out_move_stage1,
         np.nan,
     )
-    moments["mu_out_move_north_km"] = np.where(
+    moments["mu_out_move_y_length"] = np.where(
         has_move,
         moments.sum_count_dy_move / moments.N_out_move_stage1,
         np.nan,
     )
-    moments["mean_moving_distance_km"] = np.where(
+    moments["mean_moving_distance_length"] = np.where(
         has_move,
         moments.sum_count_distance_move / moments.N_out_move_stage1,
         np.nan,
@@ -614,8 +622,8 @@ def compute_stage1_fields(
         record: dict[str, Any] = {"start_cell_id": int(cell_id)}
         for quantile in config.distance_quantiles:
             label = round(100 * quantile)
-            record[f"moving_distance_q{label:02d}_km"] = _weighted_quantile(
-                group.distance_km.to_numpy(float),
+            record[f"moving_distance_q{label:02d}_length"] = _weighted_quantile(
+                group.distance_length.to_numpy(float),
                 group.transition_count.to_numpy(float),
                 quantile,
             )
@@ -626,31 +634,27 @@ def compute_stage1_fields(
         )
 
     vector_definitions = {
-        "move": ("mu_out_move_east_km", "mu_out_move_north_km"),
-        "all": ("mu_out_all_east_km", "mu_out_all_north_km"),
+        "move": ("mu_out_move_x_length", "mu_out_move_y_length"),
+        "all": ("mu_out_all_x_length", "mu_out_all_y_length"),
     }
-    for label, (east_name, north_name) in vector_definitions.items():
-        magnitude_name = f"mu_out_{label}_magnitude_km"
-        moments[magnitude_name] = np.hypot(moments[east_name], moments[north_name])
-        moments[f"U_out_{label}_east_km_day"] = moments[east_name] / timestep_days
-        moments[f"U_out_{label}_north_km_day"] = moments[north_name] / timestep_days
-        moments[f"U_out_{label}_magnitude_km_day"] = (
-            moments[magnitude_name] / timestep_days
+    for label, (x_name, y_name) in vector_definitions.items():
+        magnitude_name = f"mu_out_{label}_magnitude_length"
+        moments[magnitude_name] = np.hypot(moments[x_name], moments[y_name])
+        moments[f"U_out_{label}_x_rate"] = moments[x_name] / timestep
+        moments[f"U_out_{label}_y_rate"] = moments[y_name] / timestep
+        moments[f"U_out_{label}_magnitude_rate"] = (
+            moments[magnitude_name] / timestep
         )
-        moments[f"U_out_{label}_magnitude_m_s"] = (
-            moments[f"U_out_{label}_magnitude_km_day"] * 1000.0 / 86400.0
-        )
-
-    move_magnitude = moments.mu_out_move_magnitude_km.to_numpy(float)
+    move_magnitude = moments.mu_out_move_magnitude_length.to_numpy(float)
     theta_defined = np.isfinite(move_magnitude) & (
-        move_magnitude > config.direction_zero_tolerance_km
+        move_magnitude > config.direction_zero_tolerance
     )
     theta = np.full(len(moments), np.nan, dtype=float)
     theta[theta_defined] = _wrap_bearing_degrees(
         np.rad2deg(
             np.arctan2(
-                moments.loc[theta_defined, "mu_out_move_east_km"],
-                moments.loc[theta_defined, "mu_out_move_north_km"],
+                moments.loc[theta_defined, "mu_out_move_x_length"],
+                moments.loc[theta_defined, "mu_out_move_y_length"],
             )
         )
     )
@@ -676,33 +680,33 @@ def compute_stage1_fields(
         how="left",
     ).drop(columns="start_cell_id")
     source_mask = cells.N_out_total.gt(0)
-    cells["U_out_reduction_km_day"] = (
-        cells.U_out_move_magnitude_km_day - cells.U_out_all_magnitude_km_day
+    cells["U_out_reduction_rate"] = (
+        cells.U_out_move_magnitude_rate - cells.U_out_all_magnitude_rate
     )
-    nonzero_move_vector = cells.mu_out_move_magnitude_km.gt(
-        config.direction_zero_tolerance_km
+    nonzero_move_vector = cells.mu_out_move_magnitude_length.gt(
+        config.direction_zero_tolerance
     )
     cells["U_out_retained_fraction"] = np.where(
         nonzero_move_vector,
-        cells.U_out_all_magnitude_km_day / cells.U_out_move_magnitude_km_day,
+        cells.U_out_all_magnitude_rate / cells.U_out_move_magnitude_rate,
         np.nan,
     )
     cells["U_out_reduction_fraction"] = np.where(
         nonzero_move_vector, 1.0 - cells.U_out_retained_fraction, np.nan
     )
-    cells["moment_identity_east_residual_km"] = (
-        cells.mu_out_all_east_km - cells.P_move * cells.mu_out_move_east_km
+    cells["moment_identity_x_residual_length"] = (
+        cells.mu_out_all_x_length - cells.P_move * cells.mu_out_move_x_length
     )
-    cells["moment_identity_north_residual_km"] = (
-        cells.mu_out_all_north_km - cells.P_move * cells.mu_out_move_north_km
+    cells["moment_identity_y_residual_length"] = (
+        cells.mu_out_all_y_length - cells.P_move * cells.mu_out_move_y_length
     )
     cells["retained_fraction_minus_P_move"] = (
         cells.U_out_retained_fraction - cells.P_move
     )
 
-    move_values = cells.loc[cells.N_out_move.gt(0), "U_out_move_magnitude_km_day"]
-    all_values = cells.loc[cells.N_out_move.gt(0), "U_out_all_magnitude_km_day"]
-    reduction_values = cells.loc[cells.N_out_move.gt(0), "U_out_reduction_km_day"]
+    move_values = cells.loc[cells.N_out_move.gt(0), "U_out_move_magnitude_rate"]
+    all_values = cells.loc[cells.N_out_move.gt(0), "U_out_all_magnitude_rate"]
+    reduction_values = cells.loc[cells.N_out_move.gt(0), "U_out_reduction_rate"]
     strong_move_threshold = float(
         move_values.quantile(config.diagnostic_strong_transport_quantile)
     )
@@ -712,19 +716,19 @@ def compute_stage1_fields(
     reduction_threshold = float(
         reduction_values.quantile(config.diagnostic_reduction_quantile)
     )
-    cells["diagnostic_strong_U_out_move"] = cells.U_out_move_magnitude_km_day.ge(
+    cells["diagnostic_strong_U_out_move"] = cells.U_out_move_magnitude_rate.ge(
         strong_move_threshold
     )
-    cells["diagnostic_strong_U_out_all"] = cells.U_out_all_magnitude_km_day.ge(
+    cells["diagnostic_strong_U_out_all"] = cells.U_out_all_magnitude_rate.ge(
         strong_all_threshold
     )
-    cells["diagnostic_top_reduction"] = cells.U_out_reduction_km_day.ge(
+    cells["diagnostic_top_reduction"] = cells.U_out_reduction_rate.ge(
         reduction_threshold
     )
     primary_count = config.primary_visualization_min_moving_count
     cells["diagnostic_weak_moving_support"] = cells.N_out_move.lt(primary_count)
-    identity_east = cells.loc[source_mask, "moment_identity_east_residual_km"].abs()
-    identity_north = cells.loc[source_mask, "moment_identity_north_residual_km"].abs()
+    identity_x = cells.loc[source_mask, "moment_identity_x_residual_length"].abs()
+    identity_y = cells.loc[source_mask, "moment_identity_y_residual_length"].abs()
     retained_residual = cells.loc[
         cells.U_out_retained_fraction.notna(), "retained_fraction_minus_P_move"
     ].abs()
@@ -735,14 +739,14 @@ def compute_stage1_fields(
         "cells_with_zero_or_undefined_moving_vector": int(
             (cells.N_out_move.gt(0) & cells.theta_mu_out.isna()).sum()
         ),
-        "moment_identity_max_abs_east_km": float(identity_east.max()),
-        "moment_identity_max_abs_north_km": float(identity_north.max()),
+        "moment_identity_max_abs_x_length": float(identity_x.max()),
+        "moment_identity_max_abs_y_length": float(identity_y.max()),
         "retained_fraction_minus_P_move_max_abs": float(retained_residual.max()),
         "strong_transport_diagnostic_quantile": config.diagnostic_strong_transport_quantile,
-        "strong_U_out_move_threshold_km_day": strong_move_threshold,
-        "strong_U_out_all_threshold_km_day": strong_all_threshold,
+        "strong_U_out_move_threshold_rate": strong_move_threshold,
+        "strong_U_out_all_threshold_rate": strong_all_threshold,
         "top_reduction_diagnostic_quantile": config.diagnostic_reduction_quantile,
-        "top_reduction_threshold_km_day": reduction_threshold,
+        "top_reduction_threshold_rate": reduction_threshold,
         "strong_U_out_move_cells_below_primary_support": int(
             (
                 cells.diagnostic_strong_U_out_move
@@ -789,7 +793,7 @@ def compute_stage2_fields(
         "transition_count",
         "conditional_moving_probability",
         "source_forward_bearing",
-        "distance_km",
+        "distance_length",
     }
     missing_links = sorted(required_links - set(links.columns))
     if missing_links:
@@ -798,7 +802,7 @@ def compute_stage2_fields(
         "cell_id",
         "N_out_move",
         "theta_mu_out",
-        "U_out_all_magnitude_km_day",
+        "U_out_all_magnitude_rate",
         "diagnostic_strong_U_out_all",
         "diagnostic_strong_U_out_move",
     }
@@ -815,9 +819,9 @@ def compute_stage2_fields(
     moving["M1_imag_contribution"] = probability * np.sin(angle)
     moving["M2_real_contribution"] = probability * np.cos(2.0 * angle)
     moving["M2_imag_contribution"] = probability * np.sin(2.0 * angle)
-    moving["count_distance_km_stage2"] = moving.transition_count * moving.distance_km
-    moving["count_distance_squared_km2"] = (
-        moving.transition_count * moving.distance_km**2
+    moving["count_distance_length_stage2"] = moving.transition_count * moving.distance_length
+    moving["count_distance_squared_length2"] = (
+        moving.transition_count * moving.distance_length**2
     )
     harmonics = (
         moving.groupby("start_cell_id", sort=True)
@@ -827,10 +831,10 @@ def compute_stage2_fields(
             M2_out_real=("M2_real_contribution", "sum"),
             M2_out_imag=("M2_imag_contribution", "sum"),
             N_out_move_stage2=("transition_count", "sum"),
-            moving_distance_max_km=("distance_km", "max"),
-            sum_count_distance_km=("count_distance_km_stage2", "sum"),
-            sum_count_distance_squared_km2=("count_distance_squared_km2", "sum"),
-            max_count_distance_km=("count_distance_km_stage2", "max"),
+            moving_distance_max_length=("distance_length", "max"),
+            sum_count_distance_length=("count_distance_length_stage2", "sum"),
+            sum_count_distance_squared_length2=("count_distance_squared_length2", "sum"),
+            max_count_distance_length=("count_distance_length_stage2", "max"),
         )
         .reset_index()
     )
@@ -887,23 +891,23 @@ def compute_stage2_fields(
     )
     entropy["effective_angular_bins"] = np.exp(entropy.angular_entropy_numerator)
     harmonics = harmonics.merge(entropy, on="start_cell_id", how="left")
-    harmonics["mean_moving_distance_stage2_km"] = (
-        harmonics.sum_count_distance_km / harmonics.N_out_move_stage2
+    harmonics["mean_moving_distance_stage2_length"] = (
+        harmonics.sum_count_distance_length / harmonics.N_out_move_stage2
     )
     second_moment = (
-        harmonics.sum_count_distance_squared_km2 / harmonics.N_out_move_stage2
+        harmonics.sum_count_distance_squared_length2 / harmonics.N_out_move_stage2
     )
-    harmonics["moving_distance_std_km"] = np.sqrt(
+    harmonics["moving_distance_std_length"] = np.sqrt(
         np.maximum(
-            second_moment - harmonics.mean_moving_distance_stage2_km**2,
+            second_moment - harmonics.mean_moving_distance_stage2_length**2,
             0.0,
         )
     )
     harmonics["max_to_mean_moving_distance_ratio"] = (
-        harmonics.moving_distance_max_km / harmonics.mean_moving_distance_stage2_km
+        harmonics.moving_distance_max_length / harmonics.mean_moving_distance_stage2_length
     )
     harmonics["longest_link_distance_leverage_fraction"] = (
-        harmonics.max_count_distance_km / harmonics.sum_count_distance_km
+        harmonics.max_count_distance_length / harmonics.sum_count_distance_length
     )
 
     retained_harmonics = [
@@ -911,9 +915,9 @@ def compute_stage2_fields(
         for column in harmonics.columns
         if column
         not in {
-            "sum_count_distance_km",
-            "sum_count_distance_squared_km2",
-            "max_count_distance_km",
+            "sum_count_distance_length",
+            "sum_count_distance_squared_length2",
+            "max_count_distance_length",
             "angular_entropy_numerator",
         }
     ]
@@ -947,7 +951,7 @@ def compute_stage2_fields(
     primary_fields = cells.loc[
         primary,
         [
-            "U_out_all_magnitude_km_day",
+            "U_out_all_magnitude_rate",
             "R1_out",
             "R2_out",
             "angular_entropy_out",
@@ -995,7 +999,7 @@ def compute_stage2_fields(
             ).sum()
         ),
         "spearman_U_out_all_vs_R1_primary": float(
-            correlations.loc["U_out_all_magnitude_km_day", "R1_out"]
+            correlations.loc["U_out_all_magnitude_rate", "R1_out"]
         ),
         "spearman_delta_vs_max_mean_distance_ratio_primary": float(
             correlations.loc["delta_theta_mu1_out", "max_to_mean_moving_distance_ratio"]
@@ -1040,7 +1044,7 @@ def compute_stage3_fields(
         "end_cell_id",
         "is_stay",
         "transition_count",
-        "distance_km",
+        "distance_length",
         "source_forward_bearing",
         "theta_in_source",
         "theta_in_motion_destination",
@@ -1053,7 +1057,7 @@ def compute_stage3_fields(
         "cell_id",
         "N_out_move",
         "N_in_move",
-        "U_out_all_magnitude_km_day",
+        "U_out_all_magnitude_rate",
         "diagnostic_strong_U_out_all",
         "theta_mu_out",
         "R1_out",
@@ -1083,13 +1087,13 @@ def compute_stage3_fields(
     moving["M1_in_motion_imag_contribution"] = probability * np.sin(motion_angle)
     moving["M2_in_real_contribution"] = probability * np.cos(2.0 * motion_angle)
     moving["M2_in_imag_contribution"] = probability * np.sin(2.0 * motion_angle)
-    moving["count_in_east_km"] = (
-        moving.transition_count * moving.distance_km * np.sin(motion_angle)
+    moving["count_in_x_length"] = (
+        moving.transition_count * moving.distance_length * np.sin(motion_angle)
     )
-    moving["count_in_north_km"] = (
-        moving.transition_count * moving.distance_km * np.cos(motion_angle)
+    moving["count_in_y_length"] = (
+        moving.transition_count * moving.distance_length * np.cos(motion_angle)
     )
-    moving["count_in_distance_km"] = moving.transition_count * moving.distance_km
+    moving["count_in_distance_length"] = moving.transition_count * moving.distance_length
 
     incoming = (
         moving.groupby("end_cell_id", sort=True)
@@ -1101,10 +1105,10 @@ def compute_stage3_fields(
             M2_in_real=("M2_in_real_contribution", "sum"),
             M2_in_imag=("M2_in_imag_contribution", "sum"),
             N_in_move_stage3=("transition_count", "sum"),
-            sum_count_in_east_km=("count_in_east_km", "sum"),
-            sum_count_in_north_km=("count_in_north_km", "sum"),
-            sum_count_in_distance_km=("count_in_distance_km", "sum"),
-            incoming_moving_distance_max_km=("distance_km", "max"),
+            sum_count_in_x_length=("count_in_x_length", "sum"),
+            sum_count_in_y_length=("count_in_y_length", "sum"),
+            sum_count_in_distance_length=("count_in_distance_length", "sum"),
+            incoming_moving_distance_max_length=("distance_length", "max"),
         )
         .reset_index()
     )
@@ -1179,25 +1183,25 @@ def compute_stage3_fields(
     )
     incoming = incoming.merge(entropy, on="end_cell_id", how="left")
 
-    incoming["mu_in_move_east_km"] = (
-        incoming.sum_count_in_east_km / incoming.N_in_move_stage3
+    incoming["mu_in_move_x_length"] = (
+        incoming.sum_count_in_x_length / incoming.N_in_move_stage3
     )
-    incoming["mu_in_move_north_km"] = (
-        incoming.sum_count_in_north_km / incoming.N_in_move_stage3
+    incoming["mu_in_move_y_length"] = (
+        incoming.sum_count_in_y_length / incoming.N_in_move_stage3
     )
-    incoming["mu_in_move_magnitude_km"] = np.hypot(
-        incoming.mu_in_move_east_km, incoming.mu_in_move_north_km
+    incoming["mu_in_move_magnitude_length"] = np.hypot(
+        incoming.mu_in_move_x_length, incoming.mu_in_move_y_length
     )
-    incoming["incoming_moving_distance_mean_km"] = (
-        incoming.sum_count_in_distance_km / incoming.N_in_move_stage3
+    incoming["incoming_moving_distance_mean_length"] = (
+        incoming.sum_count_in_distance_length / incoming.N_in_move_stage3
     )
-    mu_defined = incoming.mu_in_move_magnitude_km.gt(config.harmonic_zero_tolerance)
+    mu_defined = incoming.mu_in_move_magnitude_length.gt(config.harmonic_zero_tolerance)
     incoming["theta_mu_in_motion_destination"] = np.nan
     incoming.loc[mu_defined, "theta_mu_in_motion_destination"] = _wrap_bearing_degrees(
         np.rad2deg(
             np.arctan2(
-                incoming.loc[mu_defined, "mu_in_move_east_km"],
-                incoming.loc[mu_defined, "mu_in_move_north_km"],
+                incoming.loc[mu_defined, "mu_in_move_x_length"],
+                incoming.loc[mu_defined, "mu_in_move_y_length"],
             )
         )
     )
@@ -1215,9 +1219,9 @@ def compute_stage3_fields(
         for column in incoming.columns
         if column
         not in {
-            "sum_count_in_east_km",
-            "sum_count_in_north_km",
-            "sum_count_in_distance_km",
+            "sum_count_in_x_length",
+            "sum_count_in_y_length",
+            "sum_count_in_distance_length",
             "incoming_angular_entropy_numerator",
         }
     ]
@@ -1387,7 +1391,7 @@ def _neighbor_directional_consistency(
     support_threshold: int | None,
 ) -> tuple[np.ndarray, np.ndarray]:
     """Uniform 8-neighbor cosine consistency without bridging absent cells."""
-    required = {"cell_id", "lon_bin", "lat_bin", direction_field, support_field}
+    required = {"cell_id", "x_bin", "y_bin", direction_field, support_field}
     missing = sorted(required - set(cells.columns))
     if missing:
         raise ValueError(f"Neighborhood calculation missing columns: {missing}")
@@ -1397,19 +1401,19 @@ def _neighbor_directional_consistency(
     support_by_id = cells.set_index("cell_id")[support_field]
     focal_direction = cells[direction_field].to_numpy(float)
     focal_support = cells[support_field].to_numpy(float)
-    lon_bin = cells.lon_bin.to_numpy(np.int64)
-    lat_bin = cells.lat_bin.to_numpy(np.int64)
+    x_bin = cells.x_bin.to_numpy(np.int64)
+    y_bin = cells.y_bin.to_numpy(np.int64)
     contribution_sum = np.zeros(len(cells), dtype=float)
     valid_neighbor_count = np.zeros(len(cells), dtype=np.int64)
     for delta_lat, delta_lon in NEIGHBOR_OFFSETS_8:
-        neighbor_lat = lat_bin + delta_lat
-        neighbor_lon = lon_bin + delta_lon
-        valid_coordinate = (neighbor_lat >= 0) & (neighbor_lat < grid.nlat)
-        if grid.periodic_longitude:
-            neighbor_lon = np.remainder(neighbor_lon, grid.nlon)
+        neighbor_lat = y_bin + delta_lat
+        neighbor_lon = x_bin + delta_lon
+        valid_coordinate = (neighbor_lat >= 0) & (neighbor_lat < grid.ny)
+        if grid.periodic_x:
+            neighbor_lon = np.remainder(neighbor_lon, grid.nx)
         else:
-            valid_coordinate &= (neighbor_lon >= 0) & (neighbor_lon < grid.nlon)
-        neighbor_id = neighbor_lat * grid.nlon + neighbor_lon
+            valid_coordinate &= (neighbor_lon >= 0) & (neighbor_lon < grid.nx)
+        neighbor_id = neighbor_lat * grid.nx + neighbor_lon
         mapped_id = pd.Series(neighbor_id).where(valid_coordinate)
         neighbor_direction = mapped_id.map(direction_by_id).to_numpy(float)
         neighbor_support = mapped_id.map(support_by_id).to_numpy(float)
@@ -1449,16 +1453,16 @@ def _stage4_transport_level_comparison(
     ):
         population = (
             cells.N_out_move.ge(support_threshold)
-            & cells.U_out_all_magnitude_km_day.notna()
-            & cells.U_coh_km_day.notna()
+            & cells.U_out_all_magnitude_rate.notna()
+            & cells.U_coh_rate.notna()
         )
-        values = cells.loc[population, ["U_out_all_magnitude_km_day", "U_coh_km_day"]]
+        values = cells.loc[population, ["U_out_all_magnitude_rate", "U_coh_rate"]]
         for quantile in config.transport_percentiles:
             label = round(100 * quantile)
-            threshold_u = float(values.U_out_all_magnitude_km_day.quantile(quantile))
-            threshold_coh = float(values.U_coh_km_day.quantile(quantile))
-            selected_u = population & cells.U_out_all_magnitude_km_day.ge(threshold_u)
-            selected_coh = population & cells.U_coh_km_day.ge(threshold_coh)
+            threshold_u = float(values.U_out_all_magnitude_rate.quantile(quantile))
+            threshold_coh = float(values.U_coh_rate.quantile(quantile))
+            selected_u = population & cells.U_out_all_magnitude_rate.ge(threshold_u)
+            selected_coh = population & cells.U_coh_rate.ge(threshold_coh)
             intersection = selected_u & selected_coh
             union = selected_u | selected_coh
             cells[f"stage4_U_out_all_ge_q{label}_support_{support_threshold}"] = (
@@ -1471,8 +1475,8 @@ def _stage4_transport_level_comparison(
                 {
                     "support_threshold": support_threshold,
                     "quantile": quantile,
-                    "U_out_all_threshold_km_day": threshold_u,
-                    "U_coh_threshold_km_day": threshold_coh,
+                    "U_out_all_threshold_rate": threshold_u,
+                    "U_coh_threshold_rate": threshold_coh,
                     "n_population": int(population.sum()),
                     "n_U_out_all_selected": int(selected_u.sum()),
                     "n_U_coh_selected": int(selected_coh.sum()),
@@ -1575,8 +1579,8 @@ def _stage4_persistence_review(
         support = cells.N_out_move.ge(support_threshold)
         persistence = cells[f"C_neigh_out_1_ge_{support_threshold}"]
         for candidate_field in (
-            "U_out_all_magnitude_km_day",
-            "U_coh_km_day",
+            "U_out_all_magnitude_rate",
+            "U_coh_rate",
         ):
             for quantile in config.transport_percentiles:
                 label = round(100 * quantile)
@@ -1709,12 +1713,12 @@ def _stage4_low_alignment_review(
         "stage4_interpretation_reason",
         "stage4_interpretation_is_provisional",
         "cell_id",
-        "lon",
-        "lat",
+        "x",
+        "y",
         "N_out_move",
         "N_in_move",
-        "U_out_all_magnitude_km_day",
-        "U_coh_km_day",
+        "U_out_all_magnitude_rate",
+        "U_coh_rate",
         "R1_out",
         "R2_out",
         "delta_theta_mu1_out",
@@ -1736,7 +1740,7 @@ def _stage4_low_alignment_review(
         "stage4_incoming_complex_geometry_evidence",
     ]
     return review.loc[:, retained].sort_values(
-        ["stage4_low_alignment_interpretation", "U_out_all_magnitude_km_day"],
+        ["stage4_low_alignment_interpretation", "U_out_all_magnitude_rate"],
         ascending=[True, False],
         kind="stable",
     )
@@ -1756,14 +1760,14 @@ def _stage4_representatives(
         (
             "transport_backbone_stable_under_coherence_weighting",
             q95_u & q95_coh,
-            cells.U_out_all_magnitude_km_day,
+            cells.U_out_all_magnitude_rate,
             "top-5% transport under both raw and coherence-weighted comparisons",
             q95_u,
         ),
         (
             "coherence_weighting_suppresses_transport_cell",
             q95_u & ~q95_coh,
-            cells.U_out_all_magnitude_km_day * (1.0 - cells.R1_out),
+            cells.U_out_all_magnitude_rate * (1.0 - cells.R1_out),
             "top-5% raw transport omitted from top-5% U_coh",
             q95_u,
         ),
@@ -1773,7 +1777,7 @@ def _stage4_representatives(
             & cells.R1_out.ge(stage2.high_R1)
             & cells.N_out_move.ge(primary)
             & cells.delta_theta_mu1_out.ge(config.direction_difference_review_degrees),
-            cells.U_out_all_magnitude_km_day * cells.delta_theta_mu1_out,
+            cells.U_out_all_magnitude_rate * cells.delta_theta_mu1_out,
             "strong reliable outgoing transport with material theta_mu/theta1 disagreement",
             cells.diagnostic_strong_U_out_all
             & cells.R1_out.ge(stage2.high_R1)
@@ -1789,7 +1793,7 @@ def _stage4_representatives(
             fallback = True
         candidates["selection_score"] = score.loc[candidates.index]
         candidates = candidates.sort_values(
-            ["selection_score", "U_out_all_magnitude_km_day"],
+            ["selection_score", "U_out_all_magnitude_rate"],
             ascending=False,
             kind="stable",
         ).head(config.representative_cells_per_category)
@@ -1805,14 +1809,14 @@ def _stage4_representatives(
     ):
         selected_ids = group.nlargest(
             config.representative_cells_per_category,
-            "U_out_all_magnitude_km_day",
+            "U_out_all_magnitude_rate",
         ).cell_id
         candidates = (
             cells.loc[cells.cell_id.isin(selected_ids)]
             .copy()
-            .sort_values("U_out_all_magnitude_km_day", ascending=False, kind="stable")
+            .sort_values("U_out_all_magnitude_rate", ascending=False, kind="stable")
         )
-        candidates["selection_score"] = candidates.U_out_all_magnitude_km_day
+        candidates["selection_score"] = candidates.U_out_all_magnitude_rate
         candidates.insert(
             0, "stage4_representative_category", f"low_alignment_{interpretation}"
         )
@@ -1834,12 +1838,12 @@ def _stage4_representatives(
         "selection_used_fallback",
         "selection_score",
         "cell_id",
-        "lon",
-        "lat",
+        "x",
+        "y",
         "N_out_move",
         "N_in_move",
-        "U_out_all_magnitude_km_day",
-        "U_coh_km_day",
+        "U_out_all_magnitude_rate",
+        "U_coh_rate",
         "R1_out",
         "R2_out",
         "theta_mu_out",
@@ -1876,7 +1880,7 @@ def compute_stage4_fields(
         "cell_id",
         "N_out_move",
         "N_in_move",
-        "U_out_all_magnitude_km_day",
+        "U_out_all_magnitude_rate",
         "theta_mu_out",
         "theta1_out",
         "R1_out",
@@ -1909,8 +1913,8 @@ def compute_stage4_fields(
     if missing:
         raise ValueError(f"Stage 3B fields missing Stage 4 columns: {missing}")
     cells = stage3b_cells.copy()
-    cells["S_transport_km_day"] = cells.U_out_all_magnitude_km_day
-    cells["U_coh_km_day"] = cells.U_out_all_magnitude_km_day * cells.R1_out
+    cells["S_transport_rate"] = cells.U_out_all_magnitude_rate
+    cells["U_coh_rate"] = cells.U_out_all_magnitude_rate * cells.R1_out
     cells["U_coh_fraction_of_transport"] = cells.R1_out
     cells["delta_theta_io_1"] = np.nan
     turn1_defined = (
@@ -1961,8 +1965,8 @@ def compute_stage4_fields(
     primary = stage1.primary_visualization_min_moving_count
     sensitivity = stage1.sensitivity_visualization_min_moving_count
     summary: dict[str, Any] = {
-        "primary_candidate_backbone_field": "U_out_all_magnitude_km_day",
-        "optional_comparison_field": "U_coh_km_day = U_out_all_magnitude_km_day * R1_out",
+        "primary_candidate_backbone_field": "U_out_all_magnitude_rate",
+        "optional_comparison_field": "U_coh_rate = U_out_all_magnitude_rate * R1_out",
         "master_score_created": False,
         "branch_threshold_selected": False,
         "branch_extraction_implemented": False,
@@ -1992,7 +1996,7 @@ def compute_stage4_fields(
             & cells.R1_in.ge(stage2.high_R1)
             & cells.N_in_move.ge(threshold)
         )
-        rank_pair = cells.loc[mask, ["U_out_all_magnitude_km_day", "U_coh_km_day"]]
+        rank_pair = cells.loc[mask, ["U_out_all_magnitude_rate", "U_coh_rate"]]
         summary.update(
             {
                 f"ge_{threshold}_spearman_U_out_all_vs_U_coh": float(
@@ -2101,8 +2105,8 @@ def compute_stage4_fields(
             .to_dict()
         )
     dataset = _stage1_dataset(cells, grid).assign_attrs(
-        stage4_primary_backbone="U_out_all_magnitude_km_day",
-        stage4_optional_comparison="U_coh_km_day",
+        stage4_primary_backbone="U_out_all_magnitude_rate",
+        stage4_optional_comparison="U_coh_rate",
         stage4_master_score="not created",
         stage4_branch_threshold="not selected",
         stage4_branch_extraction="not implemented",

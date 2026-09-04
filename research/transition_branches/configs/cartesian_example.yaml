@@ -1,0 +1,79 @@
+# Example configuration for a transition matrix defined on a regular Cartesian
+# grid. Relative paths are resolved from this YAML file's directory.
+
+input:
+  transition_table: "../../../data/cartesian_transition_matrix.parquet"
+  matrix_id: cartesian_example
+
+  # Physical elapsed time represented by every transition. Here each
+  # transition spans one second.
+  timestep: 1.0
+  time_unit: s
+
+output:
+  root: "../../../outputs/transition_branches_cartesian"
+  run_name: cartesian_example
+
+geometry:
+  coordinate_system: cartesian
+
+  # x/y grid values and Parquet centre coordinates are expressed in metres.
+  # Together with time_unit: s, calculated rates are written in m/s (_m_s).
+  length_unit: m
+
+grid:
+  # A 1.0 m by 0.5 m domain divided into 0.01 m square cells. Cartesian grids
+  # are non-periodic. Each range must be an integer multiple of its spacing.
+  x_min: 0.0
+  x_max: 1.0
+  y_min: 0.0
+  y_max: 0.5
+  dx: 0.01
+  dy: 0.01
+
+statistics:
+  # Minimum summed transition_count over moving destinations for a source cell.
+  min_moving_support: 10
+  angular_bins: 36
+
+branches:
+  # Retain transverse ridges in the top 10% of the supported transport field.
+  transport_percentile: 0.9
+  ridge_field: raw
+  transverse_scale_grid: 1.0
+
+directional:
+  minimum_P_move: 0.5
+  minimum_R1: 0.8
+  minimum_strength: 0.5
+  maximum_neighbor_direction_difference_degrees: 45.0
+  maximum_step_direction_mismatch_degrees: 45.0
+  minimum_component_cells: 3
+  transverse_scale_grid: 1.0
+
+edges:
+  half_width_grid_scales: 5
+  sampling_interval_grid_scales: 1.0
+  core_refinement_grid_scales: 1.0
+  robust_median_window_samples: 3
+  composite_half_window_sections: 2
+  minimum_persistent_neighbor_sections: 2
+  minimum_persistent_fraction: 0.5
+
+validation:
+  gradient_search_radius_grid_scales: 1.0
+  local_background_radius_grid_scales: 2.0
+
+plotting:
+  enabled: true
+  dpi: 160
+  vector_stride_cells: 5
+
+  # Physical vector reference in m/s. Directional vectors are dimensionless.
+  vector_reference: 0.05
+  directional_vector_reference: 0.5
+  structure_map_max_percentile: 100.0
+  debug_plots: false
+
+write_debug_outputs: false
+run_validation: true

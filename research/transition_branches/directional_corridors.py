@@ -7,13 +7,14 @@ from typing import Any
 
 import numpy as np
 import pandas as pd
-from pyproj import Geod
 
 from .config import CompactConfig
 from .geometry import (
     NEIGHBOR_OFFSETS_8,
+    SpatialGeometry,
     bilinear_supported_sample,
     grid_array,
+    make_spatial_geometry,
     physical_cell_scales,
     signed_angle_difference,
 )
@@ -28,18 +29,18 @@ class DirectionalCorridorSolution:
 
 
 def _neighbor_ids(cell_id: int, grid: Any) -> list[int]:
-    lat_bin, lon_bin = divmod(int(cell_id), grid.nlon)
+    y_bin, x_bin = divmod(int(cell_id), grid.nx)
     neighbors: list[int] = []
     for delta_lat, delta_lon in NEIGHBOR_OFFSETS_8:
-        neighbor_lat = lat_bin + delta_lat
-        neighbor_lon = lon_bin + delta_lon
-        if neighbor_lat < 0 or neighbor_lat >= grid.nlat:
+        neighbor_lat = y_bin + delta_lat
+        neighbor_lon = x_bin + delta_lon
+        if neighbor_lat < 0 or neighbor_lat >= grid.ny:
             continue
-        if grid.periodic_longitude:
-            neighbor_lon %= grid.nlon
-        elif neighbor_lon < 0 or neighbor_lon >= grid.nlon:
+        if grid.periodic_x:
+            neighbor_lon %= grid.nx
+        elif neighbor_lon < 0 or neighbor_lon >= grid.nx:
             continue
-        neighbors.append(neighbor_lat * grid.nlon + neighbor_lon)
+        neighbors.append(neighbor_lat * grid.nx + neighbor_lon)
     return neighbors
 
 
@@ -53,7 +54,7 @@ def _axial_step_mismatch(direction: float, bearing: float) -> float:
 def _compatible_graph(
     candidates: pd.DataFrame,
     grid: Any,
-    geod: Geod,
+    geometry: SpatialGeometry,
     *,
     maximum_direction_difference: float,
     maximum_step_mismatch: float,
@@ -78,11 +79,11 @@ def _compatible_graph(
             )
             if direction_difference > maximum_direction_difference:
                 continue
-            forward, backward, distance_m = geod.inv(
-                float(first.lon),
-                float(first.lat),
-                float(second.lon),
-                float(second.lat),
+            forward, backward, distance = geometry.inverse(
+                float(first.x),
+                float(first.y),
+                float(second.x),
+                float(second.y),
             )
             first_step_mismatch = _axial_step_mismatch(
                 float(first.theta1_out), float(forward)
@@ -98,7 +99,7 @@ def _compatible_graph(
                 {
                     "first_cell_id": first_id,
                     "second_cell_id": second_id,
-                    "edge_length_km": float(distance_m) / 1000.0,
+                    "edge_length_length": float(distance),
                     "direction_difference_degrees": direction_difference,
                     "first_step_mismatch_degrees": first_step_mismatch,
                     "second_step_mismatch_degrees": second_step_mismatch,
@@ -155,12 +156,12 @@ def _add_transverse_observability(
     corridors: pd.DataFrame,
     cells: pd.DataFrame,
     config: CompactConfig,
-    geod: Geod,
+    geometry: SpatialGeometry,
 ) -> pd.DataFrame:
     output = corridors.copy()
     if output.empty:
         for field, dtype in (
-            ("grid_effective_scale_km", "float64"),
+            ("grid_effective_scale_length", "float64"),
             ("transverse_left_evaluable", "bool"),
             ("transverse_right_evaluable", "bool"),
             ("transverse_left_status", "object"),
@@ -174,32 +175,32 @@ def _add_transverse_observability(
         return output
 
     strength = grid_array(cells, config.grid, "D_out_all_magnitude")
-    east = grid_array(cells, config.grid, "D_out_all_east")
-    north = grid_array(cells, config.grid, "D_out_all_north")
+    east = grid_array(cells, config.grid, "D_out_all_x")
+    north = grid_array(cells, config.grid, "D_out_all_y")
     support = (
         grid_array(cells, config.grid, "N_out_move")
         >= config.statistics.min_moving_support
     ) & np.isfinite(strength) & np.isfinite(east) & np.isfinite(north)
-    _, _, effective_m = physical_cell_scales(output, config.grid, geod)
-    distance_m = config.directional.transverse_scale_grid * effective_m
+    _, _, effective_scale = physical_cell_scales(output, config.grid, geometry)
+    distance = config.directional.transverse_scale_grid * effective_scale
     theta = output.theta1_out.to_numpy(float)
-    lon = output.lon.to_numpy(float)
-    lat = output.lat.to_numpy(float)
-    left_lon, left_lat, _ = geod.fwd(lon, lat, theta - 90.0, distance_m)
-    right_lon, right_lat, _ = geod.fwd(lon, lat, theta + 90.0, distance_m)
+    x = output.x.to_numpy(float)
+    y = output.y.to_numpy(float)
+    left_x, left_y, _ = geometry.forward(x, y, theta - 90.0, distance)
+    right_x, right_y, _ = geometry.forward(x, y, theta + 90.0, distance)
     left, left_boundary, left_missing = bilinear_supported_sample(
         strength,
         support,
-        left_lon,
-        left_lat,
+        left_x,
+        left_y,
         config.grid,
         weight_tolerance=config.branches.interpolation_weight_tolerance,
     )
     right, right_boundary, right_missing = bilinear_supported_sample(
         strength,
         support,
-        right_lon,
-        right_lat,
+        right_x,
+        right_y,
         config.grid,
         weight_tolerance=config.branches.interpolation_weight_tolerance,
     )
@@ -219,11 +220,11 @@ def _add_transverse_observability(
     observability[np.logical_xor(left_evaluable, right_evaluable)] = "one_sided"
     observability[left_evaluable & right_evaluable] = "two_sided"
 
-    output["grid_effective_scale_km"] = effective_m / 1000.0
-    output["transverse_left_lon"] = left_lon
-    output["transverse_left_lat"] = left_lat
-    output["transverse_right_lon"] = right_lon
-    output["transverse_right_lat"] = right_lat
+    output["grid_effective_scale_length"] = effective_scale
+    output["transverse_left_x"] = left_x
+    output["transverse_left_y"] = left_y
+    output["transverse_right_x"] = right_x
+    output["transverse_right_y"] = right_y
     output["transverse_left_strength"] = left
     output["transverse_right_strength"] = right
     output["transverse_left_evaluable"] = left_evaluable
@@ -243,16 +244,16 @@ def compute_directional_corridors(
     """Select locally continuous directional corridors without transport input."""
     required = {
         "cell_id",
-        "lon_bin",
-        "lat_bin",
-        "lon",
-        "lat",
+        "x_bin",
+        "y_bin",
+        "x",
+        "y",
         "N_out_move",
         "P_move",
         "R1_out",
         "theta1_out",
-        "D_out_all_east",
-        "D_out_all_north",
+        "D_out_all_x",
+        "D_out_all_y",
         "D_out_all_magnitude",
     }
     missing = sorted(required - set(cells))
@@ -269,11 +270,11 @@ def compute_directional_corridors(
         & cells.D_out_all_magnitude.ge(directional.minimum_strength)
     )
     candidates = cells.loc[organized].copy()
-    geod = Geod(ellps=config.ellipsoid)
+    geometry = make_spatial_geometry(config.geometry)
     adjacency, edges = _compatible_graph(
         candidates,
         config.grid,
-        geod,
+        geometry,
         maximum_direction_difference=(
             directional.maximum_neighbor_direction_difference_degrees
         ),
@@ -322,7 +323,7 @@ def compute_directional_corridors(
             else edges
         )
         network_length = (
-            float(component_edges.edge_length_km.sum())
+            float(component_edges.edge_length_length.sum())
             if not component_edges.empty
             else 0.0
         )
@@ -331,23 +332,27 @@ def compute_directional_corridors(
                 "component_id": component_id,
                 "n_cells": len(component),
                 "n_edges": len(component_edges),
-                "network_length_km": network_length,
+                "network_length_length": network_length,
                 "number_endpoints": int(sum(value == 1 for value in degrees.values())),
                 "number_junctions": int(sum(value >= 3 for value in degrees.values())),
-                "longitude_span_degrees": _minimal_longitude_span(
-                    component_rows.lon.to_numpy(float)
+                "x_span": (
+                    _minimal_longitude_span(component_rows.x.to_numpy(float))
+                    if geometry.coordinate_system == "geographic"
+                    else float(component_rows.x.max() - component_rows.x.min())
                 ),
-                "latitude_span_degrees": float(
-                    component_rows.lat.max() - component_rows.lat.min()
-                ),
-                "centroid_lat": float(component_rows.lat.mean()),
-                "centroid_lon_circular": float(
-                    np.rad2deg(
-                        np.arctan2(
-                            np.sin(np.deg2rad(component_rows.lon)).mean(),
-                            np.cos(np.deg2rad(component_rows.lon)).mean(),
+                "y_span": float(component_rows.y.max() - component_rows.y.min()),
+                "centroid_y": float(component_rows.y.mean()),
+                "centroid_x": (
+                    float(
+                        np.rad2deg(
+                            np.arctan2(
+                                np.sin(np.deg2rad(component_rows.x)).mean(),
+                                np.cos(np.deg2rad(component_rows.x)).mean(),
+                            )
                         )
                     )
+                    if geometry.coordinate_system == "geographic"
+                    else float(component_rows.x.mean())
                 ),
                 "mean_P_move": float(component_rows.P_move.mean()),
                 "median_P_move": float(component_rows.P_move.median()),
@@ -387,7 +392,7 @@ def compute_directional_corridors(
         if member_outputs
         else pd.DataFrame(columns=["component_id", *cells.columns])
     )
-    members = _add_transverse_observability(members, cells, config, geod)
+    members = _add_transverse_observability(members, cells, config, geometry)
     if not edges.empty:
         edges["component_id"] = edges.first_cell_id.map(component_by_cell)
         edges = edges[
@@ -396,7 +401,7 @@ def compute_directional_corridors(
     components = pd.DataFrame.from_records(component_records)
     if not components.empty:
         components["rank_network_length"] = (
-            components.network_length_km.rank(
+            components.network_length_length.rank(
                 method="min", ascending=False, na_option="bottom"
             ).astype(int)
         )
@@ -461,8 +466,8 @@ def compute_directional_corridors(
         ),
         **_quantiles(components.n_cells if not components.empty else pd.Series(), "component_cells"),
         **_quantiles(
-            components.network_length_km if not components.empty else pd.Series(),
-            "component_network_length_km",
+            components.network_length_length if not components.empty else pd.Series(),
+            "component_network_length_length",
         ),
         **_quantiles(edge_direction_difference, "edge_direction_difference_degrees"),
         **_quantiles(edge_step_mismatch, "edge_step_mismatch_degrees"),
@@ -470,21 +475,21 @@ def compute_directional_corridors(
     concise_fields = [
         "component_id",
         "cell_id",
-        "lon_bin",
-        "lat_bin",
-        "lon",
-        "lat",
+        "x_bin",
+        "y_bin",
+        "x",
+        "y",
         "N_out_move",
         "P_move",
         "R1_out",
         "theta1_out",
-        "D_out_all_east",
-        "D_out_all_north",
+        "D_out_all_x",
+        "D_out_all_y",
         "D_out_all_magnitude",
         "directional_graph_degree",
         "directional_graph_endpoint",
         "directional_graph_junction",
-        "grid_effective_scale_km",
+        "grid_effective_scale_length",
         "corridor_observability",
         "missing_side",
         "left_side_observable",
@@ -494,7 +499,7 @@ def compute_directional_corridors(
     ]
     corridors = members[[name for name in concise_fields if name in members]].copy()
     corridors = corridors.rename(
-        columns={"lon_bin": "start_lon_bin", "lat_bin": "start_lat_bin"}
+        columns={"x_bin": "start_x_bin", "y_bin": "start_y_bin"}
     )
     return DirectionalCorridorSolution(
         corridors=corridors,

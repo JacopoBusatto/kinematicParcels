@@ -47,20 +47,20 @@ def _valid_table() -> pd.DataFrame:
     ]
     return pd.DataFrame(
         {
-            "start_lon_bin": pd.Series([row[0] for row in rows], dtype="int64"),
-            "start_lat_bin": pd.Series([row[1] for row in rows], dtype="int64"),
-            "end_lon_bin": pd.Series([row[2] for row in rows], dtype="int64"),
-            "end_lat_bin": pd.Series([row[3] for row in rows], dtype="int64"),
-            "start_lon_center": pd.Series(
+            "start_x_bin": pd.Series([row[0] for row in rows], dtype="int64"),
+            "start_y_bin": pd.Series([row[1] for row in rows], dtype="int64"),
+            "end_x_bin": pd.Series([row[2] for row in rows], dtype="int64"),
+            "end_y_bin": pd.Series([row[3] for row in rows], dtype="int64"),
+            "start_x_center": pd.Series(
                 [row[0] + 0.5 for row in rows], dtype="float64"
             ),
-            "start_lat_center": pd.Series(
+            "start_y_center": pd.Series(
                 [row[1] + 0.5 for row in rows], dtype="float64"
             ),
-            "end_lon_center": pd.Series(
+            "end_x_center": pd.Series(
                 [row[2] + 0.5 for row in rows], dtype="float64"
             ),
-            "end_lat_center": pd.Series(
+            "end_y_center": pd.Series(
                 [row[3] + 0.5 for row in rows], dtype="float64"
             ),
             "transition_count": pd.Series([row[4] for row in rows], dtype="int64"),
@@ -100,7 +100,7 @@ def test_stage0_validation_never_renormalizes_invalid_probabilities() -> None:
 
 def test_stage0_validation_reports_duplicate_and_center_mismatch() -> None:
     table = pd.concat([_valid_table(), _valid_table().iloc[[0]]], ignore_index=True)
-    table.loc[0, "start_lon_center"] = 0.6
+    table.loc[0, "start_x_center"] = 0.6
 
     result = validate_transition_table(table, _grid(), ValidationConfig())
 
@@ -172,7 +172,7 @@ def _stage1(table: pd.DataFrame, grid: GridConfig | None = None):
         validation.links,
         support.cells,
         selected_grid,
-        timestep_days=10.0,
+        timestep=10.0,
         geometry=GeometryConfig(),
         config=Stage1Config(
             primary_visualization_min_moving_count=10,
@@ -185,18 +185,18 @@ def test_stage1_moving_and_total_moments_obey_stay_identity() -> None:
     result = _stage1(_valid_table())
     cell = result.cells.set_index("cell_id").loc[0]
 
-    assert cell.mu_out_move_east_km > 100.0
-    assert abs(cell.mu_out_move_north_km) < 0.1
-    assert cell.mu_out_all_east_km == pytest.approx(
-        cell.P_move * cell.mu_out_move_east_km, abs=1.0e-12
+    assert cell.mu_out_move_x_length > 100.0
+    assert abs(cell.mu_out_move_y_length) < 0.1
+    assert cell.mu_out_all_x_length == pytest.approx(
+        cell.P_move * cell.mu_out_move_x_length, abs=1.0e-12
     )
-    assert cell.U_out_all_magnitude_km_day == pytest.approx(
-        cell.P_move * cell.U_out_move_magnitude_km_day, abs=1.0e-12
+    assert cell.U_out_all_magnitude_rate == pytest.approx(
+        cell.P_move * cell.U_out_move_magnitude_rate, abs=1.0e-12
     )
     assert cell.U_out_retained_fraction == pytest.approx(cell.P_move)
     assert cell.theta_mu_out == pytest.approx(90.0, abs=0.1)
-    assert cell.mean_moving_distance_km == pytest.approx(
-        cell.mu_out_move_magnitude_km, rel=1.0e-6
+    assert cell.mean_moving_distance_length == pytest.approx(
+        cell.mu_out_move_magnitude_length, rel=1.0e-6
     )
     assert (
         result.cells.theta_mu_out.dropna().between(0.0, 360.0, inclusive="left").all()
@@ -217,8 +217,8 @@ def test_stage1_fields_are_unmasked_below_visualization_support() -> None:
 
     assert cell.N_out_move == 1
     assert not bool(cell.support_N_out_move_ge_10)
-    assert np.isfinite(cell.U_out_move_magnitude_km_day)
-    assert np.isfinite(cell.U_out_all_magnitude_m_s)
+    assert np.isfinite(cell.U_out_move_magnitude_rate)
+    assert np.isfinite(cell.U_out_all_magnitude_rate)
     assert "support_N_out_move_ge_10" in result.cells
 
 
@@ -229,23 +229,23 @@ def test_stage1_all_stay_cell_has_zero_total_and_undefined_moving_moment() -> No
     cell = result.cells.iloc[0]
 
     assert cell.N_out_move == 0
-    assert cell.mu_out_all_magnitude_km == 0.0
-    assert cell.U_out_all_magnitude_km_day == 0.0
-    assert np.isnan(cell.mu_out_move_magnitude_km)
+    assert cell.mu_out_all_magnitude_length == 0.0
+    assert cell.U_out_all_magnitude_rate == 0.0
+    assert np.isnan(cell.mu_out_move_magnitude_length)
     assert np.isnan(cell.theta_mu_out)
 
 
 def test_stage1_opposing_equal_moves_have_undefined_resultant_direction() -> None:
     table = pd.DataFrame(
         {
-            "start_lon_bin": pd.Series([1, 1], dtype="int64"),
-            "start_lat_bin": pd.Series([0, 0], dtype="int64"),
-            "end_lon_bin": pd.Series([0, 2], dtype="int64"),
-            "end_lat_bin": pd.Series([0, 0], dtype="int64"),
-            "start_lon_center": pd.Series([1.5, 1.5], dtype="float64"),
-            "start_lat_center": pd.Series([0.5, 0.5], dtype="float64"),
-            "end_lon_center": pd.Series([0.5, 2.5], dtype="float64"),
-            "end_lat_center": pd.Series([0.5, 0.5], dtype="float64"),
+            "start_x_bin": pd.Series([1, 1], dtype="int64"),
+            "start_y_bin": pd.Series([0, 0], dtype="int64"),
+            "end_x_bin": pd.Series([0, 2], dtype="int64"),
+            "end_y_bin": pd.Series([0, 0], dtype="int64"),
+            "start_x_center": pd.Series([1.5, 1.5], dtype="float64"),
+            "start_y_center": pd.Series([0.5, 0.5], dtype="float64"),
+            "end_x_center": pd.Series([0.5, 2.5], dtype="float64"),
+            "end_y_center": pd.Series([0.5, 0.5], dtype="float64"),
             "transition_count": pd.Series([10, 10], dtype="int64"),
             "transition_probability": pd.Series([0.5, 0.5], dtype="float64"),
         }
@@ -259,23 +259,23 @@ def test_stage1_opposing_equal_moves_have_undefined_resultant_direction() -> Non
         dlat=1.0,
         periodic_longitude=False,
     )
-    table["start_lat_center"] = 0.0
-    table["end_lat_center"] = 0.0
+    table["start_y_center"] = 0.0
+    table["end_y_center"] = 0.0
     validation = validate_transition_table(table, grid, ValidationConfig())
     support = compute_support_fields(validation.links, grid, (10,))
     result = compute_stage1_fields(
         validation.links,
         support.cells,
         grid,
-        timestep_days=10.0,
+        timestep=10.0,
         geometry=GeometryConfig(),
-        config=Stage1Config(direction_zero_tolerance_km=1.0e-6),
+        config=Stage1Config(direction_zero_tolerance=1.0e-6),
     )
     cell = result.cells.loc[result.cells.cell_id == 1].iloc[0]
 
-    assert cell.mu_out_move_magnitude_km < 1.0e-6
+    assert cell.mu_out_move_magnitude_length < 1.0e-6
     assert np.isnan(cell.theta_mu_out)
-    assert cell.mean_moving_distance_km > 100.0
+    assert cell.mean_moving_distance_length > 100.0
 
 
 def test_stage1_weighted_distance_quantiles_use_raw_counts() -> None:
@@ -283,8 +283,8 @@ def test_stage1_weighted_distance_quantiles_use_raw_counts() -> None:
     cell = result.cells.set_index("cell_id").loc[1]
     links = result.links.loc[~result.links.is_stay & result.links.start_cell_id.eq(1)]
 
-    assert cell.moving_distance_q25_km == pytest.approx(links.distance_km.min())
-    assert cell.moving_distance_q75_km == pytest.approx(links.distance_km.max())
+    assert cell.moving_distance_q25_length == pytest.approx(links.distance_length.min())
+    assert cell.moving_distance_q75_length == pytest.approx(links.distance_length.max())
 
 
 def test_stage1_dateline_geometry_uses_short_geodesic() -> None:
@@ -299,14 +299,14 @@ def test_stage1_dateline_geometry_uses_short_geodesic() -> None:
     )
     table = pd.DataFrame(
         {
-            "start_lon_bin": pd.Series([359], dtype="int64"),
-            "start_lat_bin": pd.Series([1], dtype="int64"),
-            "end_lon_bin": pd.Series([0], dtype="int64"),
-            "end_lat_bin": pd.Series([1], dtype="int64"),
-            "start_lon_center": pd.Series([179.5], dtype="float64"),
-            "start_lat_center": pd.Series([0.5], dtype="float64"),
-            "end_lon_center": pd.Series([-179.5], dtype="float64"),
-            "end_lat_center": pd.Series([0.5], dtype="float64"),
+            "start_x_bin": pd.Series([359], dtype="int64"),
+            "start_y_bin": pd.Series([1], dtype="int64"),
+            "end_x_bin": pd.Series([0], dtype="int64"),
+            "end_y_bin": pd.Series([1], dtype="int64"),
+            "start_x_center": pd.Series([179.5], dtype="float64"),
+            "start_y_center": pd.Series([0.5], dtype="float64"),
+            "end_x_center": pd.Series([-179.5], dtype="float64"),
+            "end_y_center": pd.Series([0.5], dtype="float64"),
             "transition_count": pd.Series([12], dtype="int64"),
             "transition_probability": pd.Series([1.0], dtype="float64"),
         }
@@ -314,8 +314,8 @@ def test_stage1_dateline_geometry_uses_short_geodesic() -> None:
     result = _stage1(table, grid)
     link = result.links.iloc[0]
 
-    assert 100.0 < link.distance_km < 120.0
-    assert link.dx_source_km > 100.0
+    assert 100.0 < link.distance_length < 120.0
+    assert link.dx_source_length > 100.0
     assert link.source_forward_bearing == pytest.approx(90.0, abs=0.1)
 
 
@@ -337,7 +337,7 @@ def _prescribed_stage2(
             "transition_count": pd.Series(counts, dtype="int64"),
             "conditional_moving_probability": probabilities,
             "source_forward_bearing": np.asarray(bearings, dtype=float),
-            "distance_km": np.asarray(distances, dtype=float),
+            "distance_length": np.asarray(distances, dtype=float),
         }
     )
     weighted_q95 = (
@@ -352,19 +352,19 @@ def _prescribed_stage2(
     cells = pd.DataFrame(
         {
             "cell_id": [0],
-            "lon_bin": [0],
-            "lat_bin": [0],
-            "lon": [0.5],
-            "lat": [0.5],
+            "x_bin": [0],
+            "y_bin": [0],
+            "x": [0.5],
+            "y": [0.5],
             "N_out_total": [total],
             "N_out_move": [total],
             "P_stay": [0.0],
             "P_move": [1.0],
-            "U_out_all_magnitude_km_day": [float(np.hypot(east, north) / 10.0)],
-            "U_out_move_magnitude_km_day": [float(np.hypot(east, north) / 10.0)],
+            "U_out_all_magnitude_rate": [float(np.hypot(east, north) / 10.0)],
+            "U_out_move_magnitude_rate": [float(np.hypot(east, north) / 10.0)],
             "theta_mu_out": [theta_mu],
-            "mean_moving_distance_km": [float(np.sum(probabilities * distances))],
-            "moving_distance_q95_km": [weighted_q95],
+            "mean_moving_distance_length": [float(np.sum(probabilities * distances))],
+            "moving_distance_q95_length": [weighted_q95],
             "diagnostic_strong_U_out_all": [True],
             "diagnostic_strong_U_out_move": [True],
         }
@@ -424,7 +424,7 @@ def test_stage2_retains_long_link_and_detects_distance_weighted_disagreement() -
     result = _prescribed_stage2([0.0, 90.0], [8, 2], [100.0, 1000.0])
     cell = result.cells.iloc[0]
 
-    assert cell.moving_distance_max_km == 1000.0
+    assert cell.moving_distance_max_length == 1000.0
     assert cell.theta1_out == pytest.approx(14.036243, abs=1.0e-6)
     assert cell.theta_mu_out == pytest.approx(68.198591, abs=1.0e-6)
     assert cell.delta_theta_mu1_out == pytest.approx(54.162348, abs=1.0e-6)
@@ -461,7 +461,7 @@ def _prescribed_stage3(
             "end_cell_id": 0,
             "is_stay": False,
             "transition_count": pd.Series(counts, dtype="int64"),
-            "distance_km": np.asarray(distances, dtype=float),
+            "distance_length": np.asarray(distances, dtype=float),
             "source_forward_bearing": arrival,
             "theta_in_source": np.remainder(arrival + 180.0, 360.0),
             "theta_in_motion_destination": arrival,
@@ -524,7 +524,7 @@ def test_stage3_incoming_distance_weighting_retains_long_link_disagreement() -> 
     )
     cell = result.cells.iloc[0]
 
-    assert cell.incoming_moving_distance_max_km == 1000.0
+    assert cell.incoming_moving_distance_max_length == 1000.0
     assert cell.theta1_in_motion_destination == pytest.approx(14.036243, abs=1.0e-6)
     assert cell.theta_mu_in_motion_destination == pytest.approx(68.198591, abs=1.0e-6)
     assert cell.delta_theta_mu1_in == pytest.approx(54.162348, abs=1.0e-6)
@@ -552,9 +552,9 @@ def _neighbor_cells(
         supports = [20] * len(populated)
     return pd.DataFrame(
         {
-            "cell_id": [lat * grid.nlon + lon for lon, lat in populated],
-            "lon_bin": [lon for lon, _ in populated],
-            "lat_bin": [lat for _, lat in populated],
+            "cell_id": [lat * grid.nx + lon for lon, lat in populated],
+            "x_bin": [lon for lon, _ in populated],
+            "y_bin": [lat for _, lat in populated],
             "theta": directions,
             "support": supports,
         }
@@ -681,13 +681,13 @@ def _stage4_cells() -> pd.DataFrame:
     return pd.DataFrame(
         {
             "cell_id": np.arange(4),
-            "lon_bin": [0, 1, 0, 1],
-            "lat_bin": [0, 0, 1, 1],
-            "lon": [0.5, 1.5, 0.5, 1.5],
-            "lat": [0.5, 0.5, 1.5, 1.5],
+            "x_bin": [0, 1, 0, 1],
+            "y_bin": [0, 0, 1, 1],
+            "x": [0.5, 1.5, 0.5, 1.5],
+            "y": [0.5, 0.5, 1.5, 1.5],
             "N_out_move": [25, 25, 25, 25],
             "N_in_move": [25, 25, 25, 25],
-            "U_out_all_magnitude_km_day": [2.0, 4.0, 8.0, 6.0],
+            "U_out_all_magnitude_rate": [2.0, 4.0, 8.0, 6.0],
             "theta_mu_out": theta_out + np.array([1.0, -2.0, 2.0, 5.0]),
             "theta1_out": theta_out,
             "R1_out": [0.9, 0.9, 0.9, 0.4],
@@ -755,7 +755,7 @@ def test_stage4_retains_interpretable_fields_without_master_score_or_extraction(
     )
     cells = result.cells.set_index("cell_id")
 
-    assert cells.loc[2, "U_coh_km_day"] == pytest.approx(7.2)
+    assert cells.loc[2, "U_coh_rate"] == pytest.approx(7.2)
     assert cells.loc[1, "delta_theta_io_1"] == pytest.approx(100.0)
     assert cells.loc[2, "delta_theta_io_1"] == pytest.approx(170.0)
     assert cells.loc[1, "A_io"] == pytest.approx(

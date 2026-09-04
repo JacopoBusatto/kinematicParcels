@@ -79,57 +79,68 @@ def create_standard_figures(
     """Create transport/directional maps and an optional validation map."""
     if not config.plotting.enabled:
         return []
-    projection, data_crs = _projection(config.plotting)
+    geographic = config.geometry.coordinate_system == "geographic"
+    projection, data_crs = _projection(config.plotting) if geographic else (None, None)
+    data_transform = {"transform": data_crs} if geographic else {}
     output_dir.mkdir(parents=True, exist_ok=True)
-    lon_edges = np.linspace(
-        config.grid.lon_min, config.grid.lon_max, config.grid.nlon + 1
+    x_edges = np.linspace(
+        config.grid.x_min, config.grid.x_max, config.grid.nx + 1
     )
-    lat_edges = np.linspace(
-        config.grid.lat_min, config.grid.lat_max, config.grid.nlat + 1
+    y_edges = np.linspace(
+        config.grid.y_min, config.grid.y_max, config.grid.ny + 1
     )
     support = cells.N_out_move.ge(config.statistics.min_moving_support)
     created: list[Path] = []
 
     def grid_array(field):
-        values = np.full((config.grid.nlat, config.grid.nlon), np.nan)
-        rows = cells.loc[support, ["lat_bin", "lon_bin", field]]
-        values[rows.lat_bin.to_numpy(int), rows.lon_bin.to_numpy(int)] = rows[field]
+        values = np.full((config.grid.ny, config.grid.nx), np.nan)
+        rows = cells.loc[support, ["y_bin", "x_bin", field]]
+        values[rows.y_bin.to_numpy(int), rows.x_bin.to_numpy(int)] = rows[field]
         return values
 
     def base_axis():
-        figure, axis = plt.subplots(
-            figsize=(9, 8), subplot_kw={"projection": projection}
-        )
-        axis.set_extent(
-            [
-                config.grid.lon_min,
-                config.grid.lon_max,
-                config.grid.lat_min,
-                config.grid.lat_max,
-            ],
-            crs=data_crs,
-        )
-        if config.plotting.draw_coastlines:
-            axis.coastlines(linewidth=0.5)
-        if (
-            config.plotting.circular_boundary
-            and config.plotting.projection == "SouthPolarStereo"
-        ):
-            angles = np.linspace(0, 2 * np.pi, 128)
-            boundary = np.column_stack(
-                [0.5 + 0.5 * np.sin(angles), 0.5 + 0.5 * np.cos(angles)]
+        if geographic:
+            figure, axis = plt.subplots(
+                figsize=(9, 8), subplot_kw={"projection": projection}
             )
-            axis.set_boundary(MatplotlibPath(boundary), transform=axis.transAxes)
-        axis.gridlines(linewidth=0.3, alpha=0.35)
+            axis.set_extent(
+                [
+                    config.grid.x_min,
+                    config.grid.x_max,
+                    config.grid.y_min,
+                    config.grid.y_max,
+                ],
+                crs=data_crs,
+            )
+            if config.plotting.draw_coastlines:
+                axis.coastlines(linewidth=0.5)
+            if (
+                config.plotting.circular_boundary
+                and config.plotting.projection == "SouthPolarStereo"
+            ):
+                angles = np.linspace(0, 2 * np.pi, 128)
+                boundary = np.column_stack(
+                    [0.5 + 0.5 * np.sin(angles), 0.5 + 0.5 * np.cos(angles)]
+                )
+                axis.set_boundary(MatplotlibPath(boundary), transform=axis.transAxes)
+            axis.gridlines(linewidth=0.3, alpha=0.35)
+        else:
+            figure, axis = plt.subplots(figsize=(9, 8))
+            axis.set_xlim(config.grid.x_min, config.grid.x_max)
+            axis.set_ylim(config.grid.y_min, config.grid.y_max)
+            axis.set_aspect("equal", adjustable="box")
+            axis.set_xlabel(f"x [{config.geometry.length_unit}]")
+            axis.set_ylabel(f"y [{config.geometry.length_unit}]")
+            axis.grid(linewidth=0.3, alpha=0.35)
         return figure, axis
 
     def add_transport_background(axis, *, cmap="viridis", max_percentile=99.0):
-        values = grid_array("U_out_all_magnitude_km_day")
+        values = grid_array("U_out_all_magnitude_rate")
         return axis.pcolormesh(
-            lon_edges,
-            lat_edges,
+            x_edges,
+            y_edges,
             values,
-            transform=data_crs,
+            **data_transform,
             shading="flat",
             cmap=cmap,
             vmin=0,
@@ -140,17 +151,17 @@ def create_standard_figures(
         stride = config.plotting.vector_stride_cells
         arrows = cells.loc[
             support
-            & cells.lon_bin.mod(stride).eq(0)
-            & cells.lat_bin.mod(stride).eq(0)
-            & cells.U_out_all_east_km_day.notna()
-            & cells.U_out_all_north_km_day.notna()
+            & cells.x_bin.mod(stride).eq(0)
+            & cells.y_bin.mod(stride).eq(0)
+            & cells.U_out_all_x_rate.notna()
+            & cells.U_out_all_y_rate.notna()
         ]
         quiver = axis.quiver(
-            arrows.lon,
-            arrows.lat,
-            arrows.U_out_all_east_km_day,
-            arrows.U_out_all_north_km_day,
-            transform=data_crs,
+            arrows.x,
+            arrows.y,
+            arrows.U_out_all_x_rate,
+            arrows.U_out_all_y_rate,
+            **data_transform,
             color="black",
             width=0.0022,
             headwidth=3.5,
@@ -160,8 +171,12 @@ def create_standard_figures(
             quiver,
             0.80,
             0.035,
-            config.plotting.vector_reference_km_day,
-            f"{config.plotting.vector_reference_km_day:g} km day$^{{-1}}$ transport vector",
+            config.plotting.vector_reference,
+            (
+                f"{config.plotting.vector_reference:g} "
+                f"{config.geometry.length_unit} {config.input.time_unit}$^{{-1}}$ "
+                "transport vector"
+            ),
             labelpos="N",
             coordinates="axes",
         )
@@ -170,10 +185,10 @@ def create_standard_figures(
     def add_directional_background(axis, *, cmap="viridis"):
         values = grid_array("D_out_all_magnitude")
         return axis.pcolormesh(
-            lon_edges,
-            lat_edges,
+            x_edges,
+            y_edges,
             values,
-            transform=data_crs,
+            **data_transform,
             shading="flat",
             cmap=cmap,
             vmin=0,
@@ -184,17 +199,17 @@ def create_standard_figures(
         stride = config.plotting.vector_stride_cells
         arrows = cells.loc[
             support
-            & cells.lon_bin.mod(stride).eq(0)
-            & cells.lat_bin.mod(stride).eq(0)
-            & cells.D_out_all_east.notna()
-            & cells.D_out_all_north.notna()
+            & cells.x_bin.mod(stride).eq(0)
+            & cells.y_bin.mod(stride).eq(0)
+            & cells.D_out_all_x.notna()
+            & cells.D_out_all_y.notna()
         ]
         quiver = axis.quiver(
-            arrows.lon,
-            arrows.lat,
-            arrows.D_out_all_east,
-            arrows.D_out_all_north,
-            transform=data_crs,
+            arrows.x,
+            arrows.y,
+            arrows.D_out_all_x,
+            arrows.D_out_all_y,
+            **data_transform,
             color="black",
             width=0.0022,
             headwidth=3.5,
@@ -223,7 +238,11 @@ def create_standard_figures(
     figure, axis = base_axis()
     mesh = add_transport_background(axis)
     add_transport_vectors(axis)
-    figure.colorbar(mesh, ax=axis, shrink=0.7, label="|U_out,all| [km day$^{-1}$]")
+    rate_label = (
+        f"|U_out,all| [{config.geometry.length_unit} "
+        f"{config.input.time_unit}$^{{-1}}$]"
+    )
+    figure.colorbar(mesh, ax=axis, shrink=0.7, label=rate_label)
     axis.set_title("Lagrangian transport field")
     save(figure, "01_transport_vectors.png")
 
@@ -253,10 +272,10 @@ def create_standard_figures(
     for field, filename, title, label, cmap in scalar_maps:
         figure, axis = base_axis()
         mesh = axis.pcolormesh(
-            lon_edges,
-            lat_edges,
+            x_edges,
+            y_edges,
             grid_array(field),
-            transform=data_crs,
+            **data_transform,
             shading="flat",
             cmap=cmap,
             vmin=0,
@@ -277,9 +296,9 @@ def create_standard_figures(
         rows = cores.cores.loc[cores.cores.ridge_type.eq(ridge_type)]
         if not rows.empty:
             axis.scatter(
-                rows.lon,
-                rows.lat,
-                transform=data_crs,
+                rows.x,
+                rows.y,
+                **data_transform,
                 s=15,
                 marker=marker,
                 color=color,
@@ -293,9 +312,9 @@ def create_standard_figures(
         rows = detected.loc[detected.side.eq(side)]
         if not rows.empty:
             axis.scatter(
-                rows.front_lon,
-                rows.front_lat,
-                transform=data_crs,
+                rows.front_x,
+                rows.front_y,
+                **data_transform,
                 s=18,
                 marker=marker,
                 color=color,
@@ -305,7 +324,7 @@ def create_standard_figures(
                 zorder=6,
             )
     axis.legend(loc="lower left", fontsize=7, framealpha=0.9)
-    figure.colorbar(mesh, ax=axis, shrink=0.7, label="|U_out,all| [km day$^{-1}$]")
+    figure.colorbar(mesh, ax=axis, shrink=0.7, label=rate_label)
     axis.set_title("Lagrangian current cores and probable transport fronts")
     save(figure, "05_cores_and_fronts.png")
 
@@ -332,9 +351,9 @@ def create_standard_figures(
         ]
         if not rows.empty:
             axis.scatter(
-                rows.lon,
-                rows.lat,
-                transform=data_crs,
+                rows.x,
+                rows.y,
+                **data_transform,
                 s=15,
                 marker=marker,
                 color=color,
@@ -350,9 +369,9 @@ def create_standard_figures(
         rows = detected_directional.loc[detected_directional.side.eq(side)]
         if not rows.empty:
             axis.scatter(
-                rows.front_lon,
-                rows.front_lat,
-                transform=data_crs,
+                rows.front_x,
+                rows.front_y,
+                **data_transform,
                 s=18,
                 marker=marker,
                 color=color,
@@ -372,17 +391,17 @@ def create_standard_figures(
     save(figure, "07_directional_corridors_and_fronts.png")
 
     if validation is not None and config.plotting.debug_plots:
-        values = np.full((config.grid.nlat, config.grid.nlon), np.nan)
+        values = np.full((config.grid.ny, config.grid.nx), np.nan)
         frame = validation.global_fields
-        values[frame.lat_bin.to_numpy(int), frame.lon_bin.to_numpy(int)] = frame[
+        values[frame.y_bin.to_numpy(int), frame.x_bin.to_numpy(int)] = frame[
             "abs_G_perp"
         ]
         figure, axis = base_axis()
         mesh = axis.pcolormesh(
-            lon_edges,
-            lat_edges,
+            x_edges,
+            y_edges,
             values,
-            transform=data_crs,
+            **data_transform,
             shading="flat",
             cmap="magma",
             vmin=0,
@@ -392,9 +411,9 @@ def create_standard_figures(
         )
         rows = validation.validation
         axis.scatter(
-            rows.flank_lon,
-            rows.flank_lat,
-            transform=data_crs,
+            rows.flank_x,
+            rows.flank_y,
+            **data_transform,
             s=12,
             facecolors="none",
             edgecolors="cyan",
@@ -402,7 +421,12 @@ def create_standard_figures(
             label="Probable transport front",
         )
         axis.legend(loc="lower left", fontsize=7, framealpha=0.9)
-        figure.colorbar(mesh, ax=axis, shrink=0.7, label="|G_perp| [day$^{-1}$]")
+        figure.colorbar(
+            mesh,
+            ax=axis,
+            shrink=0.7,
+            label=f"|G_perp| [{config.input.time_unit}$^{{-1}}$]",
+        )
         axis.set_title("Optional cross-stream-gradient validation")
         save(figure, "debug_gradient_validation.png")
 

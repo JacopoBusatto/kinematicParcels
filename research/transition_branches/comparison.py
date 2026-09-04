@@ -31,12 +31,12 @@ def compare_transport_and_directional_structures(
         cells.N_out_move.ge(config.statistics.min_moving_support),
         [
             "cell_id",
-            "lon_bin",
-            "lat_bin",
-            "lon",
-            "lat",
+            "x_bin",
+            "y_bin",
+            "x",
+            "y",
             "N_out_move",
-            "U_out_all_magnitude_km_day",
+            "U_out_all_magnitude_rate",
             "D_out_all_magnitude",
         ],
     ].copy()
@@ -58,7 +58,7 @@ def compare_transport_and_directional_structures(
         default="neither",
     )
     supported = supported.rename(
-        columns={"lon_bin": "start_lon_bin", "lat_bin": "start_lat_bin"}
+        columns={"x_bin": "start_x_bin", "y_bin": "start_y_bin"}
     )
 
     component_records: list[dict[str, Any]] = []

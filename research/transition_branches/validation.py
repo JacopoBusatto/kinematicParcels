@@ -9,6 +9,7 @@ import pandas as pd
 from ._validation_kernel import compute_global_gradient_fields, compute_stage7_fields
 from .config import CompactConfig
 from .fronts import FrontSolution
+from .geometry import make_spatial_geometry
 
 
 @dataclass(frozen=True)
@@ -21,10 +22,12 @@ class ValidationSolution:
 def compute_validation(
     cells: pd.DataFrame, fronts: FrontSolution, config: CompactConfig
 ) -> ValidationSolution:
+    geometry = make_spatial_geometry(config.geometry)
     global_result = compute_global_gradient_fields(
         cells,
         config.grid,
-        ellipsoid=config.ellipsoid,
+        geometry=geometry,
+        time_unit=config.input.time_unit,
         zero_tolerance=config.validation.gradient_zero_tolerance,
     )
     result = compute_stage7_fields(
@@ -33,7 +36,8 @@ def compute_validation(
         fronts.section_summaries,
         config.grid,
         config=config.validation,
-        ellipsoid=config.ellipsoid,
+        geometry=geometry,
+        time_unit=config.input.time_unit,
         precomputed_global=global_result,
         primary_experiment_id=fronts.experiment_id,
     )
@@ -42,9 +46,9 @@ def compute_validation(
         "ridge_cell_id",
         "side",
         "ridge_type",
-        "flank_lon",
-        "flank_lat",
-        "flank_distance_km",
+        "flank_x",
+        "flank_y",
+        "flank_distance_length",
         "absolute_transport_loss",
         "relative_transport_loss",
         "stage6_persistence",
@@ -54,13 +58,13 @@ def compute_validation(
         "gradient_magnitude_at_flank",
         "abs_G_perp_at_core",
         "local_max_abs_G_perp",
-        "distance_to_local_gradient_max_km",
+        "distance_to_local_gradient_max_length",
         "distance_to_local_gradient_max_L_eff",
         "local_abs_G_perp_percentile",
         "nearby_branch_contamination",
         "gradient_observability",
         "n_segment_records",
-        "candidate_distance_spread_km",
+        "candidate_distance_spread_length",
         "duplicate_flank_disagreement",
         "comparison_record_ids",
         "component_ids",

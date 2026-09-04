@@ -7,9 +7,10 @@ from typing import Any
 
 import numpy as np
 import pandas as pd
-from pyproj import Geod
 
 from .geometry import (
+    GeographicGeometry,
+    SpatialGeometry,
     _bilinear_supported_sample,
     _grid_array,
     _physical_cell_scales,
@@ -27,10 +28,10 @@ class Stage6Fields:
 
 
 SAMPLED_FIELDS = (
-    "U_out_all_east_km_day",
-    "U_out_all_north_km_day",
-    "U_out_all_magnitude_km_day",
-    "U_out_move_magnitude_km_day",
+    "U_out_all_x_rate",
+    "U_out_all_y_rate",
+    "U_out_all_magnitude_rate",
+    "U_out_move_magnitude_rate",
     "P_move",
     "R1_out",
     "R2_out",
@@ -67,26 +68,26 @@ def _sample_fields(
     support: np.ndarray,
     grid: Any,
     *,
-    target_lon: np.ndarray,
-    target_lat: np.ndarray,
+    target_x: np.ndarray,
+    target_y: np.ndarray,
     interpolation_weight_tolerance: float,
 ) -> tuple[dict[str, np.ndarray], np.ndarray, np.ndarray]:
     sampled: dict[str, np.ndarray] = {}
-    boundary_any = np.zeros(len(target_lon), dtype=bool)
-    missing_any = np.zeros(len(target_lon), dtype=bool)
+    boundary_any = np.zeros(len(target_x), dtype=bool)
+    missing_any = np.zeros(len(target_x), dtype=bool)
     for field_name, values in prepared_fields.items():
         field_values, boundary, missing = _bilinear_supported_sample(
             values,
             support,
-            target_lon,
-            target_lat,
+            target_x,
+            target_y,
             grid,
             weight_tolerance=interpolation_weight_tolerance,
         )
         sampled[field_name] = field_values
         if field_name in {
-            "U_out_all_east_km_day",
-            "U_out_all_north_km_day",
+            "U_out_all_x_rate",
+            "U_out_all_y_rate",
         }:
             boundary_any |= boundary
             missing_any |= missing
@@ -96,7 +97,7 @@ def _sample_fields(
 def _nearby_branch_contamination(
     center: pd.Series,
     experiment_members: pd.DataFrame,
-    geod: Geod,
+    geometry: SpatialGeometry,
     config: Any,
 ) -> bool:
     others = experiment_members.loc[
@@ -105,21 +106,21 @@ def _nearby_branch_contamination(
     ].drop_duplicates("cell_id")
     if others.empty:
         return False
-    bearing, _, distance_m = geod.inv(
-        np.full(len(others), center.lon),
-        np.full(len(others), center.lat),
-        others.lon.to_numpy(float),
-        others.lat.to_numpy(float),
+    bearing, _, distance = geometry.inverse(
+        np.full(len(others), center.x),
+        np.full(len(others), center.y),
+        others.x.to_numpy(float),
+        others.y.to_numpy(float),
     )
     angle = np.deg2rad(
         _signed_difference(
             np.asarray(bearing), np.full(len(others), center.theta_mu_out)
         )
     )
-    distance_km = np.asarray(distance_m) / 1000.0
-    along = distance_km * np.cos(angle)
-    cross = distance_km * np.sin(angle)
-    scale = float(center.grid_effective_scale_km)
+    distance_length = np.asarray(distance)
+    along = distance_length * np.cos(angle)
+    cross = distance_length * np.sin(angle)
+    scale = float(center.grid_effective_scale_length)
     nearby = (np.abs(along) <= config.nearby_branch_along_distance_scales * scale) & (
         np.abs(cross) <= config.nearby_branch_cross_distance_scales * scale
     )
@@ -133,7 +134,7 @@ def _section_rows(
     *,
     experiment_id: str,
     config: Any,
-    geod: Geod,
+    geometry: SpatialGeometry,
     interpolation_weight_tolerance: float,
     prepared_fields: dict[str, np.ndarray],
     support_grid: np.ndarray,
@@ -142,32 +143,32 @@ def _section_rows(
     half_width = config.half_width_grid_scales
     interval = config.sampling_interval_grid_scales
     offsets = np.arange(-half_width, half_width + interval / 2, interval)
-    distance_km = offsets * float(center.grid_effective_scale_km)
+    distance_length = offsets * float(center.grid_effective_scale_length)
     bearings = np.where(
-        distance_km < 0, center.theta_mu_out - 90.0, center.theta_mu_out + 90.0
+        distance_length < 0, center.theta_mu_out - 90.0, center.theta_mu_out + 90.0
     )
-    target_lon, target_lat, _ = geod.fwd(
-        np.full(len(offsets), center.lon),
-        np.full(len(offsets), center.lat),
+    target_x, target_y, _ = geometry.forward(
+        np.full(len(offsets), center.x),
+        np.full(len(offsets), center.y),
         bearings,
-        np.abs(distance_km) * 1000.0,
+        np.abs(distance_length),
     )
     zero = np.isclose(offsets, 0.0)
-    target_lon[zero] = center.lon
-    target_lat[zero] = center.lat
+    target_x[zero] = center.x
+    target_y[zero] = center.y
     sampled, boundary, missing = _sample_fields(
         prepared_fields,
         support_grid,
         grid,
-        target_lon=target_lon,
-        target_lat=target_lat,
+        target_x=target_x,
+        target_y=target_y,
         interpolation_weight_tolerance=interpolation_weight_tolerance,
     )
     tangent_east = np.sin(np.deg2rad(center.theta_mu_out))
     tangent_north = np.cos(np.deg2rad(center.theta_mu_out))
     u_parallel = (
-        sampled["U_out_all_east_km_day"] * tangent_east
-        + sampled["U_out_all_north_km_day"] * tangent_north
+        sampled["U_out_all_x_rate"] * tangent_east
+        + sampled["U_out_all_y_rate"] * tangent_north
     )
     ridge_type = (
         str(center.get("ridge_type", "two_sided"))
@@ -198,8 +199,8 @@ def _section_rows(
         core_index = allowed_indexes[np.nanargmax(u_parallel[allowed_core])]
         core_offset = float(offsets[core_index])
         core_value = float(u_parallel[core_index])
-        refined_lon = float(target_lon[core_index])
-        refined_lat = float(target_lat[core_index])
+        refined_x = float(target_x[core_index])
+        refined_y = float(target_y[core_index])
         core_uncertain = bool(
             np.isclose(abs(core_offset), config.core_refinement_grid_scales)
         )
@@ -207,15 +208,15 @@ def _section_rows(
         core_index = int(np.flatnonzero(zero)[0])
         core_offset = np.nan
         core_value = np.nan
-        refined_lon = np.nan
-        refined_lat = np.nan
+        refined_x = np.nan
+        refined_y = np.nan
         core_uncertain = True
     offset_refined = (
         offsets - core_offset
         if np.isfinite(core_offset)
         else np.full_like(offsets, np.nan)
     )
-    distance_refined = offset_refined * float(center.grid_effective_scale_km)
+    distance_refined = offset_refined * float(center.grid_effective_scale_length)
     smooth = robust_contiguous_median(
         u_parallel, window=config.robust_median_window_samples
     )
@@ -227,7 +228,7 @@ def _section_rows(
     sample_class[missing] = "missing_because_of_support"
     sample_class[boundary] = "missing_because_of_boundary"
     sample_class[~valid & ~(missing | boundary)] = "missing_invalid"
-    nearby = _nearby_branch_contamination(center, experiment_members, geod, config)
+    nearby = _nearby_branch_contamination(center, experiment_members, geometry, config)
     pixel_junction = bool(center.ridge_graph_junction)
     segment_endpoint = bool(center.ridge_graph_endpoint)
     high_curvature = bool(
@@ -291,16 +292,16 @@ def _section_rows(
             "section_id": section_id,
             "section_sequence": int(center.sequence),
             "cell_id": int(center.cell_id),
-            "ridge_lon": float(center.lon),
-            "ridge_lat": float(center.lat),
-            "refined_core_lon": refined_lon,
-            "refined_core_lat": refined_lat,
+            "ridge_x": float(center.x),
+            "ridge_y": float(center.y),
+            "refined_core_x": refined_x,
+            "refined_core_y": refined_y,
             "offset_index_from_stage5_ridge": offsets,
             "offset_index_from_refined_core": offset_refined,
-            "d_from_stage5_ridge_km": distance_km,
-            "d_from_refined_core_km": distance_refined,
-            "sample_lon": target_lon,
-            "sample_lat": target_lat,
+            "d_from_stage5_ridge_length": distance_length,
+            "d_from_refined_core_length": distance_refined,
+            "sample_x": target_x,
+            "sample_y": target_y,
             "side": np.where(
                 offset_refined < 0,
                 "left",
@@ -327,8 +328,8 @@ def _section_rows(
     )
     for field_name, values in sampled.items():
         output_name = {
-            "U_out_all_magnitude_km_day": "U_out_all",
-            "U_out_move_magnitude_km_day": "U_out_move",
+            "U_out_all_magnitude_rate": "U_out_all",
+            "U_out_move_magnitude_rate": "U_out_move",
         }.get(field_name, field_name)
         rows[output_name] = values
     summary = {
@@ -340,14 +341,14 @@ def _section_rows(
         "section_id": section_id,
         "section_sequence": int(center.sequence),
         "cell_id": int(center.cell_id),
-        "ridge_lon": float(center.lon),
-        "ridge_lat": float(center.lat),
+        "ridge_x": float(center.x),
+        "ridge_y": float(center.y),
         "theta_mu_out_center": float(center.theta_mu_out),
-        "grid_effective_scale_km": float(center.grid_effective_scale_km),
+        "grid_effective_scale_length": float(center.grid_effective_scale_length),
         "d_core_grid_scales": core_offset,
-        "d_core_km": core_offset * float(center.grid_effective_scale_km),
-        "refined_core_lon": refined_lon,
-        "refined_core_lat": refined_lat,
+        "d_core_length": core_offset * float(center.grid_effective_scale_length),
+        "refined_core_x": refined_x,
+        "refined_core_y": refined_y,
         "U_parallel_core": core_value,
         "core_location_uncertain": core_uncertain,
         "nearby_branch_contamination": nearby,
@@ -403,7 +404,7 @@ def _add_along_branch_composites(
     summaries: pd.DataFrame,
     *,
     half_window: int,
-    geod: Geod,
+    geometry: SpatialGeometry,
 ) -> tuple[pd.DataFrame, pd.DataFrame]:
     output = cross_sections.copy()
     for field_name in (
@@ -485,15 +486,15 @@ def _add_along_branch_composites(
                     output.loc[row_index, "fraction_sections_with_outward_decline"] = (
                         float(declines.mean())
                     )
-            _, _, distances = geod.inv(
-                np.full(len(neighbors), focal.ridge_lon),
-                np.full(len(neighbors), focal.ridge_lat),
-                neighbors.ridge_lon.to_numpy(float),
-                neighbors.ridge_lat.to_numpy(float),
+            _, _, distances = geometry.inverse(
+                np.full(len(neighbors), focal.ridge_x),
+                np.full(len(neighbors), focal.ridge_y),
+                neighbors.ridge_x.to_numpy(float),
+                neighbors.ridge_y.to_numpy(float),
             )
-            span_by_section[focal.section_id] = float(np.max(distances) / 1000.0)
+            span_by_section[focal.section_id] = float(np.max(distances))
     summaries = summaries.copy()
-    summaries["composite_along_branch_span_km"] = summaries.section_id.map(
+    summaries["composite_along_branch_span_length"] = summaries.section_id.map(
         span_by_section
     )
     summaries["n_neighbor_sections"] = (
@@ -508,7 +509,7 @@ def _add_along_branch_composites(
 
 def _first_distance_descriptor(side_rows: pd.DataFrame, threshold: float) -> float:
     selected = side_rows.loc[side_rows.U_parallel_relative.le(threshold)]
-    return float(selected.outward_distance_km.iloc[0]) if not selected.empty else np.nan
+    return float(selected.outward_distance_length.iloc[0]) if not selected.empty else np.nan
 
 
 def _detect_drop_zones(
@@ -530,23 +531,23 @@ def _detect_drop_zones(
             if not side_observable:
                 side_results[f"{side}_drop_detected"] = False
                 side_results[f"{side}_candidate_count"] = 0
-                side_results[f"{side}_drop_distance_km"] = np.nan
+                side_results[f"{side}_drop_distance_length"] = np.nan
                 side_results[f"{side}_drop_magnitude"] = np.nan
                 side_results[f"{side}_along_branch_persistence"] = False
-                side_results[f"{side}_distance_50pct_km"] = np.nan
-                side_results[f"{side}_distance_1e_km"] = np.nan
-                side_results[f"{side}_zero_crossing_km"] = np.nan
+                side_results[f"{side}_distance_50pct_length"] = np.nan
+                side_results[f"{side}_distance_1e_length"] = np.nan
+                side_results[f"{side}_zero_crossing_length"] = np.nan
                 side_results[f"{side}_flank_status"] = "flank_not_observable"
                 continue
             selected = profile.loc[profile.side.isin(("core", side))].copy()
-            selected["outward_distance_km"] = selected.d_from_refined_core_km.abs()
-            selected = selected.sort_values("outward_distance_km")
+            selected["outward_distance_length"] = selected.d_from_refined_core_length.abs()
+            selected = selected.sort_values("outward_distance_length")
             valid = selected.loc[selected.sample_valid].copy()
             zones: list[dict[str, Any]] = []
             for index in range(len(valid) - 1):
                 inner = valid.iloc[index]
                 outer = valid.iloc[index + 1]
-                width = float(outer.outward_distance_km - inner.outward_distance_km)
+                width = float(outer.outward_distance_length - inner.outward_distance_length)
                 if width <= 0:
                     continue
                 profile_field = (
@@ -597,17 +598,17 @@ def _detect_drop_zones(
                         "section_id": summary.section_id,
                         "cell_id": summary.cell_id,
                         "side": side,
-                        "candidate_distance_km": float(outer.outward_distance_km),
-                        "candidate_lon": float(outer.sample_lon),
-                        "candidate_lat": float(outer.sample_lat),
+                        "candidate_distance_length": float(outer.outward_distance_length),
+                        "candidate_x": float(outer.sample_x),
+                        "candidate_y": float(outer.sample_y),
                         "U_core": summary.U_parallel_core,
                         "U_inner": inner_value,
                         "U_outer": outer_value,
                         "absolute_drop": absolute_drop,
                         "relative_drop": relative_drop,
                         "drop_slope": slope,
-                        "drop_slope_km_day_per_km": slope,
-                        "drop_width_km": width,
+                        "drop_slope_rate_per_length": slope,
+                        "drop_width_length": width,
                         "number_supporting_samples": int(2 + len(following)),
                         "outer_recovery": recovery,
                         "along_branch_persistence": along_persistence,
@@ -646,7 +647,7 @@ def _detect_drop_zones(
                     [
                         "along_branch_persistence",
                         "absolute_drop",
-                        "drop_slope_km_day_per_km",
+                        "drop_slope_rate_per_length",
                     ],
                     ascending=[False, False, True],
                     kind="stable",
@@ -678,7 +679,7 @@ def _detect_drop_zones(
                 flank_records.append(best)
                 detected = True
                 candidate_count = len(eligible)
-                distance = best["candidate_distance_km"]
+                distance = best["candidate_distance_length"]
                 magnitude = best["absolute_drop"]
                 persistence = best["along_branch_persistence"]
             else:
@@ -692,19 +693,19 @@ def _detect_drop_zones(
                 zone_records.extend(zone_frame.to_dict("records"))
             side_results[f"{side}_drop_detected"] = detected
             side_results[f"{side}_candidate_count"] = candidate_count
-            side_results[f"{side}_drop_distance_km"] = distance
+            side_results[f"{side}_drop_distance_length"] = distance
             side_results[f"{side}_drop_magnitude"] = magnitude
             side_results[f"{side}_along_branch_persistence"] = persistence
             side_results[f"{side}_flank_status"] = (
                 "candidate_drop" if detected else "observable_no_candidate_drop"
             )
-            side_results[f"{side}_distance_50pct_km"] = _first_distance_descriptor(
+            side_results[f"{side}_distance_50pct_length"] = _first_distance_descriptor(
                 valid, 0.5
             )
-            side_results[f"{side}_distance_1e_km"] = _first_distance_descriptor(
+            side_results[f"{side}_distance_1e_length"] = _first_distance_descriptor(
                 valid, 1 / np.e
             )
-            side_results[f"{side}_zero_crossing_km"] = _first_distance_descriptor(
+            side_results[f"{side}_zero_crossing_length"] = _first_distance_descriptor(
                 valid, 0.0
             )
         observable_sides = [
@@ -763,7 +764,7 @@ def compute_stage6_fields(
     *,
     stage5_config: Any,
     config: Any,
-    ellipsoid: str = "WGS84",
+    geometry: SpatialGeometry | None = None,
     boundary_aware_branch_cores: bool = False,
     experiments: tuple[tuple[int, str], ...],
     field_variant: str = "raw",
@@ -773,9 +774,9 @@ def compute_stage6_fields(
     missing = sorted(required - set(stage4_cells.columns))
     if missing:
         raise ValueError(f"Stage 4 fields missing Stage 6 columns: {missing}")
-    geod = Geod(ellps=ellipsoid)
-    _, _, effective_m = _physical_cell_scales(stage4_cells, grid, geod)
-    scale_by_cell = pd.Series(effective_m / 1000.0, index=stage4_cells.cell_id)
+    geometry = geometry or GeographicGeometry("WGS84", "km")
+    _, _, effective_scale = _physical_cell_scales(stage4_cells, grid, geometry)
+    scale_by_cell = pd.Series(effective_scale, index=stage4_cells.cell_id)
     cross_outputs: list[pd.DataFrame] = []
     summary_records: list[dict[str, Any]] = []
     base_prepared_fields = {
@@ -814,7 +815,7 @@ def compute_stage6_fields(
             ["segment_id", "maximum_local_tangent_turn_degrees"],
         ]
         members = members.merge(segment_context, on="segment_id", how="left")
-        members["grid_effective_scale_km"] = members.cell_id.map(scale_by_cell)
+        members["grid_effective_scale_length"] = members.cell_id.map(scale_by_cell)
         for _, center in members.iterrows():
             rows, section_summary = _section_rows(
                 center,
@@ -822,7 +823,7 @@ def compute_stage6_fields(
                 grid,
                 experiment_id=experiment_id,
                 config=config,
-                geod=geod,
+                geometry=geometry,
                 interpolation_weight_tolerance=stage5_config.interpolation_weight_tolerance,
                 prepared_fields=prepared_by_support[support_threshold],
                 support_grid=support_grids[support_threshold],
@@ -836,7 +837,7 @@ def compute_stage6_fields(
         cross_sections,
         section_summaries,
         half_window=config.composite_half_window_sections,
-        geod=geod,
+        geometry=geometry,
     )
     drop_zones, flank_points, section_summaries = _detect_drop_zones(
         cross_sections, section_summaries, config
@@ -845,7 +846,9 @@ def compute_stage6_fields(
     summary: dict[str, Any] = {
         "baseline_experiment": baseline_experiment_id,
         "orientation": "central theta_mu_out compass bearing; same tangent across section",
-        "cross_stream_geometry": "WGS84 geodesic +/-5 local effective grid scales",
+        "cross_stream_geometry": (
+            f"{geometry.coordinate_system} geometry +/-5 local effective grid scales"
+        ),
         "independent_sampling_interval": "one local effective grid scale",
         "core_refinement": "maximum supported U_parallel within +/-1 grid scale",
         "profile_smoother": f"contiguous rolling median window {config.robust_median_window_samples}",
@@ -869,7 +872,7 @@ def compute_stage6_fields(
         neither = group.no_candidate_drop
         one_sided_cores = group.n_observable_flanks.eq(1)
         two_sided_cores = group.n_observable_flanks.eq(2)
-        asymmetry = (group.left_drop_distance_km - group.right_drop_distance_km).abs()
+        asymmetry = (group.left_drop_distance_length - group.right_drop_distance_length).abs()
         raw_variation = group.profile_total_variation_raw.replace(0, np.nan)
         variation_reduction = (
             group.profile_total_variation_raw - group.profile_total_variation_smoothed
@@ -912,13 +915,13 @@ def compute_stage6_fields(
                     group.high_local_curvature_turning.sum()
                 ),
                 f"{prefix}_low_R1_sections": int(group.low_R1_out.sum()),
-                f"{prefix}_median_left_drop_distance_km": float(
-                    group.left_drop_distance_km.median()
+                f"{prefix}_median_left_drop_distance_length": float(
+                    group.left_drop_distance_length.median()
                 ),
-                f"{prefix}_median_right_drop_distance_km": float(
-                    group.right_drop_distance_km.median()
+                f"{prefix}_median_right_drop_distance_length": float(
+                    group.right_drop_distance_length.median()
                 ),
-                f"{prefix}_median_absolute_left_right_distance_asymmetry_km": float(
+                f"{prefix}_median_absolute_left_right_distance_asymmetry_length": float(
                     asymmetry.median()
                 ),
                 f"{prefix}_median_flank_absolute_drop": float(
